@@ -217,7 +217,7 @@ def page_html():
     <section class="pane right-pane">
       <div class="label">
         <span class="label-title"><strong>Board</strong><button id="trace" title="Show reference under the board">Trace</button></span>
-        <span id="saveState" class="save-state">Not saved yet</span>
+        <span class="label-actions"><span id="saveState" class="save-state">Not saved yet</span><button id="boardSmaller" title="Make drawing board smaller">-</button><button id="boardBigger" title="Make drawing board bigger">+</button></span>
       </div>
       <div id="boardFrame" class="frame board-frame">
         <div id="canvasStack" class="canvas-stack">
@@ -288,6 +288,8 @@ def page_html():
     const refSmaller = document.getElementById('refSmaller');
     const refBigger = document.getElementById('refBigger');
     const refMirror = document.getElementById('refMirror');
+    const boardSmaller = document.getElementById('boardSmaller');
+    const boardBigger = document.getElementById('boardBigger');
     let images = [];
     let index = 0;
     let drawing = false;
@@ -299,6 +301,8 @@ def page_html():
     let refScale = Number(localStorage.getItem('bildkastenStoryRefScale') || 1);
     if (!Number.isFinite(refScale)) refScale = 1;
     let refMirrored = localStorage.getItem('bildkastenStoryRefMirror') === '1';
+    let boardScale = Number(localStorage.getItem('bildkastenStoryBoardScale') || 1);
+    if (!Number.isFinite(boardScale)) boardScale = 1;
     let lastPoint = null;
     let lassoPoints = [];
     let resizing = false;
@@ -347,7 +351,15 @@ def page_html():
     function resetView() {
       setPaneSplitPercent(50);
       setReferenceScale(1, false);
+      setBoardScale(1, false);
       status('View reset');
+    }
+
+    function setBoardScale(nextScale, showStatus = true) {
+      boardScale = Math.max(0.45, Math.min(2.4, nextScale));
+      localStorage.setItem('bildkastenStoryBoardScale', boardScale.toFixed(2));
+      fitCanvasStack();
+      if (showStatus) status('Drawing board ' + Math.round(boardScale * 100) + '%');
     }
 
     function applyReferenceMirror() {
@@ -402,7 +414,7 @@ def page_html():
       const padY = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
       const maxW = Math.max(1, boardFrame.clientWidth - padX);
       const maxH = Math.max(1, boardFrame.clientHeight - padY);
-      const scale = Math.min(maxW / canvas.width, maxH / canvas.height);
+      const scale = Math.min(maxW / canvas.width, maxH / canvas.height) * boardScale;
       canvasStack.style.width = Math.floor(canvas.width * scale) + 'px';
       canvasStack.style.height = Math.floor(canvas.height * scale) + 'px';
     }
@@ -725,6 +737,8 @@ def page_html():
     refSmaller.onclick = () => setReferenceScale(refScale - 0.1);
     refBigger.onclick = () => setReferenceScale(refScale + 0.1);
     refMirror.onclick = toggleReferenceMirror;
+    boardSmaller.onclick = () => setBoardScale(boardScale - 0.1);
+    boardBigger.onclick = () => setBoardScale(boardScale + 0.1);
     window.addEventListener('resize', fitCanvasStack);
 
     function scheduleSave() {
@@ -916,6 +930,7 @@ def page_html():
 
     restorePaneSplit();
     setReferenceScale(refScale);
+    setBoardScale(boardScale, false);
     applyReferenceMirror();
     resetCanvas();
     loadCollections().then(loadImages);
