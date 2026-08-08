@@ -1021,7 +1021,15 @@ def main(argv=None):
     paths = collect_images(folder)
     out_dir = Path(out or BASE / "storyboards").expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
-    server = StoryboardServer(("127.0.0.1", args.port), StoryboardHandler, paths, out_dir)
+    try:
+        server = StoryboardServer(("127.0.0.1", args.port), StoryboardHandler, paths, out_dir)
+    except OSError as exc:
+        # The default is convenient, but it should never prevent drawing when
+        # another local app (or an older Bildkasten window) already uses it.
+        if args.port != DEFAULT_PORT or exc.errno != 98:
+            parser.error(f"could not start storyboard server on port {args.port}: {exc}")
+        server = StoryboardServer(("127.0.0.1", 0), StoryboardHandler, paths, out_dir)
+        print(f"Port {args.port} is already in use; using port {server.server_port} instead.")
     url = f"http://127.0.0.1:{server.server_port}/"
     print(f"Bildkasten storyboard: {url}")
     print(f"{len(paths)} images available. Saving to: {out_dir}")
