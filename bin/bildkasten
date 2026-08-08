@@ -27,7 +27,10 @@ Usage:
   bildkasten setup            create .venv and install Python packages
   bildkasten install-user     link bildkasten into ~/.local/bin
   bildkasten doctor           check dependencies, index, and viewer
+  bildkasten version          print version
+  bildkasten paths            show local data and tag folders
   bildkasten index [folder]   build/rebuild the image index
+  bildkasten tags ...         create, fill, and send editable image tags
   bildkasten storyboard       open the browser storyboard doodle tool
   bildkasten search "query"   search from the shell and open results
   bildkasten "query"          search from the shell and open results
@@ -36,6 +39,7 @@ Examples:
   bildkasten setup
   bildkasten install-user
   bildkasten index ~/Pictures/reference
+  bildkasten tags fill cinematic "cinematic moody composition" --limit 50
   bildkasten
   bildkasten storyboard
   bildkasten search "red cloak" --limit 12 --print
@@ -90,9 +94,19 @@ case "${1:-}" in
   doctor)
     python "$DIR/src/doctor.py"
     ;;
+  version|--version)
+    python -c "import sys; sys.path.insert(0, '$DIR/src'); from bildkasten_core import VERSION; print('bildkasten ' + VERSION)"
+    ;;
+  paths)
+    python -c "import sys; sys.path.insert(0, '$DIR/src'); from bildkasten_core import BASE, COLLECTIONS_DIR, DATA_DIR; print('home:        ' + str(BASE)); print('index:       ' + str(DATA_DIR)); print('tags:        ' + str(COLLECTIONS_DIR)); print('storyboards: ' + str(BASE / 'storyboards'))"
+    ;;
   index)
     shift
-    python "$DIR/src/build_index.py" "${1:-$DIR/images}"
+    python "$DIR/src/build_index.py" "$@"
+    ;;
+  collections|collection|folders|tags|tag)
+    shift
+    python "$DIR/src/manage_collections.py" "$@"
     ;;
   storyboard|story|board|sb)
     shift
@@ -100,12 +114,15 @@ case "${1:-}" in
     ;;
   search)
     shift
+    python "$DIR/src/build_index.py" --refresh --quiet-if-fresh
     python "$DIR/src/search.py" "$@"
     ;;
   "")
+    python "$DIR/src/build_index.py" --refresh --quiet-if-fresh
     python "$DIR/src/tui.py"
     ;;
   *)
+    python "$DIR/src/build_index.py" --refresh --quiet-if-fresh
     python "$DIR/src/search.py" "$@"
     ;;
 esac

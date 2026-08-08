@@ -5,11 +5,16 @@ import os
 import shlex
 import shutil
 import subprocess
+import time
 
 BASE = Path(__file__).resolve().parents[1]
+VERSION = "0.1.0"
 DATA_DIR = BASE / "data"
 EMBEDDINGS_PATH = DATA_DIR / "embeddings.npy"
 METADATA_PATH = DATA_DIR / "metadata.json"
+INDEX_STATE_PATH = DATA_DIR / "index-state.json"
+COLLECTIONS_DIR = BASE / "collections"
+WEEK_SECONDS = 7 * 24 * 60 * 60
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 MODEL_NAME = os.environ.get("BILDKASTEN_MODEL", "ViT-B-32")
 PRETRAINED = os.environ.get("BILDKASTEN_PRETRAINED", "laion2b_s34b_b79k")
@@ -29,6 +34,39 @@ def available_index(base=BASE):
     return (base / "data" / "embeddings.npy").exists() and (base / "data" / "metadata.json").exists()
 
 
+def index_state(base=BASE):
+    path = base / "data" / "index-state.json"
+    if not path.exists():
+        return {}
+    with path.open() as fh:
+        return json.load(fh)
+
+
+def remembered_sources(base=BASE):
+    sources = index_state(base).get("sources", [])
+    if sources:
+        return sources
+    metadata = base / "data" / "metadata.json"
+    if not metadata.exists():
+        return []
+    try:
+        with metadata.open() as fh:
+            paths = [str(Path(path).expanduser().resolve()) for path in json.load(fh)]
+        common = Path(os.path.commonpath(paths)) if paths else None
+        if common and common.is_file():
+            common = common.parent
+        return [str(common)] if common and common.exists() else []
+    except (OSError, ValueError, json.JSONDecodeError):
+        return []
+
+
+def index_is_due(base=BASE, now=None):
+    if not available_index(base):
+        return True
+    updated = index_state(base).get("indexed_at", 0)
+    return not updated or (now or time.time()) - updated >= WEEK_SECONDS
+
+
 def index_stats(base=BASE):
     if not available_index(base):
         return None
@@ -38,15 +76,56 @@ def index_stats(base=BASE):
         "count": len(metadata),
         "embeddings": str(base / "data" / "embeddings.npy"),
         "metadata": str(base / "data" / "metadata.json"),
+        "sources": remembered_sources(base),
+        "due": index_is_due(base),
     }
 
 
 def image_files(folder):
     root = Path(folder).expanduser().resolve()
+    if root.is_file():
+        return [root] if root.suffix.lower() in IMAGE_EXTENSIONS else []
+    skipped = {".git", ".venv", "venv", "__pycache__", "node_modules", "data", "storyboards", "collections"}
+    paths = []
+    for directory, dirs, files in os.walk(root):
+        dirs[:] = [name for name in dirs if name not in skipped]
+        paths.extend(Path(directory) / name for name in files if Path(name).suffix.lower() in IMAGE_EXTENSIONS)
+    return sorted(paths)
+
+
+def collection_names():
+    if not COLLECTIONS_DIR.exists():
+        return []
+    return sorted(path.name for path in COLLECTIONS_DIR.iterdir() if path.is_dir())
+
+
+def collection_images(name):
+    if name not in collection_names():
+        raise ValueError(f"unknown tag: {name}")
+    folder = COLLECTIONS_DIR / name
     return sorted(
-        p for p in root.rglob("*")
-        if p.is_file() and p.suffix.lower() in IMAGE_EXTENSIONS
+        path.resolve()
+        for path in folder.iterdir()
+        if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
     )
+
+
+def tags_for_image(path):
+    path = Path(path).expanduser().resolve()
+    return [name for name in collection_names() if path in set(collection_images(name))]
+
+
+def find_movielily_project(start=None):
+    directory = Path(start or Path.cwd()).expanduser().resolve()
+    if directory.is_file():
+        directory = directory.parent
+    while directory != directory.parent:
+        if (directory / "movielily.conf").is_file():
+            return directory
+        directory = directory.parent
+    if (directory / "movielily.conf").is_file():
+        return directory
+    return None
 
 
 def load_text_model():

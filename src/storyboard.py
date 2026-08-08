@@ -10,7 +10,16 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 import webbrowser
 
-from bildkasten_core import BASE, METADATA_PATH, image_files, search as clip_search
+from bildkasten_core import (
+    BASE,
+    METADATA_PATH,
+    collection_images,
+    collection_names,
+    image_files,
+    search as clip_search,
+    find_movielily_project,
+    tags_for_image,
+)
 
 
 DEFAULT_PORT = 8765
@@ -41,14 +50,15 @@ def collect_images(folder=None):
     return paths
 
 
-def image_payload(paths, mode, count):
+def image_payload(paths, mode, count, record=None):
+    record = record or image_record
     selected = list(enumerate(paths))
     if mode == "all":
         random.shuffle(selected)
     elif mode == "recent":
         selected = selected[:count]
     return [
-        image_record(i, p)
+        record(i, p)
         for i, p in selected
     ]
 
@@ -156,6 +166,9 @@ def page_html():
         <option value="all" selected>All images</option>
         <option value="recent" data-custom="1">Custom recent</option>
       </select>
+      <select id="collection" title="Reference tag">
+        <option value="">All tags</option>
+      </select>
       <input id="count" type="number" min="1" value="30" hidden>
       <select id="aspect">
         <option value="16:9">16:9</option>
@@ -236,6 +249,7 @@ def page_html():
     const ctx = canvas.getContext('2d');
     const clipSearch = document.getElementById('clipSearch');
     const mode = document.getElementById('mode');
+    const collection = document.getElementById('collection');
     const count = document.getElementById('count');
     const aspect = document.getElementById('aspect');
     const statusEl = document.getElementById('status');
@@ -454,7 +468,7 @@ def page_html():
       const q = clipSearch.value.trim();
       if (q) {
         status('Searching...');
-        const res = await fetch('/api/search?q=' + encodeURIComponent(q));
+        const res = await fetch('/api/search?q=' + encodeURIComponent(q) + '&tag=' + encodeURIComponent(collection.value));
         const data = await res.json();
         if (!res.ok) {
           status(data.error || 'Search failed');
@@ -470,7 +484,7 @@ def page_html():
       const opt = mode.options[mode.selectedIndex];
       count.hidden = !opt.dataset.custom;
       const n = opt.dataset.custom ? count.value : (opt.dataset.count || count.value);
-      const url = '/api/images?mode=' + encodeURIComponent(mode.value) + '&count=' + encodeURIComponent(n);
+      const url = '/api/images?mode=' + encodeURIComponent(mode.value) + '&count=' + encodeURIComponent(n) + '&tag=' + encodeURIComponent(collection.value);
       const res = await fetch(url);
       const data = await res.json();
       images = data.images;
@@ -655,6 +669,7 @@ def page_html():
         index: index + 1,
         imageId: item.id,
         imageName: item.name,
+        query: clipSearch.value.trim(),
         aspect: aspect.value,
         hasDrawing: true,
         dataUrl: exportCanvas().toDataURL('image/png'),
@@ -758,6 +773,17 @@ def page_html():
       resetCanvas();
     };
     mode.onchange = () => { count.hidden = !mode.options[mode.selectedIndex].dataset.custom; };
+    collection.onchange = loadImages;
+
+    async function loadCollections() {
+      const res = await fetch('/api/collections');
+      if (!res.ok) return;
+      const data = await res.json();
+      const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+      collection.innerHTML = '<option value="">All tags</option>' + data.collections.map(item =>
+        '<option value="' + escapeHTML(item.name) + '">' + escapeHTML(item.name) + ' (' + item.count + ')</option>'
+      ).join('');
+    }
     document.addEventListener('keydown', e => {
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
@@ -796,7 +822,7 @@ def page_html():
     setReferenceScale(refScale);
     applyReferenceMirror();
     resetCanvas();
-    loadImages();
+    loadCollections().then(loadImages);
   </script>
 </body>
 </html>"""
@@ -850,23 +876,42 @@ class StoryboardHandler(BaseHTTPRequestHandler):
                 count = max(1, int(params.get("count", ["30"])[0]))
             except ValueError:
                 count = 30
-            images = image_payload(self.server.paths, mode, count)
+            tag = params.get("tag", [""])[0]
+            try:
+                paths = collection_images(tag) if tag else self.server.paths
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
+                return
+            images = image_payload(paths, mode, count, lambda _, path: image_record(self.server.id_for_path(path), path))
             self.send_json({
                 "images": images,
                 "selected": len(images),
-                "total": len(self.server.paths),
+                "total": len(paths),
                 "out": str(self.server.out_dir),
             })
+            return
+        if parsed.path == "/api/collections":
+            collections = []
+            for name in collection_names():
+                collections.append({"name": name, "count": len(collection_images(name))})
+            self.send_json({"collections": collections})
             return
         if parsed.path == "/api/search":
             params = parse_qs(parsed.query)
             query = params.get("q", [""])[0].strip()
+            tag = params.get("tag", [""])[0]
+            try:
+                tagged = {path.resolve() for path in collection_images(tag)} if tag else None
+            except ValueError as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
+                return
             if not query:
-                images = image_payload(self.server.paths, "all", 80)
+                paths = list(tagged) if tagged is not None else self.server.paths
+                images = image_payload(paths, "all", 80, lambda _, path: image_record(self.server.id_for_path(path), path))
                 self.send_json({
                     "images": images,
                     "selected": len(images),
-                    "total": len(self.server.paths),
+                    "total": len(paths),
                     "out": str(self.server.out_dir),
                 })
                 return
@@ -876,6 +921,8 @@ class StoryboardHandler(BaseHTTPRequestHandler):
                 for result in results:
                     path = Path(result["path"]).expanduser().resolve()
                     if not path.exists():
+                        continue
+                    if tagged is not None and path not in tagged:
                         continue
                     image_id = self.server.id_for_path(path)
                     images.append(image_record(image_id, path))
@@ -918,10 +965,13 @@ class StoryboardHandler(BaseHTTPRequestHandler):
             filename = f"{index:04d}_{aspect}_{name}.png"
             path = self.server.out_dir / filename
             path.write_bytes(raw)
+            source = self.server.paths[int(data["imageId"])].resolve()
             meta = {
                 "file": filename,
-                "source": str(self.server.paths[int(data["imageId"])]),
+                "source": str(source),
                 "aspect": data.get("aspect", "16:9"),
+                "tags": tags_for_image(source),
+                "query": str(data.get("query", "")).strip(),
             }
             path.with_suffix(".json").write_text(json.dumps(meta, indent=2))
             self.send_json({"ok": True, "file": filename})
@@ -950,13 +1000,26 @@ class StoryboardServer(ThreadingHTTPServer):
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Open the Bildkasten storyboard browser.")
     parser.add_argument("folder", nargs="?", help="optional image folder; defaults to the indexed library")
-    parser.add_argument("--out", default=str(BASE / "storyboards"), help="output folder for PNG boards")
+    parser.add_argument("--out", help="output folder for PNG boards")
+    parser.add_argument("--project", action="store_true", help="use refs/visual and storyboards/inbox from the current Movielily project")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--no-open", action="store_true", help="do not open the browser automatically")
     args = parser.parse_args(argv)
 
-    paths = collect_images(args.folder)
-    out_dir = Path(args.out).expanduser().resolve()
+    folder = args.folder
+    out = args.out
+    if args.project:
+        project = find_movielily_project()
+        if not project:
+            parser.error("--project needs a Movielily project (no movielily.conf found)")
+        if folder is None:
+            candidate = project / "refs" / "visual"
+            if image_files(candidate):
+                folder = str(candidate)
+        if out is None:
+            out = str(project / "storyboards" / "inbox")
+    paths = collect_images(folder)
+    out_dir = Path(out or BASE / "storyboards").expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     server = StoryboardServer(("127.0.0.1", args.port), StoryboardHandler, paths, out_dir)
     url = f"http://127.0.0.1:{server.server_port}/"

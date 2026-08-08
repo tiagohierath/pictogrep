@@ -5,10 +5,11 @@ from urllib.request import urlopen
 import webbrowser
 
 from bildkasten_core import BASE, available_index, copy_text, index_stats, open_files, reveal_file, search
+from manage_collections import create_collection, link_image
 
 
-PRIMARY_HELP = "Enter slideshow   Up/Down select   Ctrl+B storyboard   Ctrl+O open   Ctrl+P replay   Esc quit"
-SECONDARY_HELP = "Backspace/Delete edit   Left/Right move cursor   Ctrl+U clear   Ctrl+Y copy path   Ctrl+R reveal"
+PRIMARY_HELP = "Enter slideshow   Up/Down select   Ctrl+T tag image   Ctrl+G tag CLIP matches   Ctrl+B storyboard"
+SECONDARY_HELP = "Ctrl+O open   Ctrl+P replay   Ctrl+Y copy path   Ctrl+R reveal   Ctrl+U clear   Esc quit"
 
 LOGO = [
     " ____  ___ _     ____  _  __    _    ____ _____ _____ _   _ ",
@@ -202,6 +203,53 @@ class App:
         except Exception as exc:
             self.status = f"Reveal failed: {exc}"
 
+    def prompt(self, label):
+        h, w = self.screen.getmaxyx()
+        text = label + ": "
+        try:
+            self.screen.move(h - 1, 0)
+            self.screen.clrtoeol()
+            self.screen.addstr(h - 1, 0, text[:max(0, w - 1)], curses.A_REVERSE)
+            self.screen.refresh()
+            curses.echo()
+            raw = self.screen.getstr(h - 1, min(len(text), max(0, w - 1)), max(1, w - len(text) - 1))
+            return raw.decode().strip()
+        except curses.error:
+            return ""
+        finally:
+            curses.noecho()
+
+    def tag_selected(self):
+        if not self.results:
+            self.status = "Search first, then select an image to tag."
+            return
+        name = self.prompt("Tag selected image")
+        if not name:
+            self.status = "Tag cancelled."
+            return
+        try:
+            folder = create_collection(name)
+            added = link_image(folder, self.results[self.selected]["path"])
+            self.status = f"Tagged selected image: {folder.name}" if added else f"Already tagged: {folder.name}"
+        except ValueError as exc:
+            self.status = f"Tag failed: {exc}"
+
+    def tag_results(self):
+        if not self.results:
+            self.status = "Search first; Ctrl+G tags the top CLIP matches."
+            return
+        name = self.prompt("Tag top CLIP matches")
+        if not name:
+            self.status = "Tag cancelled."
+            return
+        try:
+            folder = create_collection(name)
+            chosen = self.results[:30]
+            added = sum(link_image(folder, item["path"]) for item in chosen)
+            self.status = f"Tagged {added} of {len(chosen)} CLIP matches: {folder.name}"
+        except ValueError as exc:
+            self.status = f"Tag failed: {exc}"
+
     def open_storyboard(self):
         url = "http://127.0.0.1:8765/"
         try:
@@ -276,6 +324,10 @@ class App:
             self.copy_selected()
         elif key == "\x12":
             self.reveal_selected()
+        elif key == "\x14":
+            self.tag_selected()
+        elif key == "\x07":
+            self.tag_results()
         elif key == "\x15":
             self.query = ""
             self.cursor = 0

@@ -17,6 +17,7 @@ models
 models/
 storyboards
 storyboards/
+collections/
 
 # Loose local image dumps
 *.jpg

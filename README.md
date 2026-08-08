@@ -2,7 +2,7 @@
 
 Bildkasten is a small terminal image search box for visual memory.
 
-Point it at a folder of reference images, build a CLIP index, then search with
+Point it at one or more folders of reference images, build a CLIP index, then search with
 plain language in a terminal UI:
 
 ```bash
@@ -37,6 +37,8 @@ bildkasten doctor
 - Runs locally; your images are not uploaded anywhere.
 - Opens a simple TUI when you run `bildkasten`.
 - Keeps the fast CLI flow: `bildkasten "girl sitting"`.
+- Refreshes remembered image folders automatically every seven days when used.
+- Creates editable image tags, manually or from CLIP search results.
 - Opens a browser storyboard doodle tool for redrawing references quickly.
 - Uses `mpv` for viewing images when available.
 
@@ -77,17 +79,56 @@ export BILDKASTEN_VIEWER="feh"
 
 ## Commands
 
+Every command supports `--help`. `bildkasten version` prints the installed
+release and `bildkasten paths` prints the local state locations.
+
 Open the TUI:
 
 ```bash
 bildkasten
 ```
 
-Build or rebuild the index:
+Build or rebuild the index. Bildkasten remembers these folders and refreshes
+them automatically the next time you use it after seven days:
 
 ```bash
 bildkasten index ~/Pictures/reference
+bildkasten index ~/Pictures/reference ~/Pictures/archive
 ```
+
+Create an image tag and add images by hand, or have CLIP fill it from the
+current index. Tags are represented by local folders containing symlinks:
+original images are never moved or duplicated, and one image can carry many
+tags.
+
+```bash
+bildkasten tags create cats
+bildkasten tags add cats ~/Pictures/cat.jpg
+bildkasten tags fill cinematic "cinematic moody composition" --limit 50
+bildkasten tags list
+bildkasten tags send cinematic       # run inside a Movielily project
+```
+
+The resulting `collections/cats/` and `collections/cinematic/` folders are
+ordinary local tag folders. Add or remove symlinks in a file manager whenever
+you want; the next weekly refresh picks up manually added image files. The
+storyboard browser has a tag selector, and its CLIP search respects that
+selector.
+
+## Movielily Projects
+
+From inside a Movielily project, Bildkasten can link a tag's references into
+`refs/visual/bildkasten/<tag>/` and save sketches straight to the film's
+inbox. Neither operation moves an original image.
+
+```bash
+bildkasten tags send cinematic
+bildkasten storyboard --project
+movielily intake boards main
+```
+
+Storyboard sidecars record the source image, selected tags, CLIP query, and
+aspect ratio. Movielily can use that context when it imports the sketch.
 
 Check whether dependencies, viewer, and index are ready:
 
@@ -135,6 +176,8 @@ bildkasten search "foggy city" --limit 12
 - `Ctrl+P`: replay the whole result set as one slideshow.
 - `Ctrl+Y`: copy the selected image path.
 - `Ctrl+R`: reveal the selected image in its folder.
+- `Ctrl+T`: type a tag for the selected image.
+- `Ctrl+G`: type a tag for the top 30 current CLIP matches.
 - `PageUp` / `PageDown`: move faster through results.
 - `Ctrl+U`: clear the search line.
 - `Esc` or `Ctrl+Q`: quit.
@@ -197,6 +240,8 @@ Bildkasten writes its local index here:
 ```text
 data/embeddings.npy
 data/metadata.json
+data/index-state.json
+collections/
 storyboards/
 ```
 
