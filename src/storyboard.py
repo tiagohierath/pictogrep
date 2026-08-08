@@ -123,8 +123,10 @@ def page_html():
     .canvas-stack { position: relative; background: #fff; border: 1px solid #a7a7a0; user-select: none; -webkit-user-select: none; }
     .canvas-stack canvas, .trace-ref { position: absolute; inset: 0; width: 100%; height: 100%; }
     .trace-ref { z-index: 1; object-fit: contain; opacity: .46; filter: grayscale(1) contrast(.92) brightness(1.1); pointer-events: none; }
-    #guide { z-index: 2; pointer-events: none; }
-    #board { z-index: 3; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
+    #guide { z-index: 6; pointer-events: none; }
+    #fill { z-index: 3; pointer-events: none; }
+    #lasso { z-index: 4; pointer-events: none; }
+    #board { z-index: 5; touch-action: none; cursor: crosshair; user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
     .bar { display: grid; grid-template-columns: 1fr auto; gap: .7rem; align-items: center; }
     progress { width: 100%; height: 1rem; border: 1px solid var(--line); background: var(--paper); }
     progress::-webkit-progress-bar { background: var(--paper); }
@@ -186,7 +188,7 @@ def page_html():
       <details class="info" id="infoMenu">
         <summary title="Info">i</summary>
         <div class="info-panel">
-          <div class="info-row"><strong>Keys</strong><span>P pen · E eraser · T trace · Ctrl+Enter save + next · Ctrl+Z undo</span></div>
+          <div class="info-row"><strong>Keys</strong><span>P pen · E eraser · S shade lasso · T trace · Ctrl+Enter save + next · Ctrl+Z undo</span></div>
           <div class="info-row"><strong>Status</strong><span id="infoStatus">Loading</span></div>
           <div class="info-row"><strong>Saving</strong><span id="infoSavePath"></span></div>
         </div>
@@ -221,12 +223,23 @@ def page_html():
         <div id="canvasStack" class="canvas-stack">
           <img id="traceRef" class="trace-ref" alt="" hidden>
           <canvas id="guide"></canvas>
+          <canvas id="fill"></canvas>
+          <canvas id="lasso"></canvas>
           <canvas id="board"></canvas>
         </div>
       </div>
       <div class="tools">
         <button id="pen" class="active">Pen</button>
         <button id="eraser">Eraser</button>
+        <button id="shade" title="Draw a closed shape to fill behind pen marks">Shade</button>
+        <select id="shadeColour" title="Shade colour">
+          <option value="#000000">Grey</option>
+          <option value="#bd7d90">Muted pink</option>
+          <option value="#c7a75d">Muted yellow</option>
+          <option value="#759bb5">Muted blue</option>
+          <option value="#7eaa91">Muted green</option>
+          <option value="#a48ab5">Muted lilac</option>
+        </select>
         <label>Size <input id="brush" type="range" min="1" max="22" value="4"> <span id="brushValue">4</span></label>
         <button id="undo">Undo</button>
         <button id="clear">Clear</button>
@@ -245,6 +258,10 @@ def page_html():
     const boardFrame = document.getElementById('boardFrame');
     const guide = document.getElementById('guide');
     const guideCtx = guide.getContext('2d');
+    const fill = document.getElementById('fill');
+    const fillCtx = fill.getContext('2d');
+    const lasso = document.getElementById('lasso');
+    const lassoCtx = lasso.getContext('2d');
     const canvas = document.getElementById('board');
     const ctx = canvas.getContext('2d');
     const clipSearch = document.getElementById('clipSearch');
@@ -263,6 +280,8 @@ def page_html():
     const brushValue = document.getElementById('brushValue');
     const penBtn = document.getElementById('pen');
     const eraserBtn = document.getElementById('eraser');
+    const shadeBtn = document.getElementById('shade');
+    const shadeColour = document.getElementById('shadeColour');
     const traceBtn = document.getElementById('trace');
     const divider = document.getElementById('divider');
     const viewReset = document.getElementById('viewReset');
@@ -281,6 +300,7 @@ def page_html():
     if (!Number.isFinite(refScale)) refScale = 1;
     let refMirrored = localStorage.getItem('bildkastenStoryRefMirror') === '1';
     let lastPoint = null;
+    let lassoPoints = [];
     let resizing = false;
     let strokeChanged = false;
     let strokeUndoCaptured = false;
@@ -359,10 +379,16 @@ def page_html():
       const [w, h] = canvasSize();
       guide.width = w;
       guide.height = h;
+      fill.width = w;
+      fill.height = h;
+      lasso.width = w;
+      lasso.height = h;
       canvas.width = w;
       canvas.height = h;
       fitCanvasStack();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      fillCtx.clearRect(0, 0, fill.width, fill.height);
+      lassoCtx.clearRect(0, 0, lasso.width, lasso.height);
       drawGuides();
       undoStack = [];
       dirty = false;
@@ -426,13 +452,15 @@ def page_html():
       brushValue.textContent = brush.value;
       penBtn.classList.toggle('active', tool === 'pen');
       eraserBtn.classList.toggle('active', tool === 'eraser');
-      canvas.style.cursor = tool === 'eraser' ? 'cell' : 'crosshair';
+      shadeBtn.classList.toggle('active', tool === 'shade');
+      shadeColour.hidden = tool !== 'shade';
+      canvas.style.cursor = tool === 'eraser' ? 'cell' : tool === 'shade' ? 'crosshair' : 'crosshair';
     }
 
     function setTool(nextTool) {
       tool = nextTool;
       applyTool();
-      status(tool === 'eraser' ? 'Eraser' : 'Pen');
+      status(tool === 'eraser' ? 'Eraser' : tool === 'shade' ? 'Shade lasso — draw a closed shape' : 'Pen');
     }
 
     function showImage() {
@@ -506,7 +534,10 @@ def page_html():
     }
 
     function pushUndo() {
-      undoStack.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+      undoStack.push({
+        pen: ctx.getImageData(0, 0, canvas.width, canvas.height),
+        fill: fillCtx.getImageData(0, 0, fill.width, fill.height),
+      });
       if (undoStack.length > 20) undoStack.shift();
     }
 
@@ -565,6 +596,37 @@ def page_html():
       return true;
     }
 
+    function drawLassoPreview() {
+      lassoCtx.clearRect(0, 0, lasso.width, lasso.height);
+      if (lassoPoints.length < 2) return;
+      lassoCtx.save();
+      lassoCtx.strokeStyle = shadeColour.value;
+      lassoCtx.globalAlpha = 0.8;
+      lassoCtx.lineWidth = 2;
+      lassoCtx.setLineDash([8, 6]);
+      lassoCtx.beginPath();
+      lassoCtx.moveTo(lassoPoints[0].x, lassoPoints[0].y);
+      for (const point of lassoPoints.slice(1)) lassoCtx.lineTo(point.x, point.y);
+      lassoCtx.stroke();
+      lassoCtx.restore();
+    }
+
+    function finishLasso() {
+      lassoCtx.clearRect(0, 0, lasso.width, lasso.height);
+      if (lassoPoints.length < 3) return false;
+      captureStrokeUndo();
+      fillCtx.save();
+      fillCtx.globalAlpha = 0.4;
+      fillCtx.fillStyle = shadeColour.value;
+      fillCtx.beginPath();
+      fillCtx.moveTo(lassoPoints[0].x, lassoPoints[0].y);
+      for (const point of lassoPoints.slice(1)) fillCtx.lineTo(point.x, point.y);
+      fillCtx.closePath();
+      fillCtx.fill();
+      fillCtx.restore();
+      return true;
+    }
+
     function markStrokeChanged() {
       strokeChanged = true;
       dirty = true;
@@ -584,15 +646,27 @@ def page_html():
       strokeChanged = false;
       strokeUndoCaptured = false;
       lastPoint = null;
+      lassoPoints = [];
       workArea.setPointerCapture(e.pointerId);
       applyTool();
-      if (paintEvent(e)) markStrokeChanged();
+      if (tool === 'shade') {
+        const p = pointerPos(e);
+        if (p.inside) lassoPoints.push(p);
+      } else if (paintEvent(e)) markStrokeChanged();
     });
 
     workArea.addEventListener('pointermove', e => {
       if (!drawing) return;
       e.preventDefault();
       applyTool();
+      if (tool === 'shade') {
+        const p = pointerPos(e);
+        if (p.inside) {
+          lassoPoints.push(p);
+          drawLassoPreview();
+        }
+        return;
+      }
       const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [e];
       let painted = false;
       for (const event of events) {
@@ -605,6 +679,8 @@ def page_html():
       if (!drawing) return;
       drawing = false;
       lastPoint = null;
+      if (tool === 'shade' && finishLasso()) markStrokeChanged();
+      lassoPoints = [];
       if (strokeChanged) scheduleSave();
     }
     workArea.addEventListener('pointerup', endStroke);
@@ -648,9 +724,11 @@ def page_html():
     }
 
     function boardHasDrawing() {
-      const pixels = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-      for (let i = 3; i < pixels.length; i += 4) {
-        if (pixels[i] !== 0) return true;
+      for (const layer of [ctx, fillCtx]) {
+        const pixels = layer.getImageData(0, 0, canvas.width, canvas.height).data;
+        for (let i = 3; i < pixels.length; i += 4) {
+          if (pixels[i] !== 0) return true;
+        }
       }
       return false;
     }
@@ -713,7 +791,8 @@ def page_html():
     function undo() {
       const prev = undoStack.pop();
       if (!prev) return;
-      ctx.putImageData(prev, 0, 0);
+      ctx.putImageData(prev.pen, 0, 0);
+      fillCtx.putImageData(prev.fill, 0, 0);
       applyTool();
       dirty = true;
       saveState.textContent = 'Unsaved changes';
@@ -723,6 +802,7 @@ def page_html():
     function clearBoard() {
       pushUndo();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
+      fillCtx.clearRect(0, 0, fill.width, fill.height);
       dirty = true;
       saveState.textContent = 'Unsaved changes';
       scheduleSave();
@@ -735,6 +815,7 @@ def page_html():
       const outCtx = out.getContext('2d');
       outCtx.fillStyle = 'white';
       outCtx.fillRect(0, 0, out.width, out.height);
+      outCtx.drawImage(fill, 0, 0);
       outCtx.drawImage(guide, 0, 0);
       outCtx.drawImage(canvas, 0, 0);
       return out;
@@ -766,6 +847,7 @@ def page_html():
     document.getElementById('undo').onclick = undo;
     penBtn.onclick = () => setTool('pen');
     eraserBtn.onclick = () => setTool('eraser');
+    shadeBtn.onclick = () => setTool('shade');
     traceBtn.onclick = toggleTrace;
     brush.oninput = applyTool;
     aspect.onchange = async () => {
@@ -805,6 +887,11 @@ def page_html():
       if (e.key.toLowerCase() === 'e') {
         e.preventDefault();
         setTool('eraser');
+        return;
+      }
+      if (e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        setTool('shade');
         return;
       }
       if (e.key.toLowerCase() === 't') {
