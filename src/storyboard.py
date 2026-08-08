@@ -581,12 +581,21 @@ def page_html():
     }
 
     function paintEvent(e) {
-      const p = pointerPos(e);
-      if (!p.inside) {
+      const raw = pointerPos(e);
+      if (!raw.inside) {
         lastPoint = null;
         return false;
       }
       captureStrokeUndo();
+      // A small low-pass filter takes the edge off hand jitter while keeping
+      // the pen responsive. The eraser stays exact so it remains precise.
+      const p = tool === 'pen' && lastPoint
+        ? {
+            x: lastPoint.x + (raw.x - lastPoint.x) * 0.64,
+            y: lastPoint.y + (raw.y - lastPoint.y) * 0.64,
+            inside: true,
+          }
+        : raw;
       if (!lastPoint) {
         paintDab(p);
       } else {
