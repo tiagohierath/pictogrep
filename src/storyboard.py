@@ -570,6 +570,20 @@ def page_html():
 
     function paintDab(p) {
       const radius = Math.max(0.6, Number(brush.value) / 2);
+      if (tool === 'pen') {
+        // A narrow upright marker tip: the size control still governs its
+        // overall weight, but it reads more like a storyboard marker than a brush.
+        const width = Math.max(1, Number(brush.value) * 0.62);
+        const height = width * 2.15;
+        ctx.save();
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.fillStyle = 'rgba(0,0,0,0.96)';
+        ctx.beginPath();
+        ctx.roundRect(p.x - width / 2, p.y - height / 2, width, height, Math.min(width / 2, 1.5));
+        ctx.fill();
+        ctx.restore();
+        return;
+      }
       const soft = Math.max(0.35, radius * 0.22);
       const prevComposite = ctx.globalCompositeOperation;
       ctx.globalCompositeOperation = tool === 'eraser' ? 'destination-out' : 'source-over';
