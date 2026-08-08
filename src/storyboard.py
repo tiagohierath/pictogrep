@@ -233,10 +233,10 @@ def page_html():
         <button id="eraser">Eraser</button>
         <button id="shade" title="Draw a closed shape to fill behind pen marks">Shade</button>
         <select id="shadeColour" title="Shade colour">
+          <option value="#759bb5" selected>Muted blue</option>
           <option value="#000000">Grey</option>
           <option value="#bd7d90">Muted pink</option>
           <option value="#c7a75d">Muted yellow</option>
-          <option value="#759bb5">Muted blue</option>
           <option value="#7eaa91">Muted green</option>
           <option value="#a48ab5">Muted lilac</option>
         </select>
@@ -536,12 +536,17 @@ def page_html():
 
     function pointerPos(e) {
       const rect = canvas.getBoundingClientRect();
+      const frameRect = boardFrame.getBoundingClientRect();
       const inside = e.clientX >= rect.left && e.clientX <= rect.right &&
         e.clientY >= rect.top && e.clientY <= rect.bottom;
+      const insideBoardFrame = e.clientX >= frameRect.left && e.clientX <= frameRect.right &&
+        e.clientY >= frameRect.top && e.clientY <= frameRect.bottom;
       return {
         x: (e.clientX - rect.left) * canvas.width / rect.width,
         y: (e.clientY - rect.top) * canvas.height / rect.height,
-        inside,
+        // Shade shapes may begin in the surrounding dark area. Their points
+        // can sit beyond the canvas edge; Canvas clips the final fill cleanly.
+        inside: inside || (tool === 'shade' && insideBoardFrame),
       };
     }
 
