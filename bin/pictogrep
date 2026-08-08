@@ -12,38 +12,38 @@ while [ -L "$SOURCE" ]; do
 done
 DIR="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
 
-if [ -n "${BILDKASTEN_LIBSTDCPP:-}" ]; then
-  export LD_LIBRARY_PATH="$BILDKASTEN_LIBSTDCPP${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+if [ -n "${PICTOGREP_LIBSTDCPP:-}" ]; then
+  export LD_LIBRARY_PATH="$PICTOGREP_LIBSTDCPP${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 elif [ -d /nix/store/hngmi01i8wgi25a0byrxcn4ysz5j79mw-gcc-15.2.0-lib/lib ]; then
   export LD_LIBRARY_PATH="/nix/store/hngmi01i8wgi25a0byrxcn4ysz5j79mw-gcc-15.2.0-lib/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 fi
 
 usage() {
   cat <<'EOF'
-Bildkasten
+Pictogrep
 
 Usage:
-  bildkasten                  open the terminal UI
-  bildkasten setup            create .venv and install Python packages
-  bildkasten install-user     link bildkasten into ~/.local/bin
-  bildkasten doctor           check dependencies, index, and viewer
-  bildkasten version          print version
-  bildkasten paths            show local data and tag folders
-  bildkasten index [folder]   build/rebuild the image index
-  bildkasten tags ...         create, fill, and send editable image tags
-  bildkasten storyboard       open the browser storyboard doodle tool
-  bildkasten search "query"   search from the shell and open results
-  bildkasten "query"          search from the shell and open results
+  pictogrep                  open the terminal UI
+  pictogrep setup            create .venv and install Python packages
+  pictogrep install-user     link pictogrep into ~/.local/bin
+  pictogrep doctor           check dependencies, index, and viewer
+  pictogrep version          print version
+  pictogrep paths            show local data and tag folders
+  pictogrep index [folder]   build/rebuild the image index
+  pictogrep tags ...         create, fill, and send editable image tags
+  pictogrep storyboard       open the browser storyboard doodle tool
+  pictogrep search "query"   search from the shell and open results
+  pictogrep "query"          search from the shell and open results
 
 Examples:
-  bildkasten setup
-  bildkasten install-user
-  bildkasten index ~/Pictures/reference
-  bildkasten tags fill cinematic "cinematic moody composition" --limit 50
-  bildkasten
-  bildkasten storyboard
-  bildkasten search "red cloak" --limit 12 --print
-  bildkasten "red cloak" --limit 12 --print
+  pictogrep setup
+  pictogrep install-user
+  pictogrep index ~/Pictures/reference
+  pictogrep tags fill cinematic "cinematic moody composition" --limit 50
+  pictogrep
+  pictogrep storyboard
+  pictogrep search "red cloak" --limit 12 --print
+  pictogrep "red cloak" --limit 12 --print
 EOF
 }
 
@@ -61,23 +61,23 @@ if [ "${1:-}" = "setup" ]; then
   echo
   echo "Setup complete."
   echo "Next: $0 install-user"
-  echo "Then: bildkasten index /path/to/images"
-  echo "Then: bildkasten"
+  echo "Then: pictogrep index /path/to/images"
+  echo "Then: pictogrep"
   exit 0
 fi
 
 if [ "${1:-}" = "install-user" ]; then
-  USER_BIN_DIR="${BILDKASTEN_USER_BIN_DIR:-${HOME}/.local/bin}"
-  TARGET="$USER_BIN_DIR/bildkasten"
+  USER_BIN_DIR="${PICTOGREP_USER_BIN_DIR:-${HOME}/.local/bin}"
+  TARGET="$USER_BIN_DIR/pictogrep"
   mkdir -p "$USER_BIN_DIR"
   if [ -e "$TARGET" ] && [ ! -L "$TARGET" ]; then
     echo "Refusing to overwrite non-symlink: $TARGET" >&2
     exit 1
   fi
-  ln -sfn "$DIR/bin/bildkasten" "$TARGET"
-  echo "Installed: $TARGET -> $DIR/bin/bildkasten"
-  if command -v bildkasten >/dev/null 2>&1 && [ "$(command -v bildkasten)" = "$TARGET" ]; then
-    echo "You can now run: bildkasten"
+  ln -sfn "$DIR/bin/pictogrep" "$TARGET"
+  echo "Installed: $TARGET -> $DIR/bin/pictogrep"
+  if command -v pictogrep >/dev/null 2>&1 && [ "$(command -v pictogrep)" = "$TARGET" ]; then
+    echo "You can now run: pictogrep"
   else
     echo "Add this to PATH if needed: $USER_BIN_DIR"
   fi
@@ -95,10 +95,10 @@ case "${1:-}" in
     python "$DIR/src/doctor.py"
     ;;
   version|--version)
-    python -c "import sys; sys.path.insert(0, '$DIR/src'); from bildkasten_core import VERSION; print('bildkasten ' + VERSION)"
+    python -c "import sys; sys.path.insert(0, '$DIR/src'); from pictogrep_core import VERSION; print('pictogrep ' + VERSION)"
     ;;
   paths)
-    python -c "import sys; sys.path.insert(0, '$DIR/src'); from bildkasten_core import BASE, COLLECTIONS_DIR, DATA_DIR; print('home:        ' + str(BASE)); print('index:       ' + str(DATA_DIR)); print('tags:        ' + str(COLLECTIONS_DIR)); print('storyboards: ' + str(BASE / 'storyboards'))"
+    python -c "import sys; sys.path.insert(0, '$DIR/src'); from pictogrep_core import BASE, COLLECTIONS_DIR, DATA_DIR; print('home:        ' + str(BASE)); print('index:       ' + str(DATA_DIR)); print('tags:        ' + str(COLLECTIONS_DIR)); print('storyboards: ' + str(BASE / 'storyboards'))"
     ;;
   index)
     shift

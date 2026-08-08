@@ -3,7 +3,7 @@ from pathlib import Path
 import re
 import sys
 
-from bildkasten_core import COLLECTIONS_DIR, IMAGE_EXTENSIONS, available_index, collection_images, find_movielily_project, search
+from pictogrep_core import COLLECTIONS_DIR, IMAGE_EXTENSIONS, available_index, collection_images, find_milklily_project, search
 
 
 def collection_name(name):
@@ -65,7 +65,7 @@ def command_add(args):
 
 def command_fill(args):
     if not available_index():
-        print("No index found. Run: bildkasten index /path/to/images", file=sys.stderr)
+        print("No index found. Run: pictogrep index /path/to/images", file=sys.stderr)
         return 1
     folder = create_collection(args.name)
     results = search(" ".join(args.query), limit=args.limit)
@@ -75,13 +75,13 @@ def command_fill(args):
 
 
 def command_send(args):
-    project = find_movielily_project()
+    project = find_milklily_project()
     if not project:
-        print("Not inside a Movielily project (no movielily.conf found).", file=sys.stderr)
+        print("Not inside a Milklily project (no milklily.conf found).", file=sys.stderr)
         return 2
     tag = collection_name(args.tag)
     sources = collection_images(tag)
-    destination = project / "refs" / "visual" / "bildkasten" / tag
+    destination = project / "refs" / "visual" / "pictogrep" / tag
     destination.mkdir(parents=True, exist_ok=True)
     added = sum(link_image(destination, source) for source in sources)
     print(f"{destination}: linked {added} of {len(sources)} tagged image(s)")
@@ -89,7 +89,7 @@ def command_send(args):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Create editable Bildkasten image tags backed by symlink folders.")
+    parser = argparse.ArgumentParser(description="Create editable Pictogrep image tags backed by symlink folders.")
     commands = parser.add_subparsers(dest="command", required=True)
     create = commands.add_parser("create", help="create an empty editable image tag")
     create.add_argument("name")
@@ -105,7 +105,7 @@ def main(argv=None):
     fill.add_argument("query", nargs="+")
     fill.add_argument("--limit", type=int, default=30)
     fill.set_defaults(func=command_fill)
-    send = commands.add_parser("send", help="link one tag's images into the current Movielily project")
+    send = commands.add_parser("send", help="link one tag's images into the current Milklily project")
     send.add_argument("tag")
     send.set_defaults(func=command_send)
     args = parser.parse_args(argv)

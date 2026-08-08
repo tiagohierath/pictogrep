@@ -1,16 +1,16 @@
-# Bildkasten
+# Pictogrep
 
-Bildkasten is a small terminal image search box for visual memory.
+Pictogrep is a small terminal image search box for visual memory.
 
 Point it at one or more folders of reference images, build a CLIP index, then search with
 plain language in a terminal UI:
 
 ```bash
-bildkasten
+pictogrep
 ```
 
 Type `red cloak`, `foggy street`, `girl sitting`, `ornate helmet`, or whatever
-you remember. Bildkasten ranks your local images by visual meaning and opens the
+you remember. Pictogrep ranks your local images by visual meaning and opens the
 ones you choose.
 
 ## The Friend Setup
@@ -18,25 +18,25 @@ ones you choose.
 This is the shortest path for someone who just cloned the repo:
 
 ```bash
-cd bildkasten
-./bin/bildkasten setup
-./bin/bildkasten install-user
-bildkasten index ~/Pictures
-bildkasten
+cd pictogrep
+./bin/pictogrep setup
+./bin/pictogrep install-user
+pictogrep index ~/Pictures
+pictogrep
 ```
 
 If something feels wrong:
 
 ```bash
-bildkasten doctor
+pictogrep doctor
 ```
 
 ## What It Does
 
 - Searches your own image library with natural language.
 - Runs locally; your images are not uploaded anywhere.
-- Opens a simple TUI when you run `bildkasten`.
-- Keeps the fast CLI flow: `bildkasten "girl sitting"`.
+- Opens a simple TUI when you run `pictogrep`.
+- Keeps the fast CLI flow: `pictogrep "girl sitting"`.
 - Refreshes remembered image folders automatically every seven days when used.
 - Creates editable image tags, manually or from CLIP search results.
 - Opens a browser storyboard doodle tool for redrawing references quickly.
@@ -45,13 +45,13 @@ bildkasten doctor
 ## Quick Start With Nix
 
 ```bash
-git clone https://github.com/tiagohierath/bildkasten.git
-cd bildkasten
+git clone https://github.com/tiagohierath/pictogrep.git
+cd pictogrep
 nix develop
-./bin/bildkasten setup
-./bin/bildkasten install-user
-bildkasten index ~/Pictures/reference
-bildkasten
+./bin/pictogrep setup
+./bin/pictogrep install-user
+pictogrep index ~/Pictures/reference
+pictogrep
 ```
 
 The first run downloads the CLIP model weights from Hugging Face. After that the
@@ -62,38 +62,38 @@ model is cached locally.
 You need Python 3.12+, pip, and preferably `mpv`.
 
 ```bash
-git clone https://github.com/tiagohierath/bildkasten.git
-cd bildkasten
-./bin/bildkasten setup
-./bin/bildkasten install-user
-bildkasten index ~/Pictures/reference
-bildkasten
+git clone https://github.com/tiagohierath/pictogrep.git
+cd pictogrep
+./bin/pictogrep setup
+./bin/pictogrep install-user
+pictogrep index ~/Pictures/reference
+pictogrep
 ```
 
-If you do not have `mpv`, Bildkasten tries `xdg-open` or `gio open`. You can
+If you do not have `mpv`, Pictogrep tries `xdg-open` or `gio open`. You can
 also set your own viewer:
 
 ```bash
-export BILDKASTEN_VIEWER="feh"
+export PICTOGREP_VIEWER="feh"
 ```
 
 ## Commands
 
-Every command supports `--help`. `bildkasten version` prints the installed
-release and `bildkasten paths` prints the local state locations.
+Every command supports `--help`. `pictogrep version` prints the installed
+release and `pictogrep paths` prints the local state locations.
 
 Open the TUI:
 
 ```bash
-bildkasten
+pictogrep
 ```
 
-Build or rebuild the index. Bildkasten remembers these folders and refreshes
+Build or rebuild the index. Pictogrep remembers these folders and refreshes
 them automatically the next time you use it after seven days:
 
 ```bash
-bildkasten index ~/Pictures/reference
-bildkasten index ~/Pictures/reference ~/Pictures/archive
+pictogrep index ~/Pictures/reference
+pictogrep index ~/Pictures/reference ~/Pictures/archive
 ```
 
 Create an image tag and add images by hand, or have CLIP fill it from the
@@ -102,11 +102,11 @@ original images are never moved or duplicated, and one image can carry many
 tags.
 
 ```bash
-bildkasten tags create cats
-bildkasten tags add cats ~/Pictures/cat.jpg
-bildkasten tags fill cinematic "cinematic moody composition" --limit 50
-bildkasten tags list
-bildkasten tags send cinematic       # run inside a Movielily project
+pictogrep tags create cats
+pictogrep tags add cats ~/Pictures/cat.jpg
+pictogrep tags fill cinematic "cinematic moody composition" --limit 50
+pictogrep tags list
+pictogrep tags send cinematic       # run inside a Milklily project
 ```
 
 The resulting `collections/cats/` and `collections/cinematic/` folders are
@@ -115,55 +115,55 @@ you want; the next weekly refresh picks up manually added image files. The
 storyboard browser has a tag selector, and its CLIP search respects that
 selector.
 
-## Movielily Projects
+## Milklily Projects
 
-From inside a Movielily project, Bildkasten can link a tag's references into
-`refs/visual/bildkasten/<tag>/` and save sketches straight to the film's
+From inside a Milklily project, Pictogrep can link a tag's references into
+`refs/visual/pictogrep/<tag>/` and save sketches straight to the film's
 inbox. Neither operation moves an original image.
 
 ```bash
-bildkasten tags send cinematic
-bildkasten storyboard --project
-movielily intake boards main
+pictogrep tags send cinematic
+pictogrep storyboard --project
+milklily intake boards main
 ```
 
 Storyboard sidecars record the source image, selected tags, CLIP query, and
-aspect ratio. Movielily can use that context when it imports the sketch.
+aspect ratio. Milklily can use that context when it imports the sketch.
 
 Check whether dependencies, viewer, and index are ready:
 
 ```bash
-bildkasten doctor
+pictogrep doctor
 ```
 
 Search from the shell and open the top results:
 
 ```bash
-bildkasten search "girl sitting"
+pictogrep search "girl sitting"
 ```
 
 Open the storyboard doodle tool:
 
 ```bash
-bildkasten storyboard
+pictogrep storyboard
 ```
 
 Open storyboard mode for a specific folder and save boards somewhere else:
 
 ```bash
-bildkasten storyboard ~/Pictures/reference --out ~/storyboards
+pictogrep storyboard ~/Pictures/reference --out ~/storyboards
 ```
 
 Print results without opening a viewer:
 
 ```bash
-bildkasten search "red cloak" --print
+pictogrep search "red cloak" --print
 ```
 
 Limit results:
 
 ```bash
-bildkasten search "foggy city" --limit 12
+pictogrep search "foggy city" --limit 12
 ```
 
 ## TUI Keys
@@ -187,7 +187,7 @@ bildkasten search "foggy city" --limit 12
 Storyboard mode opens a local browser page:
 
 ```bash
-bildkasten storyboard
+pictogrep storyboard
 ```
 
 It shows one reference image on the left and a white canvas on the right. Drag
@@ -235,7 +235,7 @@ storyboards/
 
 ## Files
 
-Bildkasten writes its local index here:
+Pictogrep writes its local index here:
 
 ```text
 data/embeddings.npy
@@ -255,8 +255,8 @@ The default model is `ViT-B-32` with `laion2b_s34b_b79k` weights. You can
 override it:
 
 ```bash
-export BILDKASTEN_MODEL="ViT-B-32"
-export BILDKASTEN_PRETRAINED="laion2b_s34b_b79k"
+export PICTOGREP_MODEL="ViT-B-32"
+export PICTOGREP_PRETRAINED="laion2b_s34b_b79k"
 ```
 
 On NixOS, use `nix develop`; it sets the library path that PyTorch wheels need.

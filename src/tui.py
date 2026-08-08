@@ -4,7 +4,7 @@ import subprocess
 from urllib.request import urlopen
 import webbrowser
 
-from bildkasten_core import BASE, available_index, copy_text, index_stats, open_files, reveal_file, search
+from pictogrep_core import BASE, available_index, copy_text, index_stats, open_files, reveal_file, search
 from manage_collections import create_collection, link_image
 
 
@@ -34,7 +34,7 @@ class App:
         if stats:
             self.status = f"Ready. {stats['count']} indexed images."
         else:
-            self.status = "No index yet. Quit and run: bildkasten index /path/to/images"
+            self.status = "No index yet. Quit and run: pictogrep index /path/to/images"
 
     def addstr(self, y, x, text, attr=curses.A_NORMAL):
         try:
@@ -71,7 +71,7 @@ class App:
             s.refresh()
             return
 
-        logo = LOGO if w >= max(len(line) for line in LOGO) + 2 and h >= 22 else ["BILDKASTEN"]
+        logo = LOGO if w >= max(len(line) for line in LOGO) + 2 and h >= 22 else ["PICTOGREP"]
         logo_top = 1
         for i, line in enumerate(logo):
             self.add_center(logo_top + i, line, curses.A_BOLD)
@@ -143,7 +143,7 @@ class App:
             self.status = "Type something first, for example: red cloak, foggy forest, girl sitting."
             return
         if not available_index():
-            self.status = "No index found. Run: bildkasten index /path/to/images"
+            self.status = "No index found. Run: pictogrep index /path/to/images"
             return
         self.status = "Loading CLIP and searching..."
         self.draw()
@@ -263,7 +263,7 @@ class App:
 
         try:
             subprocess.Popen(
-                [str(BASE / "bin" / "bildkasten"), "storyboard"],
+                [str(BASE / "bin" / "pictogrep"), "storyboard"],
                 cwd=str(BASE),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

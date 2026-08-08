@@ -1,12 +1,12 @@
 import argparse
 import sys
 
-from bildkasten_core import open_files, search
+from pictogrep_core import open_files, search
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Search a Bildkasten image index with natural language."
+        description="Search a Pictogrep image index with natural language."
     )
     parser.add_argument("query", nargs="*", help="visual search text")
     parser.add_argument("-n", "--limit", type=int, default=50, help="number of results")
@@ -26,7 +26,7 @@ def main(argv=None):
         return 1
     except (ImportError, ModuleNotFoundError) as exc:
         print(f"Dependency error: {exc}", file=sys.stderr)
-        print("Run: bildkasten setup", file=sys.stderr)
+        print("Run: pictogrep setup", file=sys.stderr)
         return 1
 
     for item in results:

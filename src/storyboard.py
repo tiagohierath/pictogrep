@@ -10,14 +10,14 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 import webbrowser
 
-from bildkasten_core import (
+from pictogrep_core import (
     BASE,
     METADATA_PATH,
     collection_images,
     collection_names,
     image_files,
     search as clip_search,
-    find_movielily_project,
+    find_milklily_project,
     tags_for_image,
 )
 
@@ -78,7 +78,7 @@ def page_html():
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Bildkasten Storyboard</title>
+  <title>Pictogrep Storyboard</title>
   <style>
     :root { color-scheme: light; --bg:#f5f5f2; --paper:#fff; --fg:#171717; --muted:#666; --line:#c9c9c3; --soft:#eeeeea; }
     * { box-sizing: border-box; }
@@ -157,7 +157,7 @@ def page_html():
 <body>
   <header>
     <div class="title">
-      <strong>BILDKASTEN STORYBOARD</strong>
+      <strong>PICTOGREP STORYBOARD</strong>
       <span>rough redraws, one reference at a time</span>
     </div>
     <div class="controls primary">
@@ -209,7 +209,7 @@ def page_html():
       </div>
       <div class="frame">
         <img id="reference" alt="">
-        <div id="empty" class="empty" hidden>No images found. Run bildkasten index /path/to/images or pass a folder to storyboard.</div>
+        <div id="empty" class="empty" hidden>No images found. Run pictogrep index /path/to/images or pass a folder to storyboard.</div>
       </div>
       <div class="bar"><progress id="progress" value="0" max="1"></progress><span id="counter">0/0</span></div>
     </section>
@@ -297,11 +297,11 @@ def page_html():
     let undoStack = [];
     let saveTimer = null;
     let tool = 'pen';
-    let trace = localStorage.getItem('bildkastenStoryTrace') === '1';
-    let refScale = Number(localStorage.getItem('bildkastenStoryRefScale') || 1);
+    let trace = localStorage.getItem('pictogrepStoryTrace') === '1';
+    let refScale = Number(localStorage.getItem('pictogrepStoryRefScale') || 1);
     if (!Number.isFinite(refScale)) refScale = 1;
-    let refMirrored = localStorage.getItem('bildkastenStoryRefMirror') === '1';
-    let boardScale = Number(localStorage.getItem('bildkastenStoryBoardScale') || 1);
+    let refMirrored = localStorage.getItem('pictogrepStoryRefMirror') === '1';
+    let boardScale = Number(localStorage.getItem('pictogrepStoryBoardScale') || 1);
     if (!Number.isFinite(boardScale)) boardScale = 1;
     let lastPoint = null;
     let lassoPoints = [];
@@ -330,12 +330,12 @@ def page_html():
       const main = document.querySelector('main');
       pct = Math.max(24, Math.min(76, pct));
       main.style.setProperty('--left-pane', pct.toFixed(1) + '%');
-      localStorage.setItem('bildkastenStorySplit', pct.toFixed(1));
+      localStorage.setItem('pictogrepStorySplit', pct.toFixed(1));
       requestAnimationFrame(fitCanvasStack);
     }
 
     function restorePaneSplit() {
-      const pct = Number(localStorage.getItem('bildkastenStorySplit') || 50);
+      const pct = Number(localStorage.getItem('pictogrepStorySplit') || 50);
       if (Number.isFinite(pct)) {
         setPaneSplitPercent(pct);
       }
@@ -344,7 +344,7 @@ def page_html():
     function setReferenceScale(nextScale, showStatus = true) {
       refScale = Math.max(0.45, Math.min(2.4, nextScale));
       img.style.setProperty('--ref-size', Math.round(refScale * 100) + '%');
-      localStorage.setItem('bildkastenStoryRefScale', refScale.toFixed(2));
+      localStorage.setItem('pictogrepStoryRefScale', refScale.toFixed(2));
       if (showStatus) status('Reference image ' + Math.round(refScale * 100) + '%');
     }
 
@@ -357,7 +357,7 @@ def page_html():
 
     function setBoardScale(nextScale, showStatus = true) {
       boardScale = Math.max(0.45, Math.min(2.4, nextScale));
-      localStorage.setItem('bildkastenStoryBoardScale', boardScale.toFixed(2));
+      localStorage.setItem('pictogrepStoryBoardScale', boardScale.toFixed(2));
       fitCanvasStack();
       if (showStatus) status('Drawing board ' + Math.round(boardScale * 100) + '%');
     }
@@ -372,7 +372,7 @@ def page_html():
 
     function toggleReferenceMirror() {
       refMirrored = !refMirrored;
-      localStorage.setItem('bildkastenStoryRefMirror', refMirrored ? '1' : '0');
+      localStorage.setItem('pictogrepStoryRefMirror', refMirrored ? '1' : '0');
       applyReferenceMirror();
       status(refMirrored ? 'Reference mirrored' : 'Reference normal');
     }
@@ -455,7 +455,7 @@ def page_html():
 
     function toggleTrace() {
       trace = !trace;
-      localStorage.setItem('bildkastenStoryTrace', trace ? '1' : '0');
+      localStorage.setItem('pictogrepStoryTrace', trace ? '1' : '0');
       applyTrace();
       status(trace ? 'Trace on' : 'Trace off');
     }
@@ -959,7 +959,7 @@ def page_html():
 
 
 class StoryboardHandler(BaseHTTPRequestHandler):
-    server_version = "BildkastenStoryboard/1.0"
+    server_version = "PictogrepStoryboard/1.0"
 
     def image_path_from_request(self):
         try:
@@ -1128,10 +1128,10 @@ class StoryboardServer(ThreadingHTTPServer):
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description="Open the Bildkasten storyboard browser.")
+    parser = argparse.ArgumentParser(description="Open the Pictogrep storyboard browser.")
     parser.add_argument("folder", nargs="?", help="optional image folder; defaults to the indexed library")
     parser.add_argument("--out", help="output folder for PNG boards")
-    parser.add_argument("--project", action="store_true", help="use refs/visual and storyboards/inbox from the current Movielily project")
+    parser.add_argument("--project", action="store_true", help="use refs/visual and storyboards/inbox from the current Milklily project")
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--no-open", action="store_true", help="do not open the browser automatically")
     args = parser.parse_args(argv)
@@ -1139,9 +1139,9 @@ def main(argv=None):
     folder = args.folder
     out = args.out
     if args.project:
-        project = find_movielily_project()
+        project = find_milklily_project()
         if not project:
-            parser.error("--project needs a Movielily project (no movielily.conf found)")
+            parser.error("--project needs a Milklily project (no milklily.conf found)")
         if folder is None:
             candidate = project / "refs" / "visual"
             if image_files(candidate):
@@ -1155,13 +1155,13 @@ def main(argv=None):
         server = StoryboardServer(("127.0.0.1", args.port), StoryboardHandler, paths, out_dir)
     except OSError as exc:
         # The default is convenient, but it should never prevent drawing when
-        # another local app (or an older Bildkasten window) already uses it.
+        # another local app (or an older Pictogrep window) already uses it.
         if args.port != DEFAULT_PORT or exc.errno != 98:
             parser.error(f"could not start storyboard server on port {args.port}: {exc}")
         server = StoryboardServer(("127.0.0.1", 0), StoryboardHandler, paths, out_dir)
         print(f"Port {args.port} is already in use; using port {server.server_port} instead.")
     url = f"http://127.0.0.1:{server.server_port}/"
-    print(f"Bildkasten storyboard: {url}")
+    print(f"Pictogrep storyboard: {url}")
     print(f"{len(paths)} images available. Saving to: {out_dir}")
     if not args.no_open:
         webbrowser.open(url)

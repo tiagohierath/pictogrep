@@ -4,7 +4,7 @@ from pathlib import Path
 import sys
 import time
 
-from bildkasten_core import (
+from pictogrep_core import (
     BASE,
     COLLECTIONS_DIR,
     DATA_DIR,
@@ -81,7 +81,7 @@ def build_index(folders, remember=True, progress=True):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        description="Build a Bildkasten CLIP index from a folder of images."
+        description="Build a Pictogrep CLIP index from a folder of images."
     )
     parser.add_argument("folders", nargs="*", help="one or more image folders")
     parser.add_argument("--refresh", action="store_true", help="rebuild remembered folders only when the weekly refresh is due")
@@ -92,7 +92,7 @@ def main(argv=None):
         folders = remembered_sources()
         if not folders:
             if not args.quiet_if_fresh:
-                print("No remembered folders yet. Run: bildkasten index /path/to/images")
+                print("No remembered folders yet. Run: pictogrep index /path/to/images")
             return 0
         if not args.force and not index_is_due():
             if not args.quiet_if_fresh:
@@ -104,7 +104,7 @@ def main(argv=None):
         build_index(folders, progress=not args.refresh)
     except (ImportError, ModuleNotFoundError) as exc:
         print(f"Dependency error: {exc}", file=sys.stderr)
-        print("Run: bildkasten setup", file=sys.stderr)
+        print("Run: pictogrep setup", file=sys.stderr)
         return 1
     return 0
 

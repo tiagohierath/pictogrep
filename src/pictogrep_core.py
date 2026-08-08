@@ -16,15 +16,15 @@ INDEX_STATE_PATH = DATA_DIR / "index-state.json"
 COLLECTIONS_DIR = BASE / "collections"
 WEEK_SECONDS = 7 * 24 * 60 * 60
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
-MODEL_NAME = os.environ.get("BILDKASTEN_MODEL", "ViT-B-32")
-PRETRAINED = os.environ.get("BILDKASTEN_PRETRAINED", "laion2b_s34b_b79k")
+MODEL_NAME = os.environ.get("PICTOGREP_MODEL", "ViT-B-32")
+PRETRAINED = os.environ.get("PICTOGREP_PRETRAINED", "laion2b_s34b_b79k")
 
 _model = None
 _tokenizer = None
 
 
 def quiet_hf_warnings():
-    if os.environ.get("BILDKASTEN_VERBOSE"):
+    if os.environ.get("PICTOGREP_VERBOSE"):
         return
     logging.getLogger("huggingface_hub").setLevel(logging.ERROR)
     logging.getLogger("huggingface_hub.utils._http").setLevel(logging.ERROR)
@@ -115,15 +115,15 @@ def tags_for_image(path):
     return [name for name in collection_names() if path in set(collection_images(name))]
 
 
-def find_movielily_project(start=None):
+def find_milklily_project(start=None):
     directory = Path(start or Path.cwd()).expanduser().resolve()
     if directory.is_file():
         directory = directory.parent
     while directory != directory.parent:
-        if (directory / "movielily.conf").is_file():
+        if (directory / "milklily.conf").is_file():
             return directory
         directory = directory.parent
-    if (directory / "movielily.conf").is_file():
+    if (directory / "milklily.conf").is_file():
         return directory
     return None
 
@@ -161,7 +161,7 @@ def load_index(base=BASE):
     metadata_path = base / "data" / "metadata.json"
     if not embeddings_path.exists() or not metadata_path.exists():
         raise FileNotFoundError(
-            "No Bildkasten index found. Run: bildkasten index /path/to/images"
+            "No Pictogrep index found. Run: pictogrep index /path/to/images"
         )
     embeddings = np.load(embeddings_path)
     with metadata_path.open() as fh:
@@ -190,7 +190,7 @@ def search(query, limit=50, base=BASE):
 
 
 def choose_viewer():
-    configured = os.environ.get("BILDKASTEN_VIEWER")
+    configured = os.environ.get("PICTOGREP_VIEWER")
     if configured:
         return shlex.split(configured)
     if shutil.which("mpv"):
@@ -199,7 +199,7 @@ def choose_viewer():
         return ["xdg-open"]
     if shutil.which("gio"):
         return ["gio", "open"]
-    raise RuntimeError("No viewer found. Install mpv or set BILDKASTEN_VIEWER.")
+    raise RuntimeError("No viewer found. Install mpv or set PICTOGREP_VIEWER.")
 
 
 def single_file_opener(viewer):
@@ -215,7 +215,7 @@ def open_files(files, wait=True):
     if single_file_opener(viewer):
         if len(files) > 1:
             raise RuntimeError(
-                "Multiple-image slideshow needs mpv or BILDKASTEN_VIEWER set to a viewer that accepts many files."
+                "Multiple-image slideshow needs mpv or PICTOGREP_VIEWER set to a viewer that accepts many files."
             )
         subprocess.Popen(viewer + files, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         return

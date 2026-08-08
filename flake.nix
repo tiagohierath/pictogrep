@@ -1,5 +1,5 @@
 {
-  description = "bildkasten";
+  description = "pictogrep";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
@@ -21,8 +21,8 @@
         pkgs.mpv
       ];
       shellHook = ''
-        export BILDKASTEN_LIBSTDCPP="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]}"
-        export LD_LIBRARY_PATH="$BILDKASTEN_LIBSTDCPP''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+        export PICTOGREP_LIBSTDCPP="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]}"
+        export LD_LIBRARY_PATH="$PICTOGREP_LIBSTDCPP''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       '';
     };
   };

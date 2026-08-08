@@ -2,7 +2,7 @@ import importlib.util
 import shutil
 import sys
 
-from bildkasten_core import COLLECTIONS_DIR, choose_viewer, index_stats
+from pictogrep_core import COLLECTIONS_DIR, choose_viewer, index_stats
 
 
 MODULES = ["numpy", "torch", "open_clip", "PIL"]
@@ -10,7 +10,7 @@ MODULES = ["numpy", "torch", "open_clip", "PIL"]
 
 def main():
     ok = True
-    print("Bildkasten doctor")
+    print("Pictogrep doctor")
     print(f"Python: {sys.executable}")
 
     for module in MODULES:
@@ -23,10 +23,10 @@ def main():
         print(f"index: ok ({stats['count']} images)")
         print(f"sources: {len(stats['sources'])} remembered folder(s)")
         if not stats["sources"]:
-            print("  run: bildkasten index /path/to/images to enable weekly refresh")
+            print("  run: pictogrep index /path/to/images to enable weekly refresh")
         print("refresh: due" if stats["due"] else "refresh: weekly schedule is current")
     else:
-        print("index: missing (run: bildkasten index /path/to/images)")
+        print("index: missing (run: pictogrep index /path/to/images)")
         ok = False
 
     try:

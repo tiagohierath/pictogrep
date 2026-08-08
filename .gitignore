@@ -6,7 +6,7 @@ venv/
 __pycache__/
 *.pyc
 
-# Local Bildkasten state
+# Local Pictogrep state
 data
 data/
 images
