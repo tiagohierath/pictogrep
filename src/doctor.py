@@ -1,8 +1,8 @@
-import importlib.util
+import importlib
 import shutil
 import sys
 
-from pictogrep_core import COLLECTIONS_DIR, choose_viewer, index_stats
+from pictogrep_core import COLLECTIONS_DIR, choose_viewer, index_state, index_stats
 
 
 MODULES = ["numpy", "torch", "open_clip", "PIL"]
@@ -14,9 +14,12 @@ def main():
     print(f"Python: {sys.executable}")
 
     for module in MODULES:
-        found = importlib.util.find_spec(module) is not None
-        print(f"{module}: {'ok' if found else 'missing'}")
-        ok = ok and found
+        try:
+            importlib.import_module(module)
+            print(f"{module}: ok")
+        except Exception as exc:
+            print(f"{module}: missing ({exc})")
+            ok = False
 
     stats = index_stats()
     if stats:
@@ -25,6 +28,20 @@ def main():
         if not stats["sources"]:
             print("  run: pictogrep index /path/to/images to enable weekly refresh")
         print("refresh: due" if stats["due"] else "refresh: weekly schedule is current")
+        print("maintenance: due" if stats["maintenance_due"] else "maintenance: current")
+        print(f"duplicates: {stats['duplicates']}")
+        state = index_state()
+        optimization = state.get("optimization", {})
+        if not optimization:
+            print("optimization: pending default webp refresh")
+        elif optimization.get("enabled"):
+            print(
+                "optimization: webp "
+                f"max-side={optimization.get('max_side')} "
+                f"quality={optimization.get('quality')}"
+            )
+        else:
+            print("optimization: disabled")
     else:
         print("index: missing (run: pictogrep index /path/to/images)")
         ok = False

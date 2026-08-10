@@ -7,7 +7,7 @@ import random
 import re
 import sys
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, quote, unquote, urlparse
 import webbrowser
 
 from pictogrep_core import (
@@ -29,6 +29,14 @@ def clean_name(value):
     value = Path(value).stem.lower()
     value = re.sub(r"[^a-z0-9]+", "-", value).strip("-")
     return value[:60] or "image"
+
+
+def clean_reference_name(value, mime=""):
+    suffix = Path(value).suffix.lower()
+    allowed = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+    if suffix not in allowed:
+        suffix = mimetypes.guess_extension(mime) or ".png"
+    return clean_name(value) + suffix
 
 
 def read_index_paths():
@@ -83,7 +91,7 @@ def page_html():
     :root { color-scheme: light; --bg:#f5f5f2; --paper:#fff; --fg:#171717; --muted:#666; --line:#c9c9c3; --soft:#eeeeea; }
     * { box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; }
-    body { min-height: 100vh; margin: 0; display: flex; flex-direction: column; font: 15px/1.35 system-ui, sans-serif; background: var(--bg); color: var(--fg); }
+    body { min-height: 100vh; margin: 0; display: flex; flex-direction: column; font: 15px/1.35 serif; background: var(--bg); color: var(--fg); }
     header { display: flex; gap: .55rem; align-items: center; padding: .55rem .75rem; border-bottom: 1px solid var(--line); background: var(--paper); white-space: nowrap; overflow-x: auto; overflow-y: hidden; }
     .title { flex: 0 0 auto; min-width: 0; }
     .title strong { display: inline; letter-spacing: .02em; }
@@ -117,11 +125,17 @@ def page_html():
     .label button { padding: .12rem .42rem; min-width: 0; }
     #refName { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .frame { flex: 1; min-height: 0; display: grid; place-items: center; background: var(--paper); border: 1px solid var(--line); overflow: hidden; padding: .5rem; }
-    .board-frame { background: #474744; touch-action: none; user-select: none; -webkit-user-select: none; }
+    .board-frame { position: relative; background: #474744; touch-action: none; user-select: none; -webkit-user-select: none; }
+    .board-refs { position: absolute; inset: 0; z-index: 10; pointer-events: none; overflow: hidden; }
+    .board-ref { position: absolute; width: 150px; min-width: 70px; max-width: 420px; border: 2px solid rgba(255,255,255,.82); background: #222; box-shadow: 0 3px 12px rgba(0,0,0,.38); pointer-events: auto; touch-action: none; cursor: move; }
+    .board-ref img { display: block; width: 100%; height: auto; max-height: 280px; object-fit: contain; pointer-events: none; }
+    .board-ref button { position: absolute; top: -10px; right: -10px; width: 22px; height: 22px; padding: 0; border-radius: 50%; line-height: 18px; background: #fff; }
+    .board-ref .ref-resize { position: absolute; right: -7px; bottom: -7px; width: 16px; height: 16px; border: 2px solid #fff; background: #333; cursor: nwse-resize; }
     #reference { width: var(--ref-size, 100%); height: var(--ref-size, 100%); max-width: none; max-height: none; object-fit: contain; -webkit-user-drag: none; user-select: none; }
     #reference.mirrored, .trace-ref.mirrored { transform: scaleX(-1); }
-    .canvas-stack { position: relative; background: #fff; border: 1px solid #a7a7a0; user-select: none; -webkit-user-select: none; }
+    .canvas-stack { position: relative; background: #e0dedb; border: 1px solid #a7a7a0; user-select: none; -webkit-user-select: none; }
     .canvas-stack canvas, .trace-ref { position: absolute; inset: 0; width: 100%; height: 100%; }
+    #paper { z-index: 0; pointer-events: none; }
     .trace-ref { z-index: 1; object-fit: contain; opacity: .46; filter: grayscale(1) contrast(.92) brightness(1.1); pointer-events: none; }
     #guide { z-index: 6; pointer-events: none; }
     #fill { z-index: 3; pointer-events: none; }
@@ -188,7 +202,7 @@ def page_html():
       <details class="info" id="infoMenu">
         <summary title="Info">i</summary>
         <div class="info-panel">
-          <div class="info-row"><strong>Keys</strong><span>P pen · E eraser · S shade lasso · T trace · Ctrl+Enter save + next · Ctrl+Z undo</span></div>
+          <div class="info-row"><strong>Keys</strong><span>1/P pen · 2/E eraser · 3/S colour lasso · 4/T trace · Q/W pen size · Ctrl+Enter save + next · Ctrl+Z undo</span></div>
           <div class="info-row"><strong>Status</strong><span id="infoStatus">Loading</span></div>
           <div class="info-row"><strong>Saving</strong><span id="infoSavePath"></span></div>
         </div>
@@ -220,7 +234,9 @@ def page_html():
         <span class="label-actions"><span id="saveState" class="save-state">Not saved yet</span><button id="boardSmaller" title="Make drawing board smaller">-</button><button id="boardBigger" title="Make drawing board bigger">+</button></span>
       </div>
       <div id="boardFrame" class="frame board-frame">
+        <div id="boardRefs" class="board-refs"></div>
         <div id="canvasStack" class="canvas-stack">
+          <canvas id="paper"></canvas>
           <img id="traceRef" class="trace-ref" alt="" hidden>
           <canvas id="guide"></canvas>
           <canvas id="fill"></canvas>
@@ -231,21 +247,23 @@ def page_html():
       <div class="tools">
         <button id="pen" class="active">Pen</button>
         <button id="eraser">Eraser</button>
-        <button id="shade" title="Draw a closed shape to fill behind pen marks">Shade</button>
+        <button id="shade" title="Draw a closed shape for a colored-pencil grain">Colour lasso</button>
         <select id="shadeColour" title="Shade colour">
-          <option value="#759bb5" selected>Muted blue</option>
+          <option value="#698ca3" selected>Muted blue</option>
           <option value="#000000">Grey</option>
-          <option value="#bd7d90">Muted pink</option>
-          <option value="#c7a75d">Muted yellow</option>
-          <option value="#7eaa91">Muted green</option>
-          <option value="#a48ab5">Muted lilac</option>
+          <option value="#aa7182">Muted pink</option>
+          <option value="#b39654">Muted yellow</option>
+          <option value="#719983">Muted green</option>
+          <option value="#947ca3">Muted lilac</option>
         </select>
         <label>Size <input id="brush" type="range" min="1" max="22" value="4"> <span id="brushValue">4</span></label>
         <button id="undo">Undo</button>
         <button id="clear">Clear</button>
         <button id="save">Save now</button>
+        <button id="addRefs" title="Add up to five movable reference images">Add refs</button>
+        <input id="refFiles" type="file" accept="image/*" multiple hidden>
       </div>
-      <div class="status">Autosaves after each stroke. PNG files go to the local storyboards folder.</div>
+      <div class="status">The pen supports tablet pressure. Drawings autosave while the board is idle.</div>
     </section>
   </main>
 
@@ -256,6 +274,11 @@ def page_html():
     const canvasStack = document.getElementById('canvasStack');
     const traceRef = document.getElementById('traceRef');
     const boardFrame = document.getElementById('boardFrame');
+    const boardRefs = document.getElementById('boardRefs');
+    const addRefs = document.getElementById('addRefs');
+    const refFiles = document.getElementById('refFiles');
+    const paper = document.getElementById('paper');
+    const paperCtx = paper.getContext('2d');
     const guide = document.getElementById('guide');
     const guideCtx = guide.getContext('2d');
     const fill = document.getElementById('fill');
@@ -296,6 +319,12 @@ def page_html():
     let dirty = false;
     let undoStack = [];
     let saveTimer = null;
+    let saveIdleHandle = null;
+    let saving = false;
+    let saveAgain = false;
+    let drawingPresent = false;
+    let changeRevision = 0;
+    let boardReferences = [];
     let tool = 'pen';
     let trace = localStorage.getItem('pictogrepStoryTrace') === '1';
     let refScale = Number(localStorage.getItem('pictogrepStoryRefScale') || 1);
@@ -317,6 +346,110 @@ def page_html():
     function cancelScheduledSave() {
       clearTimeout(saveTimer);
       saveTimer = null;
+      if (saveIdleHandle !== null && 'cancelIdleCallback' in window) {
+        cancelIdleCallback(saveIdleHandle);
+      }
+      saveIdleHandle = null;
+    }
+
+    function referenceLayoutKey() {
+      return 'pictogrepStoryBoardRefs';
+    }
+
+    function saveReferenceLayout() {
+      localStorage.setItem(referenceLayoutKey(), JSON.stringify(boardReferences.map(ref => ({
+        name: ref.name, x: ref.x, y: ref.y, width: ref.width,
+      }))));
+    }
+
+    function renderBoardReferences() {
+      boardRefs.replaceChildren();
+      for (const ref of boardReferences) {
+        const card = document.createElement('div');
+        card.className = 'board-ref';
+        card.style.left = ref.x + '%';
+        card.style.top = ref.y + '%';
+        card.style.width = ref.width + 'px';
+        card.dataset.name = ref.name;
+        const image = document.createElement('img');
+        image.src = ref.url;
+        image.alt = ref.name;
+        const remove = document.createElement('button');
+        remove.type = 'button';
+        remove.textContent = '×';
+        remove.title = 'Remove reference from board';
+        const handle = document.createElement('span');
+        handle.className = 'ref-resize';
+        card.append(image, remove, handle);
+        boardRefs.append(card);
+
+        remove.onclick = async e => {
+          e.stopPropagation();
+          await fetch('/api/references?name=' + encodeURIComponent(ref.name), {method: 'DELETE'});
+          boardReferences = boardReferences.filter(item => item.name !== ref.name);
+          saveReferenceLayout();
+          renderBoardReferences();
+        };
+        const begin = (e, resize) => {
+          if (e.button !== undefined && e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          const startX = e.clientX;
+          const startY = e.clientY;
+          const startWidth = card.offsetWidth;
+          const startLeft = card.offsetLeft;
+          const startTop = card.offsetTop;
+          card.setPointerCapture(e.pointerId);
+          const move = event => {
+            if (resize) {
+              ref.width = Math.max(70, Math.min(420, startWidth + event.clientX - startX));
+              card.style.width = ref.width + 'px';
+            } else {
+              const maxLeft = Math.max(0, boardFrame.clientWidth - card.offsetWidth);
+              const maxTop = Math.max(0, boardFrame.clientHeight - card.offsetHeight);
+              const left = Math.max(0, Math.min(maxLeft, startLeft + event.clientX - startX));
+              const top = Math.max(0, Math.min(maxTop, startTop + event.clientY - startY));
+              ref.x = boardFrame.clientWidth ? left / boardFrame.clientWidth * 100 : 0;
+              ref.y = boardFrame.clientHeight ? top / boardFrame.clientHeight * 100 : 0;
+              card.style.left = ref.x + '%';
+              card.style.top = ref.y + '%';
+            }
+          };
+          const end = () => {
+            card.removeEventListener('pointermove', move);
+            card.removeEventListener('pointerup', end);
+            card.removeEventListener('pointercancel', end);
+            saveReferenceLayout();
+          };
+          card.addEventListener('pointermove', move);
+          card.addEventListener('pointerup', end);
+          card.addEventListener('pointercancel', end);
+        };
+        card.addEventListener('pointerdown', e => {
+          if (!e.target.closest('button, .ref-resize')) begin(e, false);
+        });
+        handle.addEventListener('pointerdown', e => begin(e, true));
+      }
+      addRefs.disabled = boardReferences.length >= 5;
+      addRefs.title = boardReferences.length >= 5 ? 'Five-reference limit reached' : 'Add up to five movable reference images';
+    }
+
+    async function loadBoardReferences() {
+      const res = await fetch('/api/references');
+      if (!res.ok) return;
+      const data = await res.json();
+      let saved = [];
+      try { saved = JSON.parse(localStorage.getItem(referenceLayoutKey()) || '[]'); } catch (_) {}
+      boardReferences = data.references.slice(0, 5).map((item, i) => {
+        const layout = saved.find(savedItem => savedItem.name === item.name) || {};
+        return {
+          ...item,
+          x: Number.isFinite(layout.x) ? layout.x : 2 + i * 4,
+          y: Number.isFinite(layout.y) ? layout.y : 2 + i * 4,
+          width: Number.isFinite(layout.width) ? layout.width : 150,
+        };
+      });
+      renderBoardReferences();
     }
 
     function setPaneSplit(clientX) {
@@ -389,6 +522,8 @@ def page_html():
 
     function resetCanvas() {
       const [w, h] = canvasSize();
+      paper.width = w;
+      paper.height = h;
       guide.width = w;
       guide.height = h;
       fill.width = w;
@@ -401,9 +536,12 @@ def page_html():
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       fillCtx.clearRect(0, 0, fill.width, fill.height);
       lassoCtx.clearRect(0, 0, lasso.width, lasso.height);
+      drawPaper();
       drawGuides();
       undoStack = [];
       dirty = false;
+      drawingPresent = false;
+      changeRevision++;
       saveState.textContent = 'Not saved yet';
     }
 
@@ -419,26 +557,794 @@ def page_html():
       canvasStack.style.height = Math.floor(canvas.height * scale) + 'px';
     }
 
+    function drawPaper() {
+      const image = paperCtx.createImageData(paper.width, paper.height);
+      const pixels = image.data;
+      for (let i = 0; i < pixels.length; i += 4) {
+        // Near-imperceptible frame-to-frame paper variation: lightness moves
+        // about one value and warmth by at most one additional value.
+        const light = Math.round((Math.random() - 0.5) * 3);
+        const warmth = Math.round((Math.random() - 0.5) * 2);
+        pixels[i] = 224 + light + warmth;
+        pixels[i + 1] = 222 + light;
+        pixels[i + 2] = 219 + light - warmth;
+        pixels[i + 3] = 255;
+      }
+      paperCtx.putImageData(image, 0, 0);
+    }
+
     function drawGuides() {
       guideCtx.clearRect(0, 0, guide.width, guide.height);
       guideCtx.save();
-      guideCtx.strokeStyle = '#17345f';
+      const alternateInk = Math.random() < 0.05;
+      const mutedInks = ['#8b5f5a', '#5d7386', '#4b4a47', '#637965'];
+      const guideInk = alternateInk
+        ? mutedInks[Math.floor(Math.random() * mutedInks.length)]
+        : '#17345f';
+      const ink = normal => alternateInk ? guideInk : normal;
+      guideCtx.strokeStyle = guideInk;
       guideCtx.lineWidth = 1.25;
       guideCtx.globalAlpha = 0.55;
       const w = guide.width;
       const h = guide.height;
+      const shift = () => (Math.random() - 0.5) * 2;
       const mx = Math.round(w * 0.075) + 0.5;
       const my = Math.round(h * 0.075) + 0.5;
-      guideCtx.strokeRect(mx, my, Math.max(1, w - mx * 2), Math.max(1, h - my * 2));
-      const cx = Math.round(w / 2) + 0.5;
-      const cy = Math.round(h / 2) + 0.5;
-      const arm = Math.max(18, Math.round(Math.min(w, h) * 0.035));
+      const left = mx + shift();
+      const top = my + shift();
+      const right = w - mx + shift();
+      const bottom = h - my + shift();
+      // Existing special-design thresholds occupy 0.00–0.10. Sampling over
+      // 0.00–2.00 makes that whole family exactly 5%; rectangles take 95%.
+      const guideRoll = Math.random() * 2;
       guideCtx.beginPath();
-      guideCtx.moveTo(cx - arm, cy);
-      guideCtx.lineTo(cx + arm, cy);
-      guideCtx.moveTo(cx, cy - arm);
-      guideCtx.lineTo(cx, cy + arm);
+      if (guideRoll < 0.01) {
+        const outer = Math.min(right - left, bottom - top) * 0.5;
+        const centerX = (left + right) / 2;
+        const centerY = (top + bottom) / 2;
+        if (guideRoll < 0.004) {
+          // A layered ceremonial cross with stepped arms, inset geometry,
+          // a centre medallion, and fine radial construction marks.
+          const s = outer * 0.88;
+          const outline = [[-.13,-1],[.13,-1],[.13,-.34],[.58,-.34],[.58,-.08],[.23,-.08],[.23,1],[-.23,1],[-.23,-.08],[-.58,-.08],[-.58,-.34],[-.13,-.34]];
+          outline.forEach(([x, y], point) => {
+            if (point === 0) guideCtx.moveTo(centerX + x * s, centerY + y * s);
+            else guideCtx.lineTo(centerX + x * s, centerY + y * s);
+          });
+          guideCtx.closePath();
+          guideCtx.rect(centerX - s * 0.075, centerY - s * 0.78, s * 0.15, s * 1.55);
+          guideCtx.rect(centerX - s * 0.43, centerY - s * 0.25, s * 0.86, s * 0.15);
+          guideCtx.arc(centerX, centerY - s * 0.16, s * 0.19, 0, Math.PI * 2);
+          guideCtx.moveTo(centerX - s * 0.3, centerY - s * 0.46);
+          guideCtx.lineTo(centerX + s * 0.3, centerY + s * 0.14);
+          guideCtx.moveTo(centerX + s * 0.3, centerY - s * 0.46);
+          guideCtx.lineTo(centerX - s * 0.3, centerY + s * 0.14);
+        } else {
+          const inner = outer * 0.42;
+          for (let point = 0; point < 10; point++) {
+            const angle = -Math.PI / 2 + point * Math.PI / 5;
+            const radius = point % 2 === 0 ? outer : inner;
+            const x = centerX + Math.cos(angle) * radius + shift();
+            const y = centerY + Math.sin(angle) * radius + shift();
+            if (point === 0) guideCtx.moveTo(x, y);
+            else guideCtx.lineTo(x, y);
+          }
+          guideCtx.closePath();
+        }
+      } else if (guideRoll < 0.025) {
+        guideCtx.ellipse(
+          (left + right) / 2,
+          (top + bottom) / 2,
+          (right - left) / 2,
+          (bottom - top) / 2,
+          shift() * 0.001,
+          0,
+          Math.PI * 2
+        );
+      } else if (guideRoll < 0.05) {
+        // Quiet ruler variations: horizontal, vertical, or just off-axis,
+        // with different subdivisions and occasional ticks on both edges.
+        const rulerH = Math.max(18, h * 0.026);
+        const rulerVariant = Math.random();
+        const angle = rulerVariant < 0.5 ? 0 : rulerVariant < 0.72 ? Math.PI / 2 : (Math.random() - 0.5) * 0.34;
+        const rulerLength = angle === 0 ? right - left : Math.min(w, h) * 0.78;
+        const ticks = [16, 20, 24, 32][Math.floor(Math.random() * 4)];
+        const doubleSided = Math.random() < 0.32;
+        const numbered = Math.random() < 0.28;
+        guideCtx.save();
+        guideCtx.translate(w / 2 + shift(), h / 2 + shift());
+        guideCtx.rotate(angle);
+        guideCtx.rect(-rulerLength / 2, -rulerH / 2, rulerLength, rulerH);
+        for (let tick = 0; tick <= ticks; tick++) {
+          const x = -rulerLength / 2 + rulerLength * tick / ticks;
+          const tickH = tick % 4 === 0 ? rulerH * 0.62 : tick % 2 === 0 ? rulerH * 0.42 : rulerH * 0.27;
+          guideCtx.moveTo(x, -rulerH / 2);
+          guideCtx.lineTo(x, -rulerH / 2 + tickH);
+          if (doubleSided) {
+            guideCtx.moveTo(x, rulerH / 2);
+            guideCtx.lineTo(x, rulerH / 2 - tickH * 0.72);
+          }
+        }
+        if (numbered) {
+          guideCtx.save();
+          guideCtx.globalAlpha = 0.36;
+          guideCtx.fillStyle = guideInk;
+          guideCtx.font = Math.max(7, Math.round(rulerH * 0.34)) + 'px serif';
+          guideCtx.textAlign = 'center';
+          guideCtx.textBaseline = 'bottom';
+          for (let tick = 0; tick <= ticks; tick += 2) {
+            const x = -rulerLength / 2 + rulerLength * tick / ticks;
+            guideCtx.fillText(String(tick), x, rulerH / 2 - 2);
+          }
+          guideCtx.restore();
+        }
+        guideCtx.restore();
+      } else if (guideRoll < 0.075) {
+        // Nine registration crosses in a loose three-by-three grid.
+        const crossArm = Math.max(8, Math.min(w, h) * 0.012);
+        for (let row = 1; row <= 3; row++) {
+          for (let column = 1; column <= 3; column++) {
+            const x = w * column / 4 + shift();
+            const y = h * row / 4 + shift();
+            guideCtx.moveTo(x - crossArm, y);
+            guideCtx.lineTo(x + crossArm, y);
+            guideCtx.moveTo(x, y - crossArm);
+            guideCtx.lineTo(x, y + crossArm);
+          }
+        }
+      } else if (guideRoll < 0.0775) {
+        // A nearly ghosted paperclip, placed differently on each occurrence.
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.22;
+        guideCtx.translate(w * (0.25 + Math.random() * 0.5), h * (0.25 + Math.random() * 0.5));
+        guideCtx.rotate((Math.random() - 0.5) * 1.3);
+        const clipW = Math.min(w, h) * 0.09;
+        const clipH = clipW * 2.2;
+        guideCtx.roundRect(-clipW / 2, -clipH / 2, clipW, clipH, clipW / 2);
+        guideCtx.roundRect(-clipW * 0.25, -clipH * 0.34, clipW * 0.5, clipH * 0.72, clipW * 0.25);
+        guideCtx.stroke();
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.08) {
+        // A muted, generic shop receipt—suggestive rather than readable data.
+        const receiptW = Math.min(w * 0.34, 390);
+        const receiptH = Math.min(h * 0.5, 430);
+        const receiptX = (w - receiptW) / 2 + shift();
+        const receiptY = (h - receiptH) / 2 + shift();
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.28;
+        guideCtx.strokeRect(receiptX, receiptY, receiptW, receiptH);
+        guideCtx.fillStyle = guideInk;
+        guideCtx.font = Math.max(11, Math.round(Math.min(w, h) * 0.013)) + 'px serif';
+        guideCtx.textAlign = 'left';
+        guideCtx.textBaseline = 'alphabetic';
+        guideCtx.fillText('BUSINESS RECEIPT', receiptX + 16, receiptY + 28);
+        const items = ['paper', 'pencil', 'coffee', 'film', 'tape', 'notebook', 'postage'];
+        for (let line = 0; line < 5; line++) {
+          const y = receiptY + 65 + line * 30;
+          const item = items[Math.floor(Math.random() * items.length)];
+          const price = (1 + Math.random() * 28).toFixed(2);
+          guideCtx.fillText(item, receiptX + 16, y);
+          guideCtx.textAlign = 'right';
+          guideCtx.fillText(price, receiptX + receiptW - 16, y);
+          guideCtx.textAlign = 'left';
+        }
+        guideCtx.setLineDash([3, 5]);
+        guideCtx.beginPath();
+        guideCtx.moveTo(receiptX + 16, receiptY + 225);
+        guideCtx.lineTo(receiptX + receiptW - 16, receiptY + 225);
+        guideCtx.stroke();
+        guideCtx.setLineDash([]);
+        guideCtx.textAlign = 'right';
+        guideCtx.fillText('TOTAL  ' + (18 + Math.random() * 70).toFixed(2), receiptX + receiptW - 16, receiptY + 260);
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.0825) {
+        // A subdued calendar leaf for the month in which the board was made.
+        const calendarW = Math.min(w * 0.42, 470);
+        const calendarH = Math.min(h * 0.48, 410);
+        const calendarX = (w - calendarW) / 2 + shift();
+        const calendarY = (h - calendarH) / 2 + shift();
+        const headerH = calendarH * 0.18;
+        const cellW = calendarW / 7;
+        const cellH = (calendarH - headerH) / 5;
+        const now = new Date();
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.27;
+        guideCtx.strokeRect(calendarX, calendarY, calendarW, calendarH);
+        guideCtx.beginPath();
+        guideCtx.moveTo(calendarX, calendarY + headerH);
+        guideCtx.lineTo(calendarX + calendarW, calendarY + headerH);
+        for (let column = 1; column < 7; column++) {
+          const x = calendarX + column * cellW;
+          guideCtx.moveTo(x, calendarY + headerH);
+          guideCtx.lineTo(x, calendarY + calendarH);
+        }
+        for (let row = 1; row < 5; row++) {
+          const y = calendarY + headerH + row * cellH;
+          guideCtx.moveTo(calendarX, y);
+          guideCtx.lineTo(calendarX + calendarW, y);
+        }
+        guideCtx.stroke();
+        guideCtx.fillStyle = guideInk;
+        guideCtx.font = Math.max(15, Math.round(Math.min(w, h) * 0.021)) + 'px serif';
+        guideCtx.textAlign = 'center';
+        guideCtx.textBaseline = 'middle';
+        guideCtx.fillText(
+          now.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }).toLowerCase(),
+          calendarX + calendarW / 2,
+          calendarY + headerH / 2
+        );
+        guideCtx.font = Math.max(9, Math.round(Math.min(w, h) * 0.011)) + 'px serif';
+        guideCtx.textAlign = 'left';
+        guideCtx.textBaseline = 'top';
+        for (let day = 1; day <= 31; day++) {
+          const slot = day - 1;
+          const column = slot % 7;
+          const row = Math.floor(slot / 7);
+          guideCtx.fillText(
+            String(day),
+            calendarX + column * cellW + 7,
+            calendarY + headerH + row * cellH + 6
+          );
+        }
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.085) {
+        // A classical wire globe: curved meridians and latitudes make the
+        // circle read as a quiet three-dimensional ball.
+        const globeX = w / 2 + shift();
+        const globeY = h / 2 + shift();
+        const globeR = Math.min(w, h) * 0.29;
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.42;
+        guideCtx.beginPath();
+        guideCtx.arc(globeX, globeY, globeR, 0, Math.PI * 2);
+        guideCtx.ellipse(globeX, globeY, globeR * 0.48, globeR, 0, 0, Math.PI * 2);
+        guideCtx.ellipse(globeX, globeY, globeR * 0.78, globeR, 0, 0, Math.PI * 2);
+        guideCtx.ellipse(globeX, globeY, globeR, globeR * 0.34, 0, 0, Math.PI * 2);
+        guideCtx.ellipse(globeX, globeY - globeR * 0.48, globeR * 0.86, globeR * 0.19, 0, 0, Math.PI * 2);
+        guideCtx.ellipse(globeX, globeY + globeR * 0.48, globeR * 0.86, globeR * 0.19, 0, 0, Math.PI * 2);
+        guideCtx.stroke();
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.0875) {
+        // Six cross-stitch motifs: flower, heart, butterfly, snowflake,
+        // diamond medallion, and a tiny house.
+        const motifs = [
+          ['....RRR....','..RRRRRRR..','.RRRRRRRRR.','RRRRRYRRRRR','.RRRRRRRRR.','..RRRRRRR..','....RRR....','.....G.....','....GGG....','.....G.....','...G.G.....','..G..G.....','.....G.....'],
+          ['.RRR...RRR.','RRRRR.RRRRR','RRRRRRRRRRR','RRRRRRRRRRR','.RRRRRRRRR.','..RRRRRRR..','...RRRRR...','....RRR....','.....R.....'],
+          ['BB...G...BB','BBB..G..BBB','.BBB.G.BBB.','..BBBGBBB..','...BBGBB...','....GGG....','...BBGBB...','..BBBGBBB..','.BBB.G.BBB.','BBB..G..BBB','BB...G...BB'],
+          ['.....B.....','..B..B..B..','...B.B.B...','.B..BBB..B.','..BBBBBBB..','BBBBBBBBBBB','..BBBBBBB..','.B..BBB..B.','...B.B.B...','..B..B..B..','.....B.....'],
+          ['.....Y.....','....YYY....','...Y...Y...','..Y.YYY.Y..','.Y.Y...Y.Y.','Y.Y.YYY.Y.Y','.Y.Y...Y.Y.','..Y.YYY.Y..','...Y...Y...','....YYY....','.....Y.....'],
+          ['.....B.....','....BBB....','...BBBBB...','..BBBBBBB..','.BBBBBBBBB.','BBBBBBBBBBB','..RRRRRRR..','..R..R..R..','..R..R..R..','..RRRRRRR..','..GGGGGGG..'],
+        ];
+        const motif = motifs[Math.floor(Math.random() * motifs.length)];
+        const stitchSize = Math.max(5, Math.min(w, h) * 0.012);
+        const spacing = stitchSize * 1.45;
+        const motifX = w / 2 - (motif[0].length - 1) * spacing / 2 + shift();
+        const motifY = h / 2 - (motif.length - 1) * spacing / 2 + shift();
+        const colours = { R: ink('#9b6575'), G: ink('#66846f'), B: ink('#667f9b'), Y: ink('#9d8752') };
+        const stitch = (x, y, colour) => {
+          guideCtx.strokeStyle = colour;
+          guideCtx.beginPath();
+          guideCtx.moveTo(x - stitchSize / 2 + shift(), y - stitchSize / 2 + shift());
+          guideCtx.lineTo(x + stitchSize / 2 + shift(), y + stitchSize / 2 + shift());
+          guideCtx.moveTo(x + stitchSize / 2 + shift(), y - stitchSize / 2 + shift());
+          guideCtx.lineTo(x - stitchSize / 2 + shift(), y + stitchSize / 2 + shift());
+          guideCtx.stroke();
+        };
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.32;
+        for (let row = 0; row < motif.length; row++) {
+          for (let column = 0; column < motif[row].length; column++) {
+            const mark = motif[row][column];
+            if (colours[mark]) stitch(motifX + column * spacing, motifY + row * spacing, colours[mark]);
+          }
+        }
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.0895) {
+        // Loose cross stitch fragments, as though left from another pattern.
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.25;
+        guideCtx.strokeStyle = ink('#725f70');
+        const stitchSize = Math.max(5, Math.min(w, h) * 0.01);
+        for (let stitch = 0; stitch < 42; stitch++) {
+          const x = w * (0.12 + Math.random() * 0.76);
+          const y = h * (0.12 + Math.random() * 0.76);
+          guideCtx.beginPath();
+          guideCtx.moveTo(x - stitchSize / 2, y - stitchSize / 2);
+          guideCtx.lineTo(x + stitchSize / 2, y + stitchSize / 2);
+          guideCtx.moveTo(x + stitchSize / 2, y - stitchSize / 2);
+          guideCtx.lineTo(x - stitchSize / 2, y + stitchSize / 2);
+          guideCtx.stroke();
+        }
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.09) {
+        // A small ASCII-art sheet with a different composition each time.
+        const asciiSheets = [
+          ['       /\\_/\\', '      ( o.o )', '       > ^ <', '', '  signal: soft'],
+          ['   .-----------.', '  /  *       *  \\', ' |      /\\      |', '  \\  *    *   /', '   `-----------\''],
+          ['      .-===-.', '    .\'  .-.  \'.', '   /   (   )   \\', '  |  .-`-\'-..  |', '   \\__________/'],
+        ];
+        const sheet = asciiSheets[Math.floor(Math.random() * asciiSheets.length)];
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.24;
+        guideCtx.fillStyle = ink('#3d4a58');
+        guideCtx.font = Math.max(12, Math.round(Math.min(w, h) * 0.019)) + 'px monospace';
+        guideCtx.textAlign = 'left';
+        guideCtx.textBaseline = 'top';
+        const lineHeight = Math.min(w, h) * 0.034;
+        const startX = w * 0.36 + shift();
+        const startY = h * 0.38 + shift();
+        sheet.forEach((line, row) => guideCtx.fillText(line, startX, startY + row * lineHeight));
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.0925) {
+        // Muted Cyrillic fragments in locally available traditional faces.
+        const words = ['архив', 'кино', 'рисунок', 'свет', 'кадр', 'память', 'набросок'];
+        const faces = ['serif', 'Georgia', 'Times New Roman'];
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.24;
+        guideCtx.fillStyle = ink('#3f4d5e');
+        guideCtx.textAlign = 'center';
+        guideCtx.textBaseline = 'middle';
+        for (let line = 0; line < 4; line++) {
+          const size = Math.round(Math.min(w, h) * (0.026 + Math.random() * 0.025));
+          guideCtx.font = size + 'px ' + faces[Math.floor(Math.random() * faces.length)];
+          guideCtx.fillText(
+            words[Math.floor(Math.random() * words.length)],
+            w * (0.25 + Math.random() * 0.5),
+            h * (0.2 + line * 0.2) + shift()
+          );
+        }
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.094) {
+        // Tiny microdesign marks: registration signs, codes and geometry.
+        const symbols = ['○', '△', '×', '+', '⌁', '◇', '—', '··'];
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.24;
+        guideCtx.fillStyle = guideInk;
+        guideCtx.textAlign = 'center';
+        guideCtx.textBaseline = 'middle';
+        for (let mark = 0; mark < 32; mark++) {
+          const size = Math.round(Math.min(w, h) * (0.009 + Math.random() * 0.009));
+          guideCtx.font = size + 'px serif';
+          const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+          guideCtx.fillText(symbol, w * (0.08 + Math.random() * 0.84), h * (0.08 + Math.random() * 0.84));
+        }
+        guideCtx.font = Math.max(8, Math.round(Math.min(w, h) * 0.009)) + 'px serif';
+        guideCtx.fillText('REF ' + String(Math.floor(Math.random() * 9999)).padStart(4, '0'), w * 0.18, h * 0.87);
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.095) {
+        // A deliberately nonfunctional QR-like block for registration flavor.
+        const modules = 21;
+        const moduleSize = Math.max(2, Math.round(Math.min(w, h) * 0.006));
+        const qrSize = modules * moduleSize;
+        const qrX = w * (Math.random() < 0.5 ? 0.14 : 0.86) - qrSize / 2;
+        const qrY = h * (0.18 + Math.random() * 0.64) - qrSize / 2;
+        const finderCell = (column, row, originX, originY) => {
+          const x = column - originX;
+          const y = row - originY;
+          if (x < 0 || y < 0 || x > 6 || y > 6) return null;
+          return x === 0 || y === 0 || x === 6 || y === 6 || (x >= 2 && x <= 4 && y >= 2 && y <= 4);
+        };
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.25;
+        guideCtx.fillStyle = guideInk;
+        for (let row = 0; row < modules; row++) {
+          for (let column = 0; column < modules; column++) {
+            const finder = finderCell(column, row, 0, 0) ??
+              finderCell(column, row, modules - 7, 0) ??
+              finderCell(column, row, 0, modules - 7);
+            if (finder === true || (finder === null && Math.random() < 0.43)) {
+              guideCtx.fillRect(qrX + column * moduleSize, qrY + row * moduleSize, moduleSize, moduleSize);
+            }
+          }
+        }
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.0965) {
+        // A handful of offset boxes with the feel of old layout marks.
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.24;
+        for (let box = 0; box < 13; box++) {
+          const boxW = w * (0.035 + Math.random() * 0.16);
+          const boxH = h * (0.035 + Math.random() * 0.14);
+          const x = w * (0.08 + Math.random() * 0.84);
+          const y = h * (0.08 + Math.random() * 0.84);
+          guideCtx.save();
+          guideCtx.translate(x, y);
+          guideCtx.rotate((Math.random() - 0.5) * 0.12);
+          guideCtx.strokeRect(-boxW / 2, -boxH / 2, boxW, boxH);
+          guideCtx.restore();
+        }
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.0975) {
+        // Scrambled Japanese characters, treated as quiet typographic marks.
+        const characters = Array.from('あかさたなはまやらわ日月火水木金土空光影絵紙線');
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.23;
+        guideCtx.fillStyle = ink('#34485b');
+        guideCtx.textAlign = 'center';
+        guideCtx.textBaseline = 'middle';
+        for (let glyph = 0; glyph < 18; glyph++) {
+          const size = Math.round(Math.min(w, h) * (0.017 + Math.random() * 0.025));
+          guideCtx.font = size + 'px serif';
+          guideCtx.save();
+          guideCtx.translate(w * (0.1 + Math.random() * 0.8), h * (0.1 + Math.random() * 0.8));
+          guideCtx.rotate((Math.random() - 0.5) * 0.18);
+          guideCtx.fillText(characters[Math.floor(Math.random() * characters.length)], 0, 0);
+          guideCtx.restore();
+        }
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.098) {
+        // A single oversized, quiet studio wordmark in the default serif.
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.23;
+        guideCtx.fillStyle = ink('#34485b');
+        guideCtx.font = Math.max(48, Math.round(Math.min(w, h) * 0.105)) + 'px serif';
+        guideCtx.textAlign = 'center';
+        guideCtx.textBaseline = 'middle';
+        guideCtx.fillText('navylilyworks', w / 2 + shift(), h / 2 + shift(), w * 0.82);
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.0985) {
+        // Three elegant mathematical families: Lissajous, polar rose, and
+        // hypotrochoid. Each is smooth enough to feel plotted by hand.
+        const curve = Math.floor(Math.random() * 3);
+        const centerX = w / 2 + shift();
+        const centerY = h / 2 + shift();
+        const radius = Math.min(w, h) * 0.34;
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.34;
+        guideCtx.strokeStyle = guideInk;
+        guideCtx.lineWidth = 1.15;
+        guideCtx.beginPath();
+        if (curve === 0) {
+          const a = Math.random() < 0.5 ? 3 : 5;
+          const b = a === 3 ? 4 : 6;
+          const phase = Math.PI / (2 + Math.floor(Math.random() * 3));
+          for (let step = 0; step <= 1000; step++) {
+            const t = Math.PI * 2 * step / 1000;
+            const x = centerX + radius * Math.sin(a * t + phase);
+            const y = centerY + radius * 0.74 * Math.sin(b * t);
+            if (step === 0) guideCtx.moveTo(x, y);
+            else guideCtx.lineTo(x, y);
+          }
+        } else if (curve === 1) {
+          const petals = [5, 7, 9][Math.floor(Math.random() * 3)];
+          for (let step = 0; step <= 1200; step++) {
+            const t = Math.PI * 2 * step / 1200;
+            const r = radius * Math.cos(petals * t);
+            const x = centerX + r * Math.cos(t);
+            const y = centerY + r * Math.sin(t);
+            if (step === 0) guideCtx.moveTo(x, y);
+            else guideCtx.lineTo(x, y);
+          }
+        } else {
+          const outer = 5;
+          const inner = 3;
+          const offset = Math.random() < 0.5 ? 4.2 : 5.4;
+          const extent = outer - inner + offset;
+          for (let step = 0; step <= 1500; step++) {
+            const t = Math.PI * 6 * step / 1500;
+            const x = centerX + radius * (
+              (outer - inner) * Math.cos(t) + offset * Math.cos((outer - inner) * t / inner)
+            ) / extent;
+            const y = centerY + radius * (
+              (outer - inner) * Math.sin(t) - offset * Math.sin((outer - inner) * t / inner)
+            ) / extent;
+            if (step === 0) guideCtx.moveTo(x, y);
+            else guideCtx.lineTo(x, y);
+          }
+        }
+        guideCtx.stroke();
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.099) {
+        // Ten true 2D fractal families, selected independently on each hit.
+        const fractal = Math.floor(Math.random() * 10);
+        const fx = w / 2 + shift();
+        const fy = h / 2 + shift();
+        const fr = Math.min(w, h) * 0.34;
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.27;
+        guideCtx.strokeStyle = ink('#294a62');
+        guideCtx.fillStyle = ink('#294a62');
+        guideCtx.lineWidth = 0.9;
+
+        if (fractal === 0) {
+          // Sierpiński triangle by chaos game.
+          const vertices = [[fx, fy-fr], [fx-fr*.9, fy+fr*.72], [fx+fr*.9, fy+fr*.72]];
+          let x = fx, y = fy;
+          for (let point = 0; point < 7000; point++) {
+            const vertex = vertices[Math.floor(Math.random() * 3)];
+            x = (x + vertex[0]) / 2; y = (y + vertex[1]) / 2;
+            guideCtx.fillRect(x, y, 1, 1);
+          }
+        } else if (fractal === 1) {
+          // Barnsley fern IFS.
+          let x = 0, y = 0;
+          for (let point = 0; point < 9000; point++) {
+            const roll = Math.random();
+            let nextX, nextY;
+            if (roll < .01) { nextX = 0; nextY = .16*y; }
+            else if (roll < .86) { nextX = .85*x + .04*y; nextY = -.04*x + .85*y + 1.6; }
+            else if (roll < .93) { nextX = .2*x - .26*y; nextY = .23*x + .22*y + 1.6; }
+            else { nextX = -.15*x + .28*y; nextY = .26*x + .24*y + .44; }
+            x = nextX; y = nextY;
+            guideCtx.fillRect(fx + x*fr*.09, fy + fr*.82 - y*fr*.17, 1, 1);
+          }
+        } else if (fractal === 2 || fractal === 3) {
+          // Binary tree and radial coral tree.
+          const branch = (x, y, length, angle, depth, spread) => {
+            if (depth <= 0) return;
+            const x2 = x + Math.cos(angle) * length;
+            const y2 = y + Math.sin(angle) * length;
+            guideCtx.moveTo(x, y); guideCtx.lineTo(x2, y2);
+            branch(x2, y2, length*.72, angle-spread, depth-1, spread*.96);
+            branch(x2, y2, length*.72, angle+spread, depth-1, spread*.96);
+          };
+          guideCtx.beginPath();
+          if (fractal === 2) branch(fx, fy+fr*.82, fr*.31, -Math.PI/2, 9, .42);
+          else for (let ray=0; ray<7; ray++) branch(fx, fy, fr*.22, ray*Math.PI*2/7, 7, .34);
+          guideCtx.stroke();
+        } else if (fractal === 4) {
+          // Sierpiński carpet outlines.
+          const carpet = (x, y, size, depth) => {
+            if (depth === 0) { guideCtx.rect(x, y, size, size); return; }
+            const cell = size/3;
+            for (let row=0; row<3; row++) for (let column=0; column<3; column++) {
+              if (row !== 1 || column !== 1) carpet(x+column*cell, y+row*cell, cell, depth-1);
+            }
+          };
+          guideCtx.beginPath(); carpet(fx-fr*.72, fy-fr*.72, fr*1.44, 4); guideCtx.stroke();
+        } else if (fractal === 5) {
+          // Recursive triangle gasket.
+          const gasket = (ax, ay, bx, by, cx, cy, depth) => {
+            if (depth === 0) { guideCtx.moveTo(ax,ay); guideCtx.lineTo(bx,by); guideCtx.lineTo(cx,cy); guideCtx.closePath(); return; }
+            const abx=(ax+bx)/2, aby=(ay+by)/2, bcx=(bx+cx)/2, bcy=(by+cy)/2, cax=(cx+ax)/2, cay=(cy+ay)/2;
+            gasket(ax,ay,abx,aby,cax,cay,depth-1); gasket(abx,aby,bx,by,bcx,bcy,depth-1); gasket(cax,cay,bcx,bcy,cx,cy,depth-1);
+          };
+          guideCtx.beginPath(); gasket(fx,fy-fr,fx-fr*.9,fy+fr*.72,fx+fr*.9,fy+fr*.72,5); guideCtx.stroke();
+        } else if (fractal === 6) {
+          // Nested circle packing.
+          const circles = (x, y, radius, depth) => {
+            if (depth <= 0 || radius < 2) return;
+            guideCtx.moveTo(x+radius,y); guideCtx.arc(x,y,radius,0,Math.PI*2);
+            const child=radius*.43;
+            for (let n=0;n<3;n++) { const a=-Math.PI/2+n*Math.PI*2/3; circles(x+Math.cos(a)*radius*.54,y+Math.sin(a)*radius*.54,child,depth-1); }
+          };
+          guideCtx.beginPath(); circles(fx,fy,fr*.88,5); guideCtx.stroke();
+        } else if (fractal === 7) {
+          // Koch snowflake.
+          const koch = (x1,y1,x2,y2,depth) => {
+            if (depth===0) { guideCtx.moveTo(x1,y1); guideCtx.lineTo(x2,y2); return; }
+            const ax=x1+(x2-x1)/3, ay=y1+(y2-y1)/3, bx=x1+(x2-x1)*2/3, by=y1+(y2-y1)*2/3;
+            const px=(ax+bx)/2-Math.sqrt(3)*(by-ay)/2, py=(ay+by)/2+Math.sqrt(3)*(bx-ax)/2;
+            koch(x1,y1,ax,ay,depth-1); koch(ax,ay,px,py,depth-1); koch(px,py,bx,by,depth-1); koch(bx,by,x2,y2,depth-1);
+          };
+          const points=[[fx,fy-fr*.9],[fx-fr*.78,fy+fr*.45],[fx+fr*.78,fy+fr*.45]];
+          guideCtx.beginPath(); koch(...points[0],...points[1],4); koch(...points[1],...points[2],4); koch(...points[2],...points[0],4); guideCtx.stroke();
+        } else if (fractal === 8) {
+          // Heighway dragon folding curve.
+          let turns=[1];
+          for (let iteration=0; iteration<11; iteration++) turns=turns.concat([1],turns.slice().reverse().map(turn=>-turn));
+          let angle=0, x=0, y=0; const points=[[0,0]];
+          turns.forEach(turn=>{ x+=Math.cos(angle); y+=Math.sin(angle); angle+=turn*Math.PI/2; points.push([x,y]); });
+          const xs=points.map(point=>point[0]), ys=points.map(point=>point[1]);
+          const minX=Math.min(...xs), maxX=Math.max(...xs), minY=Math.min(...ys), maxY=Math.max(...ys);
+          const scale=fr*1.65/Math.max(maxX-minX,maxY-minY);
+          guideCtx.beginPath();
+          points.forEach((point,index)=>{ const px=fx+(point[0]-(minX+maxX)/2)*scale, py=fy+(point[1]-(minY+maxY)/2)*scale; if(index===0)guideCtx.moveTo(px,py);else guideCtx.lineTo(px,py); });
+          guideCtx.stroke();
+        } else {
+          // Coarse Julia-set dust.
+          const columns=190, rows=140, scale=fr*1.8/columns;
+          for(let row=0;row<rows;row++) for(let column=0;column<columns;column++) {
+            let zx=(column/columns)*3-1.5, zy=(row/rows)*2.2-1.1, iteration=0;
+            while(zx*zx+zy*zy<4 && iteration<28){ const next=zx*zx-zy*zy-.745; zy=2*zx*zy+.113; zx=next; iteration++; }
+            if(iteration>10) guideCtx.fillRect(fx+(column-columns/2)*scale,fy+(row-rows/2)*scale,1,1);
+          }
+        }
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.0992) {
+        // Formulae only: a faded mathematics board without plotted curves.
+        const equations = [
+          'x(t) = sin(3t + π/4)',
+          'y(t) = sin(4t)',
+          'r = a cos(kθ)',
+          '∫₀²π r² dθ / 2',
+          'x²/a² + y²/b² = 1',
+          '∂u/∂t = α∇²u',
+          'eⁱᶿ = cos θ + i sin θ',
+        ];
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.27;
+        guideCtx.fillStyle = ink('#34485b');
+        guideCtx.textAlign = 'left';
+        guideCtx.textBaseline = 'middle';
+        for (let line = 0; line < 5; line++) {
+          const equation = equations[(line + Math.floor(Math.random() * equations.length)) % equations.length];
+          const size = Math.round(Math.min(w, h) * (0.025 + Math.random() * 0.012));
+          guideCtx.font = 'italic ' + size + 'px serif';
+          guideCtx.fillText(equation, w * (0.18 + Math.random() * 0.08), h * (0.2 + line * 0.14) + shift());
+        }
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.0995) {
+        // An isometric three-axis plane with randomly raised wire columns.
+        const cell = Math.min(w, h) * 0.052;
+        const originX = w / 2 + shift();
+        const originY = h * 0.61 + shift();
+        const project = (x, y, z = 0) => ({
+          x: originX + (x - y) * cell,
+          y: originY + (x + y) * cell * 0.5 - z * cell,
+        });
+        const edge = (a, b) => {
+          guideCtx.moveTo(a.x, a.y);
+          guideCtx.lineTo(b.x, b.y);
+        };
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.3;
+        guideCtx.strokeStyle = guideInk;
+        guideCtx.lineWidth = 1.1;
+        guideCtx.beginPath();
+        const extent = 4;
+        for (let line = -extent; line <= extent; line++) {
+          edge(project(-extent, line), project(extent, line));
+          edge(project(line, -extent), project(line, extent));
+        }
+        edge(project(0, 0), project(extent + 1, 0));
+        edge(project(0, 0), project(0, extent + 1));
+        edge(project(0, 0), project(0, 0, extent + 1));
+        for (let column = 0; column < 6; column++) {
+          const x = -3 + Math.floor(Math.random() * 6);
+          const y = -3 + Math.floor(Math.random() * 6);
+          const height = 0.7 + Math.random() * 3.3;
+          const a = project(x, y);
+          const b = project(x + 0.62, y);
+          const c = project(x + 0.62, y + 0.62);
+          const d = project(x, y + 0.62);
+          const at = project(x, y, height);
+          const bt = project(x + 0.62, y, height);
+          const ct = project(x + 0.62, y + 0.62, height);
+          const dt = project(x, y + 0.62, height);
+          edge(a, at); edge(b, bt); edge(c, ct); edge(d, dt);
+          edge(at, bt); edge(bt, ct); edge(ct, dt); edge(dt, at);
+        }
+        guideCtx.stroke();
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else if (guideRoll < 0.10) {
+        // Five families of small topographic maps: square survey grid,
+        // numbered contour loops, and both engineered and wandering roads.
+        const mapLayouts = [
+          [[0.27,0.34],[0.68,0.63]],
+          [[0.22,0.68],[0.52,0.31],[0.78,0.56]],
+          [[0.34,0.48],[0.73,0.28]],
+          [[0.2,0.27],[0.5,0.67],[0.8,0.35]],
+          [[0.38,0.3],[0.62,0.72]],
+        ];
+        const mapStyle = Math.floor(Math.random() * mapLayouts.length);
+        const mapW = w * 0.68;
+        const mapH = h * 0.64;
+        const mapX = (w - mapW) / 2 + shift();
+        const mapY = (h - mapH) / 2 + shift();
+        guideCtx.save();
+        guideCtx.globalAlpha = 0.25;
+        guideCtx.strokeStyle = ink('#35526a');
+        guideCtx.fillStyle = ink('#35526a');
+        guideCtx.lineWidth = 1;
+        guideCtx.beginPath();
+        guideCtx.rect(mapX, mapY, mapW, mapH);
+        guideCtx.clip();
+
+        // Survey grid.
+        guideCtx.beginPath();
+        for (let column = 0; column <= 10; column++) {
+          const x = mapX + mapW * column / 10;
+          guideCtx.moveTo(x, mapY);
+          guideCtx.lineTo(x, mapY + mapH);
+        }
+        for (let row = 0; row <= 8; row++) {
+          const y = mapY + mapH * row / 8;
+          guideCtx.moveTo(mapX, y);
+          guideCtx.lineTo(mapX + mapW, y);
+        }
+        guideCtx.stroke();
+
+        // Closed elevation rings, slightly irregular but never noisy.
+        guideCtx.globalAlpha = 0.34;
+        mapLayouts[mapStyle].forEach((peak, peakIndex) => {
+          for (let ring = 0; ring < 5; ring++) {
+            const rx = mapW * (0.12 - ring * 0.017);
+            const ry = mapH * (0.14 - ring * 0.019);
+            const centerX = mapX + mapW * peak[0];
+            const centerY = mapY + mapH * peak[1];
+            guideCtx.beginPath();
+            for (let point = 0; point <= 56; point++) {
+              const angle = Math.PI * 2 * point / 56;
+              const wobble = 1 + Math.sin(angle * (3 + mapStyle) + peakIndex) * 0.035 + Math.sin(angle * 7) * 0.018;
+              const x = centerX + Math.cos(angle) * rx * wobble;
+              const y = centerY + Math.sin(angle) * ry * wobble;
+              if (point === 0) guideCtx.moveTo(x, y);
+              else guideCtx.lineTo(x, y);
+            }
+            guideCtx.closePath();
+            guideCtx.stroke();
+            if (ring === 1 || ring === 3) {
+              guideCtx.font = Math.max(8, Math.round(Math.min(w, h) * 0.009)) + 'px serif';
+              guideCtx.textAlign = 'left';
+              guideCtx.textBaseline = 'middle';
+              guideCtx.fillText(String(200 + peakIndex * 100 + ring * 120), centerX + rx * 0.72, centerY - ry * 0.7);
+            }
+          }
+        });
+
+        // One surveyed straight road and one softer road following the land.
+        guideCtx.globalAlpha = 0.42;
+        guideCtx.lineWidth = 2;
+        guideCtx.beginPath();
+        if (mapStyle % 2 === 0) {
+          guideCtx.moveTo(mapX, mapY + mapH * 0.82);
+          guideCtx.lineTo(mapX + mapW, mapY + mapH * 0.18);
+        } else {
+          guideCtx.moveTo(mapX + mapW * 0.14, mapY);
+          guideCtx.lineTo(mapX + mapW * 0.78, mapY + mapH);
+        }
+        guideCtx.stroke();
+        guideCtx.beginPath();
+        guideCtx.moveTo(mapX - 10, mapY + mapH * (0.28 + mapStyle * 0.05));
+        guideCtx.bezierCurveTo(
+          mapX + mapW * 0.24, mapY + mapH * 0.05,
+          mapX + mapW * 0.62, mapY + mapH * 0.92,
+          mapX + mapW + 10, mapY + mapH * 0.58
+        );
+        guideCtx.stroke();
+        guideCtx.restore();
+        guideCtx.beginPath();
+      } else {
+        guideCtx.moveTo(left, top);
+        guideCtx.lineTo(right, top);
+        guideCtx.lineTo(right, bottom);
+        guideCtx.lineTo(left, bottom);
+        guideCtx.closePath();
+      }
       guideCtx.stroke();
+      // The nine-cross variant already owns the centre and needs no darker
+      // duplicate. Every other guide keeps the familiar registration cross.
+      if (!(guideRoll >= 0.05 && guideRoll < 0.075) && !(guideRoll >= 0.0825 && guideRoll < 0.10)) {
+        const cx = Math.round(w / 2) + 0.5 + shift();
+        const cy = Math.round(h / 2) + 0.5 + shift();
+        const arm = Math.max(18, Math.round(Math.min(w, h) * 0.035)) + shift();
+        guideCtx.beginPath();
+        guideCtx.moveTo(cx - arm, cy);
+        guideCtx.lineTo(cx + arm, cy);
+        guideCtx.moveTo(cx, cy - arm);
+        guideCtx.lineTo(cx, cy + arm);
+        guideCtx.stroke();
+      }
+
+      const creationDate = new Intl.DateTimeFormat('en-GB', {
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+      }).format(new Date()).toLowerCase();
+      guideCtx.globalAlpha = 0.62;
+      guideCtx.fillStyle = '#504d48';
+      guideCtx.font = Math.max(15, Math.round(Math.min(w, h) * 0.018)) + 'px serif';
+      guideCtx.textAlign = 'right';
+      guideCtx.textBaseline = 'bottom';
+      guideCtx.fillText(creationDate, w - 18, h - 14);
       guideCtx.restore();
       applyTool();
     }
@@ -472,7 +1378,7 @@ def page_html():
     function setTool(nextTool) {
       tool = nextTool;
       applyTool();
-      status(tool === 'eraser' ? 'Eraser' : tool === 'shade' ? 'Shade lasso — draw a closed shape' : 'Pen');
+      status(tool === 'eraser' ? 'Eraser' : tool === 'shade' ? 'Colour pencil lasso — draw a closed shape' : 'Pen');
     }
 
     function showImage() {
@@ -544,6 +1450,7 @@ def page_html():
       return {
         x: (e.clientX - rect.left) * canvas.width / rect.width,
         y: (e.clientY - rect.top) * canvas.height / rect.height,
+        pressure: e.pointerType === 'pen' && e.pressure > 0 ? e.pressure : 0.5,
         // Shade shapes may begin in the surrounding dark area. Their points
         // can sit beyond the canvas edge; Canvas clips the final fill cleanly.
         inside: inside || (tool === 'shade' && insideBoardFrame),
@@ -571,15 +1478,21 @@ def page_html():
     function paintDab(p) {
       const radius = Math.max(0.6, Number(brush.value) / 2);
       if (tool === 'pen') {
-        // A narrow upright marker tip: the size control still governs its
-        // overall weight, but it reads more like a storyboard marker than a brush.
-        const width = Math.max(1, Number(brush.value) * 0.62);
+        const rawPressure = Math.max(0.12, Math.min(1, p.pressure || 0.5));
+        const pressure = Math.max(0.05, Math.min(1, 0.5 + (rawPressure - 0.5) * 1.2));
+        const width = Math.max(0.7, Number(brush.value) * 0.62 * (0.45 + pressure * 0.9));
         const height = width * 2.15;
         ctx.save();
         ctx.globalCompositeOperation = 'source-over';
-        ctx.fillStyle = 'rgba(0,0,0,0.96)';
+        ctx.fillStyle = 'rgba(35,34,31,' + (0.38 + pressure * 0.32) + ')';
         ctx.beginPath();
-        ctx.roundRect(p.x - width / 2, p.y - height / 2, width, height, Math.min(width / 2, 1.5));
+        ctx.roundRect(
+          p.x - width / 2,
+          p.y - height / 2,
+          width,
+          height,
+          Math.min(width / 2, 1.5)
+        );
         ctx.fill();
         ctx.restore();
         return;
@@ -607,7 +1520,11 @@ def page_html():
       const count = Math.max(1, Math.ceil(dist / step));
       for (let i = 1; i <= count; i++) {
         const t = i / count;
-        paintDab({ x: a.x + dx * t, y: a.y + dy * t });
+        paintDab({
+          x: a.x + dx * t,
+          y: a.y + dy * t,
+          pressure: (a.pressure || 0.5) + ((b.pressure || 0.5) - (a.pressure || 0.5)) * t,
+        });
       }
     }
 
@@ -624,6 +1541,7 @@ def page_html():
         ? {
             x: lastPoint.x + (raw.x - lastPoint.x) * 0.64,
             y: lastPoint.y + (raw.y - lastPoint.y) * 0.64,
+            pressure: lastPoint.pressure + (raw.pressure - lastPoint.pressure) * 0.64,
             inside: true,
           }
         : raw;
@@ -656,13 +1574,48 @@ def page_html():
       if (lassoPoints.length < 3) return false;
       captureStrokeUndo();
       fillCtx.save();
-      fillCtx.globalAlpha = 0.4;
-      fillCtx.fillStyle = shadeColour.value;
       fillCtx.beginPath();
       fillCtx.moveTo(lassoPoints[0].x, lassoPoints[0].y);
       for (const point of lassoPoints.slice(1)) fillCtx.lineTo(point.x, point.y);
       fillCtx.closePath();
-      fillCtx.fill();
+      fillCtx.clip();
+
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      for (const point of lassoPoints) {
+        minX = Math.min(minX, point.x);
+        maxX = Math.max(maxX, point.x);
+        minY = Math.min(minY, point.y);
+        maxY = Math.max(maxY, point.y);
+      }
+      const colour = shadeColour.value;
+
+      // A very pale waxy base prevents large shapes from looking empty.
+      fillCtx.globalAlpha = 0.075;
+      fillCtx.fillStyle = colour;
+      fillCtx.fillRect(minX, minY, maxX - minX, maxY - minY);
+
+      // Scatter translucent pigment into the clipped area. This gives the
+      // lasso colored-pencil grain without diagonal or repeating linework.
+      const rgb = colour.match(/[a-f\d]{2}/gi).map(value => parseInt(value, 16));
+      const grainCanvas = document.createElement('canvas');
+      grainCanvas.width = Math.max(1, Math.ceil(maxX - minX));
+      grainCanvas.height = Math.max(1, Math.ceil(maxY - minY));
+      const grainCtx = grainCanvas.getContext('2d');
+      const grainImage = grainCtx.createImageData(grainCanvas.width, grainCanvas.height);
+      const grainPixels = grainImage.data;
+      for (let i = 0; i < grainPixels.length; i += 4) {
+        if (Math.random() > 0.46) continue;
+        grainPixels[i] = rgb[0];
+        grainPixels[i + 1] = rgb[1];
+        grainPixels[i + 2] = rgb[2];
+        grainPixels[i + 3] = 10 + Math.floor(Math.random() * 34);
+      }
+      grainCtx.putImageData(grainImage, 0, 0);
+      fillCtx.globalAlpha = 1;
+      fillCtx.drawImage(grainCanvas, Math.floor(minX), Math.floor(minY));
       fillCtx.restore();
       return true;
     }
@@ -670,11 +1623,13 @@ def page_html():
     function markStrokeChanged() {
       strokeChanged = true;
       dirty = true;
+      drawingPresent = true;
+      changeRevision++;
       saveState.textContent = 'Unsaved changes';
     }
 
     function canStartStroke(e) {
-      if (e.target.closest('button, input, select, label, .divider, .tools, .bar')) return false;
+      if (e.target.closest('button, input, select, label, .divider, .tools, .bar, .board-ref')) return false;
       return Boolean(e.target.closest('.board-frame, .left-pane .frame'));
     }
 
@@ -682,6 +1637,7 @@ def page_html():
       if (!canStartStroke(e)) return;
       if (e.button !== undefined && e.button !== 0) return;
       e.preventDefault();
+      cancelScheduledSave();
       drawing = true;
       strokeChanged = false;
       strokeUndoCaptured = false;
@@ -762,10 +1718,22 @@ def page_html():
 
     function scheduleSave() {
       cancelScheduledSave();
-      saveTimer = setTimeout(() => saveCurrent(false), 650);
+      saveTimer = setTimeout(() => {
+        saveTimer = null;
+        const run = () => {
+          saveIdleHandle = null;
+          if (!drawing && dirty) saveCurrent(false);
+        };
+        if ('requestIdleCallback' in window) {
+          saveIdleHandle = requestIdleCallback(run, {timeout: 1800});
+        } else {
+          saveTimer = setTimeout(run, 0);
+        }
+      }, 1400);
     }
 
     function boardHasDrawing() {
+      if (drawingPresent) return true;
       for (const layer of [ctx, fillCtx]) {
         const pixels = layer.getImageData(0, 0, canvas.width, canvas.height).data;
         for (let i = 3; i < pixels.length; i += 4) {
@@ -775,41 +1743,70 @@ def page_html():
       return false;
     }
 
+    function canvasDataUrlAsync(source) {
+      return new Promise((resolve, reject) => {
+        source.toBlob(blob => {
+          if (!blob) {
+            reject(new Error('Could not encode drawing'));
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error || new Error('Could not read drawing'));
+          reader.readAsDataURL(blob);
+        }, 'image/png');
+      });
+    }
+
     async function saveCurrent(showStatus = true) {
       if (!images.length) return false;
       cancelScheduledSave();
+      if (saving) {
+        saveAgain = true;
+        return true;
+      }
       if (!boardHasDrawing()) {
         dirty = false;
         saveState.textContent = 'Empty drawing not saved';
         if (showStatus) status('Draw something before saving, or use Skip.');
         return false;
       }
+      saving = true;
+      const savingRevision = changeRevision;
       const item = images[index];
-      const payload = {
-        index: index + 1,
-        imageId: item.id,
-        imageName: item.name,
-        query: clipSearch.value.trim(),
-        aspect: aspect.value,
-        hasDrawing: true,
-        dataUrl: exportCanvas().toDataURL('image/png'),
-      };
-      const res = await fetch('/api/save', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.ok) {
-        const message = data.error || 'unknown error';
-        saveState.textContent = 'Save failed';
-        status('Save failed: ' + message);
-        throw new Error(message);
+      try {
+        const payload = {
+          index: index + 1,
+          imageId: item.id,
+          imageName: item.name,
+          query: clipSearch.value.trim(),
+          aspect: aspect.value,
+          hasDrawing: true,
+          dataUrl: await canvasDataUrlAsync(exportCanvas()),
+        };
+        const res = await fetch('/api/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+          const message = data.error || 'unknown error';
+          saveState.textContent = 'Save failed';
+          status('Save failed: ' + message);
+          throw new Error(message);
+        }
+        if (changeRevision === savingRevision) dirty = false;
+        saveState.textContent = 'Saved ' + data.file;
+        if (showStatus) status('Saved ' + data.file);
+        return true;
+      } finally {
+        saving = false;
+        if (saveAgain) {
+          saveAgain = false;
+          if (dirty) scheduleSave();
+        }
       }
-      dirty = false;
-      saveState.textContent = 'Saved ' + data.file;
-      if (showStatus) status('Saved ' + data.file);
-      return true;
     }
 
     async function next(save) {
@@ -835,8 +1832,11 @@ def page_html():
       if (!prev) return;
       ctx.putImageData(prev.pen, 0, 0);
       fillCtx.putImageData(prev.fill, 0, 0);
+      drawingPresent = false;
+      drawingPresent = boardHasDrawing();
       applyTool();
       dirty = true;
+      changeRevision++;
       saveState.textContent = 'Unsaved changes';
       scheduleSave();
     }
@@ -845,7 +1845,9 @@ def page_html():
       pushUndo();
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       fillCtx.clearRect(0, 0, fill.width, fill.height);
+      drawingPresent = false;
       dirty = true;
+      changeRevision++;
       saveState.textContent = 'Unsaved changes';
       scheduleSave();
     }
@@ -855,8 +1857,11 @@ def page_html():
       out.width = canvas.width;
       out.height = canvas.height;
       const outCtx = out.getContext('2d');
-      outCtx.fillStyle = 'white';
+      // Warm drawing-paper base: this is baked into the PNG, not just shown
+      // as a browser background.
+      outCtx.fillStyle = '#e0dedb';
       outCtx.fillRect(0, 0, out.width, out.height);
+      outCtx.drawImage(paper, 0, 0);
       outCtx.drawImage(fill, 0, 0);
       outCtx.drawImage(guide, 0, 0);
       outCtx.drawImage(canvas, 0, 0);
@@ -892,6 +1897,38 @@ def page_html():
     shadeBtn.onclick = () => setTool('shade');
     traceBtn.onclick = toggleTrace;
     brush.oninput = applyTool;
+    addRefs.onclick = () => refFiles.click();
+    refFiles.onchange = async () => {
+      const available = Math.max(0, 5 - boardReferences.length);
+      const files = Array.from(refFiles.files || []).slice(0, available);
+      if (!files.length) {
+        status(available ? 'Choose an image to add.' : 'Five-reference limit reached.');
+        refFiles.value = '';
+        return;
+      }
+      status('Adding reference images...');
+      for (const file of files) {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(file);
+        });
+        const res = await fetch('/api/references', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: file.name, dataUrl}),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          status(data.error || 'Could not add reference image.');
+          break;
+        }
+      }
+      refFiles.value = '';
+      await loadBoardReferences();
+      status(boardReferences.length + ' board reference' + (boardReferences.length === 1 ? '' : 's'));
+    };
     aspect.onchange = async () => {
       if (dirty) await saveCurrent(false);
       resetCanvas();
@@ -921,24 +1958,32 @@ def page_html():
         return;
       }
       if (e.target.matches('input, select, textarea')) return;
-      if (e.key.toLowerCase() === 'p') {
+      if (e.key === '1' || e.key.toLowerCase() === 'p') {
         e.preventDefault();
         setTool('pen');
         return;
       }
-      if (e.key.toLowerCase() === 'e') {
+      if (e.key === '2' || e.key.toLowerCase() === 'e') {
         e.preventDefault();
         setTool('eraser');
         return;
       }
-      if (e.key.toLowerCase() === 's') {
+      if (e.key === '3' || e.key.toLowerCase() === 's') {
         e.preventDefault();
         setTool('shade');
         return;
       }
-      if (e.key.toLowerCase() === 't') {
+      if (e.key === '4' || e.key.toLowerCase() === 't') {
         e.preventDefault();
         toggleTrace();
+        return;
+      }
+      if (e.key.toLowerCase() === 'q' || e.key.toLowerCase() === 'w') {
+        e.preventDefault();
+        const delta = e.key.toLowerCase() === 'q' ? -1 : 1;
+        brush.value = String(Math.max(Number(brush.min), Math.min(Number(brush.max), Number(brush.value) + delta)));
+        applyTool();
+        status('Pen size ' + brush.value);
         return;
       }
       if (e.key.toLowerCase() === 'z') {
@@ -952,6 +1997,7 @@ def page_html():
     setBoardScale(boardScale, false);
     applyReferenceMirror();
     resetCanvas();
+    loadBoardReferences();
     loadCollections().then(loadImages);
   </script>
 </body>
@@ -1026,6 +2072,13 @@ class StoryboardHandler(BaseHTTPRequestHandler):
                 collections.append({"name": name, "count": len(collection_images(name))})
             self.send_json({"collections": collections})
             return
+        if parsed.path == "/api/references":
+            references = [
+                {"name": path.name, "url": "/reference/" + quote(path.name)}
+                for path in self.server.reference_paths()
+            ]
+            self.send_json({"references": references, "limit": 5})
+            return
         if parsed.path == "/api/search":
             params = parse_qs(parsed.query)
             query = params.get("q", [""])[0].strip()
@@ -1069,16 +2122,52 @@ class StoryboardHandler(BaseHTTPRequestHandler):
         if parsed.path.startswith("/image/"):
             self.send_image(self.image_path_from_request())
             return
+        if parsed.path.startswith("/reference/"):
+            name = Path(unquote(parsed.path.split("/reference/", 1)[1])).name
+            self.send_image(self.server.reference_dir / name)
+            return
         self.send_error(404)
 
     def do_HEAD(self):
-        if urlparse(self.path).path.startswith("/image/"):
+        parsed = urlparse(self.path)
+        if parsed.path.startswith("/image/"):
             self.send_image(self.image_path_from_request(), include_body=False)
+            return
+        if parsed.path.startswith("/reference/"):
+            name = Path(unquote(parsed.path.split("/reference/", 1)[1])).name
+            self.send_image(self.server.reference_dir / name, include_body=False)
             return
         self.send_error(404)
 
     def do_POST(self):
-        if urlparse(self.path).path != "/api/save":
+        parsed = urlparse(self.path)
+        if parsed.path == "/api/references":
+            length = int(self.headers.get("Content-Length", "0"))
+            try:
+                if len(self.server.reference_paths()) >= 5:
+                    self.send_json({"ok": False, "error": "five-reference limit reached"}, status=400)
+                    return
+                data = json.loads(self.rfile.read(length))
+                header, encoded = data["dataUrl"].split(",", 1)
+                mime = header.split(";", 1)[0].split(":", 1)[-1]
+                if not mime.startswith("image/"):
+                    raise ValueError("reference must be an image")
+                raw = base64.b64decode(encoded, validate=True)
+                if len(raw) > 15 * 1024 * 1024:
+                    raise ValueError("reference image is larger than 15 MB")
+                name = clean_reference_name(data.get("name", "reference"), mime)
+                stem, suffix = Path(name).stem, Path(name).suffix
+                path = self.server.reference_dir / name
+                counter = 2
+                while path.exists():
+                    path = self.server.reference_dir / f"{stem}-{counter}{suffix}"
+                    counter += 1
+                path.write_bytes(raw)
+                self.send_json({"ok": True, "name": path.name})
+            except Exception as exc:
+                self.send_json({"ok": False, "error": str(exc)}, status=400)
+            return
+        if parsed.path != "/api/save":
             self.send_error(404)
             return
         length = int(self.headers.get("Content-Length", "0"))
@@ -1108,6 +2197,19 @@ class StoryboardHandler(BaseHTTPRequestHandler):
         except Exception as exc:
             self.send_json({"ok": False, "error": str(exc)}, status=400)
 
+    def do_DELETE(self):
+        parsed = urlparse(self.path)
+        if parsed.path != "/api/references":
+            self.send_error(404)
+            return
+        name = Path(parse_qs(parsed.query).get("name", [""])[0]).name
+        path = self.server.reference_dir / name
+        if not name or not path.is_file():
+            self.send_json({"ok": False, "error": "reference not found"}, status=404)
+            return
+        path.unlink()
+        self.send_json({"ok": True})
+
     def log_message(self, fmt, *args):
         return
 
@@ -1118,6 +2220,14 @@ class StoryboardServer(ThreadingHTTPServer):
         self.paths = list(paths)
         self.path_ids = {p.resolve(): i for i, p in enumerate(self.paths)}
         self.out_dir = out_dir
+        self.reference_dir = out_dir / "references"
+        self.reference_dir.mkdir(parents=True, exist_ok=True)
+
+    def reference_paths(self):
+        return sorted(
+            (path for path in self.reference_dir.iterdir() if path.is_file()),
+            key=lambda path: path.stat().st_mtime,
+        )[:5]
 
     def id_for_path(self, path):
         path = path.resolve()

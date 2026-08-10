@@ -1,9 +1,11 @@
 # Pictogrep
 
-Pictogrep is a small terminal image search box for visual memory.
+Pictogrep is a small tool for two closely related jobs: **finding** the images
+you half-remember and **turning** them into rough storyboards before the idea
+evaporates.
 
-Point it at one or more folders of reference images, build a CLIP index, then search with
-plain language in a terminal UI:
+Point it at one or more folders of reference images, build a CLIP index, then
+search with plain language in a terminal UI:
 
 ```bash
 pictogrep
@@ -12,6 +14,11 @@ pictogrep
 Type `red cloak`, `foggy street`, `girl sitting`, `ornate helmet`, or whatever
 you remember. Pictogrep ranks your local images by visual meaning and opens the
 ones you choose.
+
+When a reference wants to become a shot, open the browser storyboard mode. It
+puts the reference beside a simple drawing surface so you can make fast, ugly,
+useful boards. Those boards can stand on their own or travel into Milklily to
+be ordered, timed, and turned into an animatic.
 
 ## The Friend Setup
 
@@ -39,7 +46,8 @@ pictogrep doctor
 - Keeps the fast CLI flow: `pictogrep "girl sitting"`.
 - Refreshes remembered image folders automatically every seven days when used.
 - Creates editable image tags, manually or from CLIP search results.
-- Opens a browser storyboard doodle tool for redrawing references quickly.
+- Opens a browser storyboard tool for turning references into quick, useful
+  shot drawings.
 - Uses `mpv` for viewing images when available.
 
 ## Quick Start With Nix
@@ -115,6 +123,12 @@ you want; the next weekly refresh picks up manually added image files. The
 storyboard browser has a tag selector, and its CLIP search respects that
 selector.
 
+## From search to storyboard to film
+
+Pictogrep is useful before and during a film project. Search your library for
+the image that has the right *feeling*, sketch a version that fits your shot,
+then either keep the board here or hand it to Milklily for ordering and timing.
+
 ## Milklily Projects
 
 From inside a Milklily project, Pictogrep can link a tag's references into
@@ -129,6 +143,27 @@ milklily intake boards main
 
 Storyboard sidecars record the source image, selected tags, CLIP query, and
 aspect ratio. Milklily can use that context when it imports the sketch.
+
+### Order standalone boards in Milklily
+
+The normal Pictogrep storyboard command saves drawings into its own
+`storyboards/` folder. That is useful when you want to sketch first and decide
+on the film later. Milklily's browser board can import that folder safely:
+
+```bash
+# Make drawings here; originals remain in Pictogrep's storyboards/ folder.
+pictogrep storyboard
+
+# From inside a Milklily project, copy and order those drawings as an animatic.
+milklily board main --images-dir /path/to/pictogrep/storyboards --open
+```
+
+`--images-dir` copies PNG, JPG, and WebP files into the Milklily project's
+`storyboards/inbox/`; it never moves or changes the Pictogrep originals. In
+the board, drag images from the unsorted pane into the EDL, set their duration,
+preview the cut, and save. The board has Vim-style navigation: `Tab` switches
+between the image pane and EDL, `h/j/k/l` moves the selection, `J/K` reorders
+EDL shots, and `U/I` shortens or lengthens a shot.
 
 Check whether dependencies, viewer, and index are ready:
 
@@ -197,11 +232,14 @@ Use it for rough storyboard ideas, not polished art.
 
 The important controls are:
 
-- `Pen` / `p`: draw black strokes.
-- `Eraser` / `e`: erase with white strokes.
-- `Trace` / `t`: show the reference faintly under the board while drawing.
+- `Pen` / `p` / `1`: draw with a translucent upright nib; Wacom and other compatible
+  pens control its weight and opacity with pressure.
+- `Eraser` / `e` / `2`: erase with white strokes.
+- `Colour lasso` / `s` / `3`: circle an area to add soft colored-pencil grain
+  behind the graphite lines.
+- `Trace` / `t` / `4`: show the reference faintly under the board while drawing.
   The reference is not saved into the storyboard PNG.
-- Brush slider: change stroke size.
+- Brush slider or `q` / `w`: decrease or increase stroke size.
 - `Undo` / `Ctrl+Z` / `z`: undo the last stroke or clear.
 - `Clear`: wipe the current board.
 - `Save now`: save the current board.
@@ -212,6 +250,9 @@ The important controls are:
 - Reference `-` / `+`: zoom only the reference image inside its pane.
 - Divider `=`: reset the pane split and reference zoom.
 - Reference `Mirror`: flip the reference and trace underlay horizontally.
+- `Add refs`: add up to five persistent reference images around the board.
+  Drag them to reposition, use the corner handle to resize, or click `×` to
+  remove one. They are kept in the storyboard output's `references/` folder.
 - Search: type a CLIP query and press `Enter` to load the top 80 reference
   images; clear it and press `Enter` to return to shuffled All images.
 - Aspect selector: switch between `4:3`, `16:9`, `Pan H 2:1`, and `Pan V 3:4`.
@@ -225,9 +266,9 @@ saved into the final PNG.
 
 `All images` is the default and is shuffled each time you load it. You can also
 choose the `30 most recent`, `100 most recent`, or a custom recent count.
-`4:3` is the default board format. Boards autosave after each stroke, but empty
-drawings are not saved; use `Skip` to move past a reference without creating a
-board. Saved boards are written to:
+`4:3` is the default board format. Boards autosave after the board has been idle
+briefly, but empty drawings are not saved; use `Skip` to move past a reference
+without creating a board. Saved boards are written to:
 
 ```text
 storyboards/

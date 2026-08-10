@@ -12,10 +12,34 @@ while [ -L "$SOURCE" ]; do
 done
 DIR="$(cd -P "$(dirname "$SOURCE")/.." && pwd)"
 
+add_runtime_library_path() {
+  local path
+  local old_ifs="$IFS"
+  IFS=:
+  for path in $1; do
+    if [ -d "$path" ]; then
+      export LD_LIBRARY_PATH="$path${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+    fi
+  done
+  IFS="$old_ifs"
+}
+
 if [ -n "${PICTOGREP_LIBSTDCPP:-}" ]; then
-  export LD_LIBRARY_PATH="$PICTOGREP_LIBSTDCPP${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  add_runtime_library_path "$PICTOGREP_LIBSTDCPP"
 elif [ -d /nix/store/hngmi01i8wgi25a0byrxcn4ysz5j79mw-gcc-15.2.0-lib/lib ]; then
-  export LD_LIBRARY_PATH="/nix/store/hngmi01i8wgi25a0byrxcn4ysz5j79mw-gcc-15.2.0-lib/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+  add_runtime_library_path "/nix/store/hngmi01i8wgi25a0byrxcn4ysz5j79mw-gcc-15.2.0-lib/lib"
+fi
+
+if [ -z "${PICTOGREP_ZLIB:-}" ]; then
+  for candidate in /nix/store/*-zlib-*/lib /nix/store/*-libz-*/lib; do
+    if [ -e "$candidate/libz.so.1" ]; then
+      PICTOGREP_ZLIB="$candidate"
+      break
+    fi
+  done
+fi
+if [ -n "${PICTOGREP_ZLIB:-}" ]; then
+  add_runtime_library_path "$PICTOGREP_ZLIB"
 fi
 
 usage() {
@@ -29,7 +53,7 @@ Usage:
   pictogrep doctor           check dependencies, index, and viewer
   pictogrep version          print version
   pictogrep paths            show local data and tag folders
-  pictogrep index [folder]   build/rebuild the image index
+  pictogrep index [folder]   build/rebuild the image index and managed WebP copies
   pictogrep tags ...         create, fill, and send editable image tags
   pictogrep storyboard       open the browser storyboard doodle tool
   pictogrep search "query"   search from the shell and open results
@@ -98,7 +122,7 @@ case "${1:-}" in
     python -c "import sys; sys.path.insert(0, '$DIR/src'); from pictogrep_core import VERSION; print('pictogrep ' + VERSION)"
     ;;
   paths)
-    python -c "import sys; sys.path.insert(0, '$DIR/src'); from pictogrep_core import BASE, COLLECTIONS_DIR, DATA_DIR; print('home:        ' + str(BASE)); print('index:       ' + str(DATA_DIR)); print('tags:        ' + str(COLLECTIONS_DIR)); print('storyboards: ' + str(BASE / 'storyboards'))"
+    python -c "import sys; sys.path.insert(0, '$DIR/src'); from pictogrep_core import BASE, COLLECTIONS_DIR, DATA_DIR, OPTIMIZED_DIR; print('home:        ' + str(BASE)); print('index:       ' + str(DATA_DIR)); print('optimized:   ' + str(OPTIMIZED_DIR)); print('tags:        ' + str(COLLECTIONS_DIR)); print('storyboards: ' + str(BASE / 'storyboards'))"
     ;;
   index)
     shift

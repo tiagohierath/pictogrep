@@ -18,10 +18,11 @@
         pkgs.python312Packages.numpy
         pkgs.python312Packages.pillow
         pkgs.stdenv.cc.cc.lib
+        pkgs.zlib
         pkgs.mpv
       ];
       shellHook = ''
-        export PICTOGREP_LIBSTDCPP="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib ]}"
+        export PICTOGREP_LIBSTDCPP="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib pkgs.zlib ]}"
         export LD_LIBRARY_PATH="$PICTOGREP_LIBSTDCPP''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
       '';
     };

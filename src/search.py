@@ -21,7 +21,7 @@ def main(argv=None):
 
     try:
         results = search(query, limit=args.limit)
-    except FileNotFoundError as exc:
+    except (FileNotFoundError, RuntimeError) as exc:
         print(exc, file=sys.stderr)
         return 1
     except (ImportError, ModuleNotFoundError) as exc:

@@ -5,6 +5,7 @@ import os
 import shlex
 import shutil
 import subprocess
+import tempfile
 import time
 
 BASE = Path(__file__).resolve().parents[1]
@@ -14,7 +15,9 @@ EMBEDDINGS_PATH = DATA_DIR / "embeddings.npy"
 METADATA_PATH = DATA_DIR / "metadata.json"
 INDEX_STATE_PATH = DATA_DIR / "index-state.json"
 COLLECTIONS_DIR = BASE / "collections"
+OPTIMIZED_DIR = DATA_DIR / "optimized-images"
 WEEK_SECONDS = 7 * 24 * 60 * 60
+DAY_SECONDS = 24 * 60 * 60
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp")
 MODEL_NAME = os.environ.get("PICTOGREP_MODEL", "ViT-B-32")
 PRETRAINED = os.environ.get("PICTOGREP_PRETRAINED", "laion2b_s34b_b79k")
@@ -34,12 +37,70 @@ def available_index(base=BASE):
     return (base / "data" / "embeddings.npy").exists() and (base / "data" / "metadata.json").exists()
 
 
+def env_int(name, default):
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+MAINTENANCE_SECONDS = max(0, env_int("PICTOGREP_MAINTENANCE_SECONDS", DAY_SECONDS))
+
+
+def atomic_write_json(path, data):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as fh:
+            tmp = Path(fh.name)
+            json.dump(data, fh, indent=2)
+            fh.write("\n")
+        os.replace(tmp, path)
+    finally:
+        if tmp and tmp.exists():
+            tmp.unlink()
+
+
+def atomic_save_npy(path, array):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            "wb",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as fh:
+            tmp = Path(fh.name)
+            import numpy as np
+
+            np.save(fh, array)
+        os.replace(tmp, path)
+    finally:
+        if tmp and tmp.exists():
+            tmp.unlink()
+
+
 def index_state(base=BASE):
     path = base / "data" / "index-state.json"
     if not path.exists():
         return {}
     with path.open() as fh:
         return json.load(fh)
+
+
+def write_index_state(state, base=BASE):
+    atomic_write_json(base / "data" / "index-state.json", state)
 
 
 def remembered_sources(base=BASE):
@@ -67,6 +128,101 @@ def index_is_due(base=BASE, now=None):
     return not updated or (now or time.time()) - updated >= WEEK_SECONDS
 
 
+def index_maintenance_is_due(base=BASE, now=None):
+    if not available_index(base):
+        return False
+    maintained = index_state(base).get("maintained_at", 0)
+    return not maintained or (now or time.time()) - maintained >= MAINTENANCE_SECONDS
+
+
+def metadata_key(path):
+    try:
+        return str(Path(path).expanduser().resolve())
+    except (OSError, RuntimeError):
+        return str(Path(path).expanduser().absolute())
+
+
+def duplicate_metadata_count(metadata):
+    seen = set()
+    duplicates = 0
+    for path in metadata:
+        key = metadata_key(path)
+        if key in seen:
+            duplicates += 1
+            continue
+        seen.add(key)
+    return duplicates
+
+
+def dedupe_index(base=BASE, now=None):
+    if not available_index(base):
+        return {
+            "available": False,
+            "changed": False,
+            "removed": 0,
+            "kept": 0,
+            "total": 0,
+        }
+
+    import numpy as np
+
+    embeddings_path = base / "data" / "embeddings.npy"
+    metadata_path = base / "data" / "metadata.json"
+    embeddings = np.load(embeddings_path)
+    with metadata_path.open() as fh:
+        metadata = json.load(fh)
+
+    if embeddings.ndim == 0 or embeddings.shape[0] != len(metadata):
+        return {
+            "available": True,
+            "changed": False,
+            "removed": 0,
+            "kept": len(metadata),
+            "total": len(metadata),
+            "error": (
+                "index metadata and embeddings are out of sync "
+                f"({len(metadata)} paths, {embeddings.shape[0] if embeddings.ndim else 0} embeddings)"
+            ),
+        }
+
+    seen = set()
+    keep = []
+    for i, path in enumerate(metadata):
+        key = metadata_key(path)
+        if key in seen:
+            continue
+        seen.add(key)
+        keep.append(i)
+
+    now = now or time.time()
+    state = index_state(base)
+    state["maintained_at"] = now
+
+    removed = len(metadata) - len(keep)
+    if not removed:
+        write_index_state(state, base)
+        return {
+            "available": True,
+            "changed": False,
+            "removed": 0,
+            "kept": len(metadata),
+            "total": len(metadata),
+        }
+
+    compact_metadata = [metadata[i] for i in keep]
+    compact_embeddings = embeddings[keep]
+    atomic_save_npy(embeddings_path, compact_embeddings)
+    atomic_write_json(metadata_path, compact_metadata)
+    write_index_state(state, base)
+    return {
+        "available": True,
+        "changed": True,
+        "removed": removed,
+        "kept": len(compact_metadata),
+        "total": len(metadata),
+    }
+
+
 def index_stats(base=BASE):
     if not available_index(base):
         return None
@@ -78,6 +234,8 @@ def index_stats(base=BASE):
         "metadata": str(base / "data" / "metadata.json"),
         "sources": remembered_sources(base),
         "due": index_is_due(base),
+        "maintenance_due": index_maintenance_is_due(base),
+        "duplicates": duplicate_metadata_count(metadata),
     }
 
 
@@ -166,6 +324,11 @@ def load_index(base=BASE):
     embeddings = np.load(embeddings_path)
     with metadata_path.open() as fh:
         metadata = json.load(fh)
+    if embeddings.ndim == 0 or embeddings.shape[0] != len(metadata):
+        raise RuntimeError(
+            "Pictogrep index metadata and embeddings are out of sync. "
+            "Run: pictogrep index /path/to/images"
+        )
     return embeddings, metadata
 
 
