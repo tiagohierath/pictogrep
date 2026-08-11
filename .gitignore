@@ -26,6 +26,7 @@ collections/
 *.webp
 *.gif
 *.heic
+!assets/pictogrep.png
 
 # OS/editor noise
 .DS_Store

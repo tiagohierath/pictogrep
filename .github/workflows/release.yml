@@ -32,12 +32,33 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o dist/pictogrep .
           tar -C dist -czf pictogrep-linux-${{ matrix.archive_arch }}.tar.gz pictogrep
+      - name: Install ARM64 emulator
+        if: matrix.goarch == 'arm64'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-user-static
+      - name: Smoke test standalone archive
+        env:
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          test "$(tar -tzf pictogrep-linux-${{ matrix.archive_arch }}.tar.gz | wc -l)" -eq 1
+          mkdir unpacked
+          tar -xzf pictogrep-linux-${{ matrix.archive_arch }}.tar.gz -C unpacked
+          if [ "$GOARCH" = arm64 ]; then RUNNER=qemu-aarch64-static; else RUNNER=; fi
+          $RUNNER unpacked/pictogrep version | grep "${GITHUB_REF_NAME#v}"
+          TEST_ROOT="$(mktemp -d)"
+          XDG_DATA_HOME="$TEST_ROOT/share" $RUNNER unpacked/pictogrep install-desktop
+          test -s "$TEST_ROOT/share/applications/pictogrep.desktop"
+          test -s "$TEST_ROOT/share/icons/hicolor/512x512/apps/pictogrep.png"
       - uses: softprops/action-gh-release@v3
         with:
           files: pictogrep-linux-${{ matrix.archive_arch }}.tar.gz
 
   windows:
     runs-on: windows-latest
+    env:
+      WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
+      WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-go@v7
@@ -50,12 +71,50 @@ jobs:
           New-Item -ItemType Directory -Force dist
           $version = "${{ github.ref_name }}".TrimStart("v")
           go build -trimpath -ldflags="-s -w -H windowsgui -X main.version=$version" -o dist/pictogrep.exe .
+      - name: Sign executable
+        if: env.WINDOWS_SIGNING_CERTIFICATE != ''
+        shell: pwsh
+        run: |
+          $certificate = Join-Path $env:RUNNER_TEMP "pictogrep-signing.pfx"
+          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE))
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
+          & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $certificate /p $env:WINDOWS_SIGNING_PASSWORD dist\pictogrep.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Build installer
         shell: pwsh
         run: |
           choco install innosetup --no-progress -y
           $env:PICTOGREP_VERSION = "${{ github.ref_name }}".TrimStart("v")
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\windows\pictogrep.iss
+      - name: Sign installer
+        if: env.WINDOWS_SIGNING_CERTIFICATE != ''
+        shell: pwsh
+        run: |
+          $certificate = Join-Path $env:RUNNER_TEMP "pictogrep-signing.pfx"
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
+          & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $certificate /p $env:WINDOWS_SIGNING_PASSWORD dist\pictogrep-windows-x86_64-setup.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Remove-Item $certificate -Force
+      - name: Smoke test clean install and launch
+        shell: pwsh
+        run: |
+          $installer = Resolve-Path dist\pictogrep-windows-x86_64-setup.exe
+          $installed = Start-Process $installer -ArgumentList "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART" -Wait -PassThru
+          if ($installed.ExitCode -ne 0) { throw "Installer failed: $($installed.ExitCode)" }
+          $exe = Join-Path $env:LOCALAPPDATA "Programs\Pictogrep\pictogrep.exe"
+          if (-not (Test-Path $exe)) { throw "Installed executable was not found" }
+          $env:PICTOGREP_HOME = Join-Path $env:RUNNER_TEMP "pictogrep-smoke"
+          $process = Start-Process $exe -ArgumentList "web", "--no-open", "--port", "18765" -PassThru
+          try {
+            $state = $null
+            1..30 | ForEach-Object {
+              try { $state = Invoke-RestMethod "http://127.0.0.1:18765/api/app/state" } catch { Start-Sleep -Milliseconds 250 }
+              if ($state) { return }
+            }
+            if (-not $state.ok -or -not $state.aiAvailable) { throw "Installed app API did not start" }
+          } finally {
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+          }
       - uses: softprops/action-gh-release@v3
         with:
           files: dist/pictogrep-windows-x86_64-setup.exe

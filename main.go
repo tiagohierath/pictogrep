@@ -58,6 +58,10 @@ func run(args []string) error {
 	case "version", "--version":
 		fmt.Println("pictogrep " + version)
 		return nil
+	case "install-desktop":
+		return installDesktopShortcut()
+	case "uninstall-desktop":
+		return uninstallDesktopShortcut()
 	}
 	app, err := newApplication()
 	if err != nil {

@@ -20,14 +20,16 @@ PrivilegesRequired=lowest
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 WizardStyle=modern
-UninstallDisplayIcon={app}\pictogrep.exe
+SetupIconFile=..\..\assets\pictogrep.ico
+UninstallDisplayIcon={app}\pictogrep.ico
 
 [Files]
 Source: "..\..\dist\pictogrep.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\assets\pictogrep.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{autoprograms}\Pictogrep"; Filename: "{app}\pictogrep.exe"
-Name: "{userdesktop}\Pictogrep"; Filename: "{app}\pictogrep.exe"; Tasks: desktopicon
+Name: "{autoprograms}\Pictogrep"; Filename: "{app}\pictogrep.exe"; IconFilename: "{app}\pictogrep.ico"
+Name: "{userdesktop}\Pictogrep"; Filename: "{app}\pictogrep.exe"; IconFilename: "{app}\pictogrep.ico"; Tasks: desktopicon
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked

@@ -10,6 +10,11 @@ let pollTimer = null;
 let lastJobState = "idle";
 let aiWorker = null;
 let aiRequestId = 0;
+let imageLoadId = 0;
+let semanticIndexPromise = null;
+let semanticWarmupPromise = null;
+let semanticQuery = "";
+let semanticQueryVector = null;
 const aiRequests = new Map();
 
 async function request(url, options = {}) {
@@ -62,31 +67,94 @@ function runAI(type, values = {}) {
   });
 }
 
-async function ensureSemanticIndex() {
-  const state = await request("/api/app/ai");
-  if (!state.missing.length) return;
-  showMessage(`Preparing search: 0 of ${state.missing.length} pictures…`, false, true);
-  for (let index = 0; index < state.missing.length; index++) {
-    const item = state.missing[index];
-    const vector = await runAI("embed", {item});
-    await request("/api/app/ai/embeddings", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({items: [{path: item.path, mtime: item.mtime, vector}]}),
+function semanticVector(query) {
+  if (query !== semanticQuery || !semanticQueryVector) {
+    semanticQuery = query;
+    const pending = runAI("search", {query});
+    const wrapped = pending.catch(error => {
+      if (semanticQueryVector === wrapped) semanticQueryVector = null;
+      throw error;
     });
-    showMessage(`Preparing search: ${index + 1} of ${state.missing.length} pictures…`, false, true);
+    semanticQueryVector = wrapped;
   }
+  return semanticQueryVector;
 }
 
-async function semanticSearch(query) {
-  await ensureSemanticIndex();
-  showMessage(`Searching for “${query}”…`, false, true);
-  const vector = await runAI("search", {query});
+async function saveSemanticEmbedding(item) {
+  const vector = await runAI("embed", {item});
+  await request("/api/app/ai/embeddings", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({items: [{path: item.path, mtime: item.mtime, vector}]}),
+  });
+}
+
+async function requestSemanticResults(query) {
+  const vector = await semanticVector(query);
   return request("/api/app/ai/search", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({vector, limit: 120, tag: currentTag, source: currentSource}),
   });
+}
+
+async function refreshSemanticResults() {
+  const query = currentQuery;
+  if (!query || !appState?.aiAvailable) return;
+  try {
+    const data = await requestSemanticResults(query);
+    if (query === currentQuery) renderImages(data.images, data.images.length);
+  } catch (_) {
+    // The active search already reports errors. Background refreshes stay quiet.
+  }
+}
+
+function continueSemanticIndex(items, completed, total) {
+  if (semanticIndexPromise || !items.length) return;
+  semanticIndexPromise = (async () => {
+    for (let index = 0; index < items.length; index++) {
+      await saveSemanticEmbedding(items[index]);
+      const ready = completed + index + 1;
+      showMessage(`Making search better: ${ready} of ${total} pictures…`, false, true);
+      if (ready % 24 === 0) await refreshSemanticResults();
+    }
+    await refreshSemanticResults();
+    showMessage(`Search is ready for all ${total} pictures.`);
+  })().catch(error => {
+    showMessage(`Search setup paused: ${error.message}`, true);
+  }).finally(() => {
+    semanticIndexPromise = null;
+  });
+}
+
+async function semanticSearch(query) {
+  // Prepare the text and the first few pictures together. This returns useful
+  // results quickly, then quietly improves them for the rest of the library.
+  const vectorPromise = semanticVector(query);
+  let state = await request("/api/app/ai");
+
+  if (state.indexed === 0 && state.missing.length) {
+    if (!semanticWarmupPromise) {
+      const first = state.missing.slice(0, 8);
+      const total = state.total;
+      semanticWarmupPromise = (async () => {
+        showMessage(`Preparing your first search…`, false, true);
+        for (let index = 0; index < first.length; index++) {
+          await saveSemanticEmbedding(first[index]);
+          showMessage(`Preparing your first search: ${index + 1} of ${total} pictures…`, false, true);
+        }
+      })().finally(() => {
+        semanticWarmupPromise = null;
+      });
+    }
+    await semanticWarmupPromise;
+    state = await request("/api/app/ai");
+  }
+
+  continueSemanticIndex(state.missing, state.indexed, state.total);
+  showMessage(`Searching for “${query}”…`, false, true);
+  await vectorPromise;
+  return requestSemanticResults(query);
 }
 
 function showMessage(text, error = false, persist = false) {
@@ -252,6 +320,7 @@ function updateNotice() {
 }
 
 async function loadImages() {
+  const loadId = ++imageLoadId;
   switchTab("images");
   setLoading();
   updateNotice();
@@ -260,14 +329,17 @@ async function loadImages() {
       const data = appState?.aiAvailable
         ? await semanticSearch(currentQuery)
         : await request(`/api/app/search?q=${encodeURIComponent(currentQuery)}&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}&limit=120`);
+      if (loadId !== imageLoadId) return;
       renderImages(data.images, data.images.length);
       if (!data.images.length) showMessage("No matching pictures. Try fewer words.");
-      else $("#message").hidden = true;
+      else if (!semanticIndexPromise) $("#message").hidden = true;
     } else {
       const data = await request(`/api/app/images?mode=recent&count=300&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}`);
+      if (loadId !== imageLoadId) return;
       renderImages(data.images, data.total);
     }
   } catch (error) {
+    if (loadId !== imageLoadId) return;
     renderImages([]);
     showMessage(error.message, true, true);
   }

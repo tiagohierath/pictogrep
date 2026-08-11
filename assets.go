@@ -4,7 +4,7 @@ import (
 	"embed"
 )
 
-//go:embed web/*
+//go:embed web/* assets/pictogrep.png
 var embeddedFiles embed.FS
 
 func storyboardHTML() ([]byte, error) {

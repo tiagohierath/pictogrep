@@ -38,9 +38,10 @@ desktop applications menu. It does not need `sudo`.
 3. Type what you remember into the search box.
 
 The first search automatically prepares the local image-search model and shows
-progress. This requires an internet connection once. Later searches use the
-cached model. Image analysis and searching happen locally; pictures are never
-uploaded.
+useful results as soon as the first pictures are ready. It keeps improving those
+results in the background. This requires an internet connection once. Later
+searches use the cached model. Image analysis and searching happen locally;
+pictures are never uploaded.
 
 The menu also opens the storyboard studio, where a reference can be redrawn,
 traced, annotated, and saved as a board.

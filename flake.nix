@@ -16,13 +16,14 @@
             desktopName = "Pictogrep";
             comment = "Find and storyboard your pictures";
             exec = "pictogrep";
+            icon = "pictogrep";
             terminal = false;
             categories = [ "Graphics" "Photography" ];
           };
         in {
           default = pkgs.buildGoModule {
             pname = "pictogrep";
-            version = "0.3.0";
+            version = "0.3.1";
             src = self;
             vendorHash = null;
             subPackages = [ "." ];
@@ -30,6 +31,8 @@
             postInstall = ''
               mkdir -p $out/share/applications
               cp ${desktopItem}/share/applications/pictogrep.desktop $out/share/applications/
+              mkdir -p $out/share/icons/hicolor/512x512/apps
+              cp assets/pictogrep.png $out/share/icons/hicolor/512x512/apps/pictogrep.png
             '';
             meta = {
               description = "Local image search and storyboarding application";

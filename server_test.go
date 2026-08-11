@@ -36,7 +36,7 @@ func responseJSON(t *testing.T, response *http.Response) map[string]any {
 
 func TestEmbeddedBrowserAndStoryboardPages(t *testing.T) {
 	_, server := testHTTPServer(t)
-	for _, path := range []string{"/", "/practice", "/assets/app.js", "/assets/app.css"} {
+	for _, path := range []string{"/", "/practice", "/assets/app.js", "/assets/app.css", "/assets/pictogrep.png"} {
 		response, err := http.Get(server.URL + path)
 		if err != nil {
 			t.Fatal(err)

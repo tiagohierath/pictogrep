@@ -5,7 +5,6 @@ REPOSITORY="tiagohierath/pictogrep"
 INSTALL_VERSION="${PICTOGREP_VERSION:-latest}"
 BIN_DIR="${PICTOGREP_BIN_DIR:-${XDG_BIN_HOME:-$HOME/.local/bin}}"
 DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
-APPLICATIONS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 TARGET="$BIN_DIR/pictogrep"
 
 say() {
@@ -24,7 +23,12 @@ case "${1:-}" in
     exit 0
     ;;
   --uninstall)
-    rm -f "$TARGET" "$APPLICATIONS_DIR/pictogrep.desktop"
+    if [ -x "$TARGET" ]; then
+      "$TARGET" uninstall-desktop 2>/dev/null || true
+    fi
+    rm -f "$TARGET" \
+      "$DATA_HOME/applications/pictogrep.desktop" \
+      "$DATA_HOME/icons/hicolor/512x512/apps/pictogrep.png"
     say "Removed the Pictogrep application."
     say "Your pictures and boards remain in: $DATA_HOME/pictogrep"
     exit 0
@@ -84,17 +88,7 @@ mkdir -p "$BIN_DIR"
 mv "$TEMP_DIR/pictogrep" "$TARGET.new"
 mv "$TARGET.new" "$TARGET"
 
-mkdir -p "$APPLICATIONS_DIR"
-cat > "$APPLICATIONS_DIR/pictogrep.desktop" <<EOF
-[Desktop Entry]
-Type=Application
-Name=Pictogrep
-Comment=Find and storyboard your pictures
-Exec=$TARGET
-Terminal=false
-Categories=Graphics;Photography;
-Keywords=images;search;storyboard;
-EOF
+"$TARGET" install-desktop
 
 say "Installed Pictogrep: $TARGET"
 say "You can launch it from your applications menu."

@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-var version = "0.3.0"
+var version = "0.3.1"
 
 var imageExtensions = map[string]bool{
 	".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true,

@@ -114,7 +114,11 @@ func (s *server) practicePage(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) asset(w http.ResponseWriter, r *http.Request) {
 	name := filepath.Base(r.PathValue("name"))
-	data, err := embeddedFiles.ReadFile("web/" + name)
+	path := "web/" + name
+	if name == "pictogrep.png" {
+		path = "assets/pictogrep.png"
+	}
+	data, err := embeddedFiles.ReadFile(path)
 	if err != nil {
 		http.NotFound(w, r)
 		return
