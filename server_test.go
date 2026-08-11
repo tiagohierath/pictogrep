@@ -286,6 +286,28 @@ func TestNativeSemanticIndexRoundTrip(t *testing.T) {
 	}
 }
 
+func TestLegacyEmbeddingTimestampIsUpgraded(t *testing.T) {
+	app, server := testHTTPServer(t)
+	picture := filepath.Join(app.libraryDir, "reference.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+	vector := make([]float32, semanticVectorSize)
+	vector[0] = 1
+	payload, _ := json.Marshal(map[string]any{"items": []any{map[string]any{
+		"path": picture, "mtime": embeddingMtime(picture) / 1000, "vector": vector,
+	}}})
+	response, err := http.Post(server.URL+"/api/app/ai/embeddings", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value := responseJSON(t, response); response.StatusCode != http.StatusOK || value["saved"].(float64) != 1 {
+		t.Fatalf("legacy timestamp was rejected: status=%d %#v", response.StatusCode, value)
+	}
+	if missing := app.missingEmbeddings(); len(missing) != 0 {
+		t.Fatalf("legacy timestamp was not normalized: %#v", missing)
+	}
+}
+
 func TestSemanticQueryCacheRoundTrip(t *testing.T) {
 	_, server := testHTTPServer(t)
 	response, err := http.Get(server.URL + "/api/app/ai/query?q=red%20car")

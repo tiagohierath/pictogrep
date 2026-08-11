@@ -217,7 +217,12 @@ func (s *server) aiEmbeddings(w http.ResponseWriter, r *http.Request) {
 			sendError(w, 400, fmt.Errorf("image is not in the library"))
 			return
 		}
-		records[path] = embeddingRecord{Mtime: item.Mtime, Vector: item.Vector}
+		mtime := embeddingMtime(path)
+		if item.Mtime != mtime && item.Mtime != mtime/1000 {
+			sendError(w, 409, fmt.Errorf("image changed while it was being indexed"))
+			return
+		}
+		records[path] = embeddingRecord{Mtime: mtime, Vector: item.Vector}
 	}
 	if err := s.app.updateEmbeddings(records); err != nil {
 		sendError(w, 400, err)
