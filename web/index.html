@@ -76,6 +76,7 @@
       <h2>Add to folder</h2>
       <input id="tagName" list="tagOptions" placeholder="Folder name" autocomplete="off">
       <datalist id="tagOptions"></datalist>
+      <div class="tag-choices" id="tagChoices" aria-label="Existing folders"></div>
       <input id="tagImageId" type="hidden">
       <div class="dialog-actions"><button type="button" id="cancelTag">Cancel</button><button type="submit">Add</button></div>
     </form>
@@ -86,6 +87,9 @@
       <h2>Create folder</h2>
       <label class="field-label" for="newFolderName">Name</label>
       <input id="newFolderName" placeholder="e.g. to-draw" autocomplete="off" required>
+      <label class="field-label" for="newFolderPrompt">Fill from search (optional)</label>
+      <input id="newFolderPrompt" placeholder="e.g. cats" autocomplete="off">
+      <p class="field-help">Adds the 50 closest pictures from your search index.</p>
       <label class="field-label" for="newFolderFiles">Pictures (optional)</label>
       <input id="newFolderFiles" type="file" accept="image/*" multiple>
       <div class="dialog-actions"><button type="button" id="cancelFolder">Cancel</button><button type="submit">Create</button></div>
@@ -116,6 +120,12 @@
     </div>
     <span class="canvas-status" id="canvasStatus" role="status" aria-live="polite"></span>
   </dialog>
+
+  <div class="card-menu cursor-menu" id="imageContextMenu" hidden>
+    <span class="card-menu-name" id="contextImageName"></span>
+    <a id="contextDraw">Draw</a>
+    <button type="button" id="contextAddFolder">Add to folder</button>
+  </div>
 
   <div class="message" id="message" role="status" aria-live="polite" hidden></div>
   <script src="/assets/app.js" defer></script>

@@ -166,6 +166,49 @@ func TestManualFoldersWorkWithoutAI(t *testing.T) {
 	}
 }
 
+func TestPromptFolderUsesCachedSemanticEmbeddings(t *testing.T) {
+	app, server := testHTTPServer(t)
+	paths := []string{
+		filepath.Join(app.libraryDir, "cat.png"),
+		filepath.Join(app.libraryDir, "kitten.png"),
+		filepath.Join(app.libraryDir, "car.png"),
+	}
+	records := map[string]embeddingRecord{}
+	for index, path := range paths {
+		writeTestPNG(t, path)
+		app.addPath(path)
+		vector := make([]float32, semanticVectorSize)
+		vector[0] = []float32{1, 0.8, 0.1}[index]
+		vector[1] = []float32{0, 0.2, 0.9}[index]
+		records[path] = embeddingRecord{Mtime: embeddingMtime(path), Vector: vector}
+	}
+	if err := app.updateEmbeddings(records); err != nil {
+		t.Fatal(err)
+	}
+	query := make([]float32, semanticVectorSize)
+	query[0] = 1
+	payload, _ := json.Marshal(map[string]any{
+		"action": "fill", "tag": "Cats", "prompt": " cats ", "limit": 2, "vector": query,
+	})
+	response, err := http.Post(server.URL+"/api/app/tags", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := responseJSON(t, response)
+	if response.StatusCode != http.StatusOK || value["tag"] != "cats" || value["added"].(float64) != 2 || value["matched"].(float64) != 2 {
+		t.Fatalf("prompt folder failed: status=%d %#v", response.StatusCode, value)
+	}
+	response, err = http.Get(server.URL + "/api/app/images?tag=cats&count=10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	value = responseJSON(t, response)
+	images := value["images"].([]any)
+	if len(images) != 2 || images[0].(map[string]any)["name"] != "cat.png" || images[1].(map[string]any)["name"] != "kitten.png" {
+		t.Fatalf("prompt folder used the wrong ranking: %#v", images)
+	}
+}
+
 func TestFoldersAPIIncludesNestedSourceStructure(t *testing.T) {
 	app, server := testHTTPServer(t)
 	source := t.TempDir()
@@ -295,6 +338,7 @@ func TestBadTagRequestsHaveNoSideEffects(t *testing.T) {
 	for _, payload := range []string{
 		`{"action":"unknown","tag":"ghost"}`,
 		`{"action":"create","tag":"ghost"} {}`,
+		`{"action":"fill","tag":"ghost","prompt":"cats","vector":[1]}`,
 	} {
 		response, err := http.Post(server.URL+"/api/app/tags", "application/json", bytes.NewBufferString(payload))
 		if err != nil {

@@ -354,21 +354,35 @@ function pictureCard(item) {
     menu.hidden = !willOpen;
     menuButton.setAttribute("aria-expanded", String(willOpen));
   };
-  card.oncontextmenu = event => {
-    event.preventDefault();
-    event.stopPropagation();
-    closeCardMenus();
-    menu.classList.add("cursor-menu");
-    menu.hidden = false;
-    menuButton.setAttribute("aria-expanded", "true");
-    const margin = 8;
-    const left = Math.max(margin, Math.min(event.clientX, window.innerWidth - menu.offsetWidth - margin));
-    const top = Math.max(margin, Math.min(event.clientY, window.innerHeight - menu.offsetHeight - margin));
-    menu.style.left = `${left}px`;
-    menu.style.top = `${top}px`;
-  };
+  bindImageContextMenu(card, item);
   info.append(menuButton, menu);
   return card;
+}
+
+function bindImageContextMenu(element, item) {
+  element.oncontextmenu = event => openImageContextMenu(event, item);
+}
+
+function openImageContextMenu(event, item) {
+  event.preventDefault();
+  event.stopPropagation();
+  closeCardMenus();
+  const menu = $("#imageContextMenu");
+  const dialog = event.currentTarget.closest("dialog[open]");
+  (dialog || document.body).append(menu);
+  $("#contextImageName").textContent = item.name;
+  $("#contextImageName").title = item.path || item.name;
+  $("#contextDraw").href = `/practice?image=${encodeURIComponent(item.id)}`;
+  $("#contextAddFolder").onclick = () => {
+    closeCardMenus();
+    openTagDialog(item.id);
+  };
+  menu.hidden = false;
+  const margin = 8;
+  const left = Math.max(margin, Math.min(event.clientX, window.innerWidth - menu.offsetWidth - margin));
+  const top = Math.max(margin, Math.min(event.clientY, window.innerHeight - menu.offsetHeight - margin));
+  menu.style.left = `${left}px`;
+  menu.style.top = `${top}px`;
 }
 
 function closeCardMenus() {
@@ -392,9 +406,18 @@ function openImageViewer(item) {
 function showViewerImage(item) {
   const viewer = $("#imageViewer");
   const image = $("#viewerImage");
+  const picture = image.parentElement;
   currentViewerItem = item;
+  picture.classList.remove("is-scrollable-portrait");
+  const setPortraitMode = (width, height) => {
+    if (currentViewerItem?.id !== item.id) return;
+    picture.classList.toggle("is-scrollable-portrait", width > 0 && height / width > 3.25);
+  };
+  image.onload = () => setPortraitMode(image.naturalWidth, image.naturalHeight);
   image.src = item.url;
   image.alt = item.name;
+  bindImageContextMenu(image, item);
+  if (item.width && item.height) setPortraitMode(item.width, item.height);
   viewer.scrollTop = 0;
   renderViewerTags(item.tags || []);
   loadRelatedImages(item);
@@ -402,19 +425,25 @@ function showViewerImage(item) {
 
 function renderViewerTags(tags) {
   const list = $("#viewerTagsList");
-  if (!tags.length) {
-    const empty = document.createElement("span");
-    empty.className = "viewer-tags-empty";
-    empty.textContent = "No tags yet";
-    list.replaceChildren(empty);
-    return;
-  }
-  list.replaceChildren(...tags.map(value => {
+  const children = tags.map(value => {
     const tag = document.createElement("span");
     tag.className = "viewer-tag";
     tag.textContent = `#${value}`;
     return tag;
-  }));
+  });
+  if (!tags.length) {
+    const empty = document.createElement("span");
+    empty.className = "viewer-tags-empty";
+    empty.textContent = "No tags yet";
+    children.push(empty);
+  }
+  const add = document.createElement("button");
+  add.className = "viewer-add-tag";
+  add.type = "button";
+  add.textContent = "+ Add tag";
+  add.onclick = () => currentViewerItem && openTagDialog(currentViewerItem.id);
+  children.push(add);
+  list.replaceChildren(...children);
 }
 
 function renderRelatedImages(data) {
@@ -430,6 +459,7 @@ function renderRelatedImages(data) {
     image.loading = "lazy";
     button.append(image);
     button.onclick = () => showViewerImage(item);
+    bindImageContextMenu(button, item);
     return button;
   }));
   const status = $("#relatedStatus");
@@ -578,6 +608,7 @@ function folderCard(folder) {
     image.src = item.url;
     image.alt = "";
     image.loading = "lazy";
+    bindImageContextMenu(image, item);
     preview.append(image);
   });
   if (!folder.images.length) {
@@ -676,6 +707,7 @@ function canvasCard(item, point) {
   image.draggable = false;
   card.append(image);
   card.onpointerdown = event => {
+    if (event.button !== 0) return;
     event.stopPropagation();
     card.setPointerCapture(event.pointerId);
     canvasPointer = {kind: "image", id: item.id, startX: event.clientX, startY: event.clientY, x: point.x, y: point.y, moved: false, card};
@@ -683,6 +715,7 @@ function canvasCard(item, point) {
   card.onpointermove = moveCanvasPointer;
   card.onpointerup = endCanvasPointer;
   card.onpointercancel = endCanvasPointer;
+  bindImageContextMenu(card, item);
   return card;
 }
 
@@ -782,6 +815,18 @@ function renderState() {
     option.value = tag.name;
     return option;
   }));
+  const choices = $("#tagChoices");
+  choices.replaceChildren(...appState.tags.map(tag => {
+    const choice = document.createElement("button");
+    choice.type = "button";
+    choice.textContent = `${tag.name} (${tag.count})`;
+    choice.onclick = () => {
+      $("#tagName").value = tag.name;
+      $("#tagForm").requestSubmit();
+    };
+    return choice;
+  }));
+  choices.hidden = !appState.tags.length;
   const job = appState.indexJob;
   const active = job.state === "running";
   $("#indexStatus").hidden = !active && job.state !== "error";
@@ -869,6 +914,7 @@ async function uploadFiles(files) {
 
 function openCreateFolder() {
   $("#newFolderName").value = "";
+  $("#newFolderPrompt").value = "";
   $("#newFolderFiles").value = "";
   $("#folderDialog").showModal();
   $("#newFolderName").focus();
@@ -877,6 +923,7 @@ function openCreateFolder() {
 async function createFolder(event) {
   event.preventDefault();
   const name = $("#newFolderName").value.trim();
+  const prompt = $("#newFolderPrompt").value.trim();
   const files = Array.from($("#newFolderFiles").files || []).filter(isSupportedImage);
   if (!name) return;
   try {
@@ -901,12 +948,32 @@ async function createFolder(event) {
         skipped++;
       }
     }
+    let filled = 0;
+    let indexed = 0;
+    let total = 0;
+    if (prompt) {
+      showMessage(`Finding 50 pictures for “${prompt}”…`, false, true);
+      const vector = await semanticVector(prompt);
+      const result = await request("/api/app/tags", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: "fill", tag: name, prompt, limit: 50, vector}),
+      });
+      filled = result.added;
+      indexed = result.indexed;
+      total = result.total;
+      const state = await request("/api/app/ai");
+      continueSemanticIndex(state.missing, state.indexed, state.total);
+    }
     if (saved) semanticResults.clear();
     $("#folderDialog").close();
     await refreshState();
     await loadImages();
     await loadFolders();
-    if (skipped) showMessage(`Created ${name} with ${saved} pictures; skipped ${skipped} unreadable files.`);
+    if (prompt && indexed === 0) showMessage(`Created ${name}, but search indexing has not reached any pictures yet. Try filling it again shortly.`, true, true);
+    else if (prompt && indexed < total) showMessage(`Created ${name} with ${filled + saved} pictures from ${indexed} indexed; search is still improving in the background.`);
+    else if (prompt) showMessage(`Created ${name} with ${filled + saved} pictures for “${prompt}”.`);
+    else if (skipped) showMessage(`Created ${name} with ${saved} pictures; skipped ${skipped} unreadable files.`);
     else if (saved) showMessage(`Created ${name} with ${saved} ${saved === 1 ? "picture" : "pictures"}.`);
     else showMessage(`Created folder: ${name}`);
   } catch (error) {
@@ -926,11 +993,17 @@ async function saveTag(event) {
   const tag = $("#tagName").value.trim();
   if (!tag) return;
   try {
-    await request("/api/app/tags", {
+    const imageId = Number($("#tagImageId").value);
+    const result = await request("/api/app/tags", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({action: "add", tag, imageId: Number($("#tagImageId").value)}),
+      body: JSON.stringify({action: "add", tag, imageId}),
     });
+    if (currentViewerItem?.id === imageId) {
+      currentViewerItem.tags ||= [];
+      if (!currentViewerItem.tags.includes(result.tag)) currentViewerItem.tags.push(result.tag);
+      renderViewerTags(currentViewerItem.tags);
+    }
     semanticResults.clear();
     $("#tagDialog").close();
     showMessage(`Added tag: ${tag}`);
@@ -1031,6 +1104,7 @@ $("#imageViewer").addEventListener("close", () => {
 });
 $("#closeCanvas").onclick = () => $("#canvasDialog").close();
 $("#canvasViewport").onpointerdown = event => {
+  if (event.button !== 0) return;
   if (event.target !== $("#canvasViewport")) return;
   event.currentTarget.setPointerCapture(event.pointerId);
   canvasPointer = {kind: "pan", startX: event.clientX, startY: event.clientY, x: canvasPan.x, y: canvasPan.y};

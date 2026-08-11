@@ -146,6 +146,10 @@ dialog { width: min(380px, calc(100% - 30px)); padding: 22px; border: 1px solid 
 dialog::backdrop { background: rgba(0,0,0,.3); }
 dialog h2 { margin: 0 0 15px; font-size: 17px; }
 dialog input { width: 100%; padding: 9px; border: 1px solid #999; }
+.tag-choices { display: grid; max-height: 210px; margin-top: 10px; overflow-y: auto; border: 1px solid #ddd; }
+.tag-choices button { padding: 9px 10px; overflow: hidden; border: 0; border-bottom: 1px solid #eee; background: #fff; text-align: left; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+.tag-choices button:last-child { border-bottom: 0; }
+.tag-choices button:hover, .tag-choices button:focus-visible { background: #eee; }
 .field-label { display: block; margin: 14px 0 6px; color: #555; font-size: 11px; cursor: default; }
 .field-help { margin: 6px 0 0; color: #666; font-size: 10px; line-height: 1.4; }
 #folderDialog { width: min(500px, calc(100% - 30px)); padding: 30px; }
@@ -157,12 +161,16 @@ dialog input { width: 100%; padding: 9px; border: 1px solid #999; }
 .image-viewer { width: 100vw; max-width: none; height: 100vh; height: 100dvh; max-height: none; margin: 0; padding: 0; overflow-x: hidden; overflow-y: auto; border: 0; background: #fff; }
 .viewer-picture { position: relative; width: 100%; height: 100vh; height: 100dvh; min-height: 0; overflow: hidden; background: #f3f3f1; }
 .viewer-picture img { position: absolute; inset: 18px; display: block; width: calc(100% - 36px); height: calc(100% - 36px); object-fit: contain; }
+.viewer-picture.is-scrollable-portrait { height: auto; min-height: 100vh; min-height: 100dvh; padding: 18px; overflow: visible; }
+.viewer-picture.is-scrollable-portrait img { position: static; width: min(720px, 100%); height: auto; margin: 0 auto; }
 .image-viewer > #closeViewer { position: fixed; top: 14px; right: 14px; z-index: 2; width: 38px; height: 38px; padding: 0; border: 1px solid #999; border-radius: 3px; background: #fff; font-size: 22px; }
 .viewer-details { width: min(1120px, calc(100% - 40px)); margin: 0 auto; padding: 34px 0 70px; border-top: 1px solid #ddd; }
 .viewer-details h2 { margin: 0 0 14px; font-size: 16px; }
 .viewer-tags { margin-bottom: 42px; }
 #viewerTagsList { display: flex; min-height: 28px; flex-wrap: wrap; gap: 7px; align-items: center; }
 .viewer-tag { padding: 5px 8px; border-radius: 3px; background: #eee; color: #444; font-size: 12px; }
+.viewer-add-tag { padding: 5px 8px; border: 1px solid #aaa; border-radius: 3px; background: #fff; color: #333; font-size: 12px; }
+.viewer-add-tag:hover, .viewer-add-tag:focus-visible { background: #eee; }
 .viewer-tags-empty, #relatedStatus { color: #777; font-size: 12px; }
 .related-grid { columns: 180px; column-gap: 12px; }
 .related-card { display: block; width: 100%; margin: 0 0 12px; padding: 0; overflow: hidden; break-inside: avoid; border: 0; border-radius: 5px; background: #eee; }
@@ -197,6 +205,8 @@ dialog input { width: 100%; padding: 9px; border: 1px solid #999; }
   .image-viewer { width: 100vw; height: 100vh; height: 100dvh; }
   .viewer-picture { height: 100vh; height: 100dvh; min-height: 0; }
   .viewer-picture img { inset: 8px; width: calc(100% - 16px); height: calc(100% - 16px); }
+  .viewer-picture.is-scrollable-portrait { height: auto; min-height: 100vh; min-height: 100dvh; padding: 8px; }
+  .viewer-picture.is-scrollable-portrait img { width: 100%; height: auto; }
   .image-viewer > #closeViewer { top: 18px; right: 18px; }
   .viewer-details { width: calc(100% - 24px); padding-top: 26px; }
   .related-grid { columns: 2; column-gap: 8px; }

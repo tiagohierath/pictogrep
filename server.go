@@ -829,11 +829,12 @@ func collectionName(value string) (string, error) {
 
 func (s *server) appTags(w http.ResponseWriter, r *http.Request) {
 	var request struct {
-		Action  string `json:"action"`
-		Tag     string `json:"tag"`
-		Prompt  string `json:"prompt"`
-		Limit   int    `json:"limit"`
-		ImageID int    `json:"imageId"`
+		Action  string    `json:"action"`
+		Tag     string    `json:"tag"`
+		Prompt  string    `json:"prompt"`
+		Limit   int       `json:"limit"`
+		ImageID int       `json:"imageId"`
+		Vector  []float32 `json:"vector"`
 	}
 	if err := decodeJSON(r, &request, 2<<20); err != nil {
 		sendError(w, 400, err)
@@ -865,7 +866,39 @@ func (s *server) appTags(w http.ResponseWriter, r *http.Request) {
 		}
 		sendJSON(w, 200, map[string]any{"ok": true, "tag": name})
 	case "fill":
-		sendError(w, 400, fmt.Errorf("automatic folder filling is not available yet"))
+		prompt := normalizeSemanticQuery(request.Prompt)
+		if prompt == "" || len(prompt) > 500 {
+			sendError(w, 400, fmt.Errorf("folder search must be between 1 and 500 characters"))
+			return
+		}
+		if len(request.Vector) != semanticVectorSize {
+			sendError(w, 400, fmt.Errorf("invalid folder search vector"))
+			return
+		}
+		if request.Limit < 1 || request.Limit > 200 {
+			request.Limit = 50
+		}
+		paths, _, _ := s.app.snapshot()
+		results := s.app.vectorSearch(request.Vector, request.Limit)
+		selected := make([]string, 0, len(results))
+		for _, result := range results {
+			selected = append(selected, result.Path)
+		}
+		directory := filepath.Join(s.app.tagsDir, name)
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			sendError(w, 400, err)
+			return
+		}
+		existing := s.collectionImages(name)
+		combined := existingUniquePaths(append(existing, selected...))
+		if err := writeTagManifest(directory, combined); err != nil {
+			sendError(w, 400, err)
+			return
+		}
+		sendJSON(w, 200, map[string]any{
+			"ok": true, "tag": name, "prompt": prompt, "added": len(combined) - len(existing),
+			"matched": len(selected), "indexed": s.app.indexedEmbeddingCount(), "total": len(paths),
+		})
 	case "remove":
 		paths, _, _ := s.app.snapshot()
 		if request.ImageID < 0 || request.ImageID >= len(paths) {
