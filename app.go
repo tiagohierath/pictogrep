@@ -17,7 +17,7 @@ import (
 	"time"
 )
 
-var version = "0.3.1"
+var version = "0.3.2"
 
 var imageExtensions = map[string]bool{
 	".jpg": true, ".jpeg": true, ".png": true, ".webp": true, ".gif": true,
@@ -232,7 +232,7 @@ func (a *application) loadLibrary() error {
 	}
 	state.Images = existingUniquePaths(state.Images)
 	a.paths = state.Images
-	a.sources = existingUniquePaths(state.Sources)
+	a.sources = existingUniqueDirectories(state.Sources)
 	if len(a.paths) == 0 {
 		paths, _ := scanImages(a.libraryDir)
 		a.paths = paths
@@ -263,6 +263,22 @@ func existingUniquePaths(paths []string) []string {
 			continue
 		}
 		if info, err := os.Stat(path); err == nil && !info.IsDir() {
+			seen[path] = true
+			result = append(result, path)
+		}
+	}
+	return result
+}
+
+func existingUniqueDirectories(paths []string) []string {
+	seen := map[string]bool{}
+	result := make([]string, 0, len(paths))
+	for _, value := range paths {
+		path := expandPath(value)
+		if seen[path] {
+			continue
+		}
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
 			seen[path] = true
 			result = append(result, path)
 		}

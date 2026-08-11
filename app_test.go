@@ -78,3 +78,20 @@ func TestLibraryStateSurvivesRestart(t *testing.T) {
 		t.Fatalf("state was not restored: %#v", paths)
 	}
 }
+
+func TestIndexedSourceSurvivesRestart(t *testing.T) {
+	app := testApplication(t)
+	source := t.TempDir()
+	writeTestPNG(t, filepath.Join(source, "reference.png"))
+	if err := app.indexFolders([]string{source}); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := newApplication()
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, sources, _ := reloaded.snapshot()
+	if len(sources) != 1 || sources[0] != source {
+		t.Fatalf("source was not restored: %#v", sources)
+	}
+}

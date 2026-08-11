@@ -50,6 +50,15 @@ jobs:
           XDG_DATA_HOME="$TEST_ROOT/share" $RUNNER unpacked/pictogrep install-desktop
           test -s "$TEST_ROOT/share/applications/pictogrep.desktop"
           test -s "$TEST_ROOT/share/icons/hicolor/512x512/apps/pictogrep.png"
+          PICTOGREP_HOME="$TEST_ROOT/home" BROWSER=true $RUNNER unpacked/pictogrep &
+          APP_PID=$!
+          for attempt in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8765/api/app/state > /dev/null && break
+            sleep 0.2
+          done
+          curl -fsS http://127.0.0.1:8765/api/app/state | grep '"aiAvailable":true'
+          kill "$APP_PID"
+          wait "$APP_PID" || true
       - uses: softprops/action-gh-release@v3
         with:
           files: pictogrep-linux-${{ matrix.archive_arch }}.tar.gz
@@ -104,11 +113,12 @@ jobs:
           $exe = Join-Path $env:LOCALAPPDATA "Programs\Pictogrep\pictogrep.exe"
           if (-not (Test-Path $exe)) { throw "Installed executable was not found" }
           $env:PICTOGREP_HOME = Join-Path $env:RUNNER_TEMP "pictogrep-smoke"
-          $process = Start-Process $exe -ArgumentList "web", "--no-open", "--port", "18765" -PassThru
+          $env:BROWSER = "cmd /c echo"
+          $process = Start-Process $exe -PassThru
           try {
             $state = $null
             1..30 | ForEach-Object {
-              try { $state = Invoke-RestMethod "http://127.0.0.1:18765/api/app/state" } catch { Start-Sleep -Milliseconds 250 }
+              try { $state = Invoke-RestMethod "http://127.0.0.1:8765/api/app/state" } catch { Start-Sleep -Milliseconds 250 }
               if ($state) { return }
             }
             if (-not $state.ok -or -not $state.aiAvailable) { throw "Installed app API did not start" }

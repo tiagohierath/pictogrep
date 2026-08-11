@@ -308,15 +308,34 @@ function renderImages(images, total = images.length) {
 
 function updateNotice() {
   const notice = $("#notice");
-  const parts = [];
-  if (currentQuery) parts.push(`Search: “${currentQuery}”`);
-  if (currentTag || currentSource) parts.push(`Folder: ${currentFolderName || currentTag}`);
-  if (!parts.length) {
+  const insideFolder = Boolean(currentTag || currentSource);
+  if (!insideFolder && !currentQuery) {
     notice.hidden = true;
+    $("#imagesTab").title = "";
     return;
   }
-  notice.textContent = parts.join(" · ") + " — Clear the search box to return to all images.";
+  const context = [];
+  if (insideFolder) context.push(`Folder: ${currentFolderName || currentTag}`);
+  if (currentQuery) context.push(`Search: “${currentQuery}”`);
+  const returnHint = insideFolder
+    ? "Click Images to return to your full library."
+    : "Clear the search box to return to all images.";
+  notice.textContent = `${context.join(" · ")} — ${returnHint}`;
   notice.hidden = false;
+  $("#imagesTab").title = "Return to all images";
+}
+
+function showAllImages() {
+  if (!currentQuery && !currentTag && !currentSource) {
+    switchTab("images");
+    return;
+  }
+  currentQuery = "";
+  currentTag = "";
+  currentSource = "";
+  currentFolderName = "";
+  $("#searchQuery").value = "";
+  loadImages();
 }
 
 async function loadImages() {
@@ -371,7 +390,7 @@ function folderCard(folder) {
   card.onclick = () => {
     currentTag = folder.kind === "tag" ? folder.value : "";
     currentSource = folder.kind === "source" ? folder.value : "";
-    currentFolderName = folder.name;
+    currentFolderName = folder.kind === "source" ? folder.value : folder.name;
     currentQuery = "";
     $("#searchQuery").value = "";
     loadImages();
@@ -581,7 +600,7 @@ async function loadBoards() {
 $("#menuButton").onclick = openMenu;
 $("#closeMenu").onclick = closeMenu;
 $("#drawerScrim").onclick = closeMenu;
-$("#imagesTab").onclick = () => switchTab("images");
+$("#imagesTab").onclick = showAllImages;
 $("#foldersTab").onclick = () => { switchTab("folders"); loadFolders(); };
 $("#showBoards").onclick = loadBoards;
 $("#showAdd").onclick = () => {

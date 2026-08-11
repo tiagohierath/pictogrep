@@ -47,10 +47,7 @@ func main() {
 }
 
 func run(args []string) error {
-	command := "web"
-	if len(args) > 0 {
-		command = args[0]
-	}
+	command, commandArgs := splitCommand(args)
 	switch command {
 	case "help", "-h", "--help":
 		usage()
@@ -74,21 +71,21 @@ func run(args []string) error {
 	case "doctor":
 		return doctor(app)
 	case "index":
-		if len(args) < 2 {
+		if len(commandArgs) < 1 {
 			return fmt.Errorf("usage: pictogrep index FOLDER...")
 		}
 		fmt.Println("Scanning image folders…")
-		if err := app.indexFolders(args[1:]); err != nil {
+		if err := app.indexFolders(commandArgs); err != nil {
 			return err
 		}
 		paths, _, _ := app.snapshot()
 		fmt.Printf("Library ready: %d images.\n", len(paths))
 		return nil
 	case "search":
-		if len(args) < 2 {
+		if len(commandArgs) < 1 {
 			return fmt.Errorf("usage: pictogrep search QUERY")
 		}
-		results, ai, err := app.search(strings.Join(args[1:], " "), 50)
+		results, ai, err := app.search(strings.Join(commandArgs, " "), 50)
 		if err != nil {
 			return err
 		}
@@ -100,9 +97,9 @@ func run(args []string) error {
 		}
 		return nil
 	case "storyboard", "story", "board", "sb":
-		return serve(app, append([]string{"--page", "practice"}, args[1:]...))
+		return serve(app, append([]string{"--page", "practice"}, commandArgs...))
 	case "web", "app", "serve":
-		return serve(app, args[1:])
+		return serve(app, commandArgs)
 	default:
 		// Preserve the convenient `pictogrep words to search` behavior.
 		results, _, err := app.search(strings.Join(args, " "), 50)
@@ -114,6 +111,13 @@ func run(args []string) error {
 		}
 		return nil
 	}
+}
+
+func splitCommand(args []string) (string, []string) {
+	if len(args) == 0 {
+		return "web", nil
+	}
+	return args[0], args[1:]
 }
 
 func doctor(app *application) error {
