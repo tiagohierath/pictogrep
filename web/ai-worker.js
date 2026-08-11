@@ -18,22 +18,35 @@ function progress(detail) {
   self.postMessage({ type: "progress", detail });
 }
 
-function visionParts() {
-  processorPromise ??= AutoProcessor.from_pretrained(MODEL, { progress_callback: progress });
-  visionPromise ??= CLIPVisionModelWithProjection.from_pretrained(MODEL, {
-    ...MODEL_OPTIONS,
-    progress_callback: progress,
-  });
-  return Promise.all([processorPromise, visionPromise]);
+async function visionParts() {
+  try {
+    processorPromise ??= AutoProcessor.from_pretrained(MODEL, { progress_callback: progress });
+    visionPromise ??= CLIPVisionModelWithProjection.from_pretrained(MODEL, {
+      ...MODEL_OPTIONS,
+      progress_callback: progress,
+    });
+    return await Promise.all([processorPromise, visionPromise]);
+  } catch (error) {
+    // A temporary network/cache failure must not poison every later retry.
+    processorPromise = undefined;
+    visionPromise = undefined;
+    throw error;
+  }
 }
 
-function textParts() {
-  tokenizerPromise ??= AutoTokenizer.from_pretrained(MODEL, { progress_callback: progress });
-  textPromise ??= CLIPTextModelWithProjection.from_pretrained(MODEL, {
-    ...MODEL_OPTIONS,
-    progress_callback: progress,
-  });
-  return Promise.all([tokenizerPromise, textPromise]);
+async function textParts() {
+  try {
+    tokenizerPromise ??= AutoTokenizer.from_pretrained(MODEL, { progress_callback: progress });
+    textPromise ??= CLIPTextModelWithProjection.from_pretrained(MODEL, {
+      ...MODEL_OPTIONS,
+      progress_callback: progress,
+    });
+    return await Promise.all([tokenizerPromise, textPromise]);
+  } catch (error) {
+    tokenizerPromise = undefined;
+    textPromise = undefined;
+    throw error;
+  }
 }
 
 self.addEventListener("message", async event => {
@@ -41,11 +54,15 @@ self.addEventListener("message", async event => {
   try {
     if (type === "embed") {
       const [processor, model] = await visionParts();
-      const image = await RawImage.fromURL(new URL(event.data.item.url, self.location.origin).href);
-      const inputs = await processor(image);
-      const { image_embeds } = await model(inputs);
-      const vector = Array.from(image_embeds.normalize().data);
-      self.postMessage({ type: "result", id, result: vector });
+      try {
+        const image = await RawImage.fromURL(new URL(event.data.item.url, self.location.origin).href);
+        const inputs = await processor(image);
+        const { image_embeds } = await model(inputs);
+        const vector = Array.from(image_embeds.normalize().data);
+        self.postMessage({ type: "result", id, result: vector });
+      } catch (error) {
+        self.postMessage({ type: "error", id, kind: "image", error: error?.message || String(error) });
+      }
       return;
     }
     if (type === "search") {
@@ -58,6 +75,6 @@ self.addEventListener("message", async event => {
     }
     throw new Error("Unknown AI request");
   } catch (error) {
-    self.postMessage({ type: "error", id, error: error?.message || String(error) });
+    self.postMessage({ type: "error", id, kind: "model", error: error?.message || String(error) });
   }
 });

@@ -15,6 +15,7 @@ let semanticIndexPromise = null;
 let semanticWarmupPromise = null;
 let semanticQuery = "";
 let semanticQueryVector = null;
+const failedSemanticPaths = new Set();
 const aiRequests = new Map();
 
 async function request(url, options = {}) {
@@ -47,8 +48,11 @@ function getAIWorker() {
     const pending = aiRequests.get(message.id);
     if (!pending) return;
     aiRequests.delete(message.id);
-    if (message.type === "error") pending.reject(new Error(message.error));
-    else pending.resolve(message.result);
+    if (message.type === "error") {
+      const error = new Error(message.error);
+      error.kind = message.kind;
+      pending.reject(error);
+    } else pending.resolve(message.result);
   };
   aiWorker.onerror = event => {
     for (const pending of aiRequests.values()) pending.reject(new Error(event.message || "Search could not start"));
@@ -110,16 +114,27 @@ async function refreshSemanticResults() {
 }
 
 function continueSemanticIndex(items, completed, total) {
+  items = items.filter(item => !failedSemanticPaths.has(item.path));
   if (semanticIndexPromise || !items.length) return;
   semanticIndexPromise = (async () => {
+    let ready = completed;
     for (let index = 0; index < items.length; index++) {
-      await saveSemanticEmbedding(items[index]);
-      const ready = completed + index + 1;
+      try {
+        await saveSemanticEmbedding(items[index]);
+        ready++;
+      } catch (error) {
+        if (error.kind !== "image") throw error;
+        failedSemanticPaths.add(items[index].path);
+        continue;
+      }
       showMessage(`Making search better: ${ready} of ${total} pictures…`, false, true);
       if (ready % 24 === 0) await refreshSemanticResults();
     }
     await refreshSemanticResults();
-    showMessage(`Search is ready for all ${total} pictures.`);
+    const skipped = total - ready;
+    showMessage(skipped > 0
+      ? `Search is ready for ${ready} pictures; ${skipped} could not be read.`
+      : `Search is ready for all ${total} pictures.`);
   })().catch(error => {
     showMessage(`Search setup paused: ${error.message}`, true);
   }).finally(() => {
@@ -128,9 +143,11 @@ function continueSemanticIndex(items, completed, total) {
 }
 
 async function semanticSearch(query) {
-  // Prepare the text and the first few pictures together. This returns useful
-  // results quickly, then quietly improves them for the rest of the library.
+  // Prepare text and pictures together. On a brand-new library, return fast
+  // filename matches immediately and replace them with semantic results as
+  // soon as the first image vector is ready.
   const vectorPromise = semanticVector(query);
+  vectorPromise.catch(() => {});
   let state = await request("/api/app/ai");
 
   if (state.indexed === 0 && state.missing.length) {
@@ -138,17 +155,31 @@ async function semanticSearch(query) {
       const first = state.missing.slice(0, 8);
       const total = state.total;
       semanticWarmupPromise = (async () => {
-        showMessage(`Preparing your first search…`, false, true);
+        showMessage("Downloading AI search… This happens only once.", false, true);
         for (let index = 0; index < first.length; index++) {
-          await saveSemanticEmbedding(first[index]);
-          showMessage(`Preparing your first search: ${index + 1} of ${total} pictures…`, false, true);
+          try {
+            await saveSemanticEmbedding(first[index]);
+            showMessage(`First result ready. Improving search for ${total} pictures…`, false, true);
+            return;
+          } catch (error) {
+            if (error.kind !== "image") throw error;
+            failedSemanticPaths.add(first[index].path);
+          }
         }
-      })().finally(() => {
+        throw new Error("The first pictures could not be read. Try adding a JPG or PNG image.");
+      })().then(async () => {
+        const updated = await request("/api/app/ai");
+        continueSemanticIndex(updated.missing, updated.indexed, updated.total);
+        await refreshSemanticResults();
+      }).catch(error => {
+        showMessage(`AI search could not start. Check your internet connection and try again. ${error.message}`, true, true);
+      }).finally(() => {
         semanticWarmupPromise = null;
       });
     }
-    await semanticWarmupPromise;
-    state = await request("/api/app/ai");
+    const fallback = await request(`/api/app/search?q=${encodeURIComponent(query)}&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}&limit=120`);
+    fallback.preparing = true;
+    return fallback;
   }
 
   continueSemanticIndex(state.missing, state.indexed, state.total);
@@ -350,8 +381,10 @@ async function loadImages() {
         : await request(`/api/app/search?q=${encodeURIComponent(currentQuery)}&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}&limit=120`);
       if (loadId !== imageLoadId) return;
       renderImages(data.images, data.images.length);
-      if (!data.images.length) showMessage("No matching pictures. Try fewer words.");
-      else if (!semanticIndexPromise) $("#message").hidden = true;
+      if (data.preparing) {
+        $("#imagesEmpty").hidden = true;
+      } else if (!data.images.length) showMessage("No matching pictures. Try fewer words.");
+      else if (!semanticIndexPromise && !semanticWarmupPromise) $("#message").hidden = true;
     } else {
       const data = await request(`/api/app/images?mode=recent&count=300&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}`);
       if (loadId !== imageLoadId) return;
@@ -487,23 +520,37 @@ async function startIndex(payload) {
   }
 }
 
+function isSupportedImage(file) {
+  return /\.(jpe?g|png|webp|gif)$/i.test(file.name);
+}
+
 async function uploadFiles(files) {
-  const images = Array.from(files).filter(file => file.type.startsWith("image/") || /\.(jpe?g|png|webp)$/i.test(file.name));
-  if (!images.length) return showMessage("Choose at least one JPG, PNG, or WebP image.", true);
+  const images = Array.from(files).filter(isSupportedImage);
+  if (!images.length) return showMessage("Choose at least one JPG, PNG, WebP, or GIF image.", true);
   openMenu();
   showMessage(`Copying 0 of ${images.length} pictures…`, false, true);
-  try {
-    for (let index = 0; index < images.length; index++) {
-      const file = images[index];
-      showMessage(`Copying ${index + 1} of ${images.length}: ${file.name}`, false, true);
+  let saved = 0;
+  let skipped = 0;
+  for (let index = 0; index < images.length; index++) {
+    const file = images[index];
+    showMessage(`Copying ${index + 1} of ${images.length}: ${file.name}`, false, true);
+    try {
       await request(`/api/app/upload?name=${encodeURIComponent(file.name)}`, {
         method: "POST",
         headers: {"Content-Type": file.type || "application/octet-stream"},
         body: file,
       });
+      saved++;
+    } catch (_) {
+      skipped++;
     }
-    await startIndex({includeLibrary: true});
-  } catch (_) {}
+  }
+  await refreshState();
+  await loadImages();
+  await loadFolders();
+  if (!saved) showMessage("No pictures could be added.", true);
+  else if (skipped) showMessage(`Added ${saved} pictures; skipped ${skipped} unreadable files.`);
+  else showMessage(`Added ${saved} ${saved === 1 ? "picture" : "pictures"}.`);
 }
 
 function openCreateFolder() {
@@ -516,7 +563,7 @@ function openCreateFolder() {
 async function createFolder(event) {
   event.preventDefault();
   const name = $("#newFolderName").value.trim();
-  const files = Array.from($("#newFolderFiles").files || []).filter(file => file.type.startsWith("image/"));
+  const files = Array.from($("#newFolderFiles").files || []).filter(isSupportedImage);
   if (!name) return;
   try {
     await request("/api/app/tags", {
@@ -524,19 +571,28 @@ async function createFolder(event) {
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({action: "create", tag: name}),
     });
+    let saved = 0;
+    let skipped = 0;
     for (let index = 0; index < files.length; index++) {
       const file = files[index];
       showMessage(`Adding ${index + 1} of ${files.length}: ${file.name}`, false, true);
-      await request(`/api/app/upload?name=${encodeURIComponent(file.name)}&folder=${encodeURIComponent(name)}`, {
-        method: "POST",
-        headers: {"Content-Type": file.type || "application/octet-stream"},
-        body: file,
-      });
+      try {
+        await request(`/api/app/upload?name=${encodeURIComponent(file.name)}&folder=${encodeURIComponent(name)}`, {
+          method: "POST",
+          headers: {"Content-Type": file.type || "application/octet-stream"},
+          body: file,
+        });
+        saved++;
+      } catch (_) {
+        skipped++;
+      }
     }
     $("#folderDialog").close();
     await refreshState();
+    await loadImages();
     await loadFolders();
-    if (files.length) await startIndex({includeLibrary: true});
+    if (skipped) showMessage(`Created ${name} with ${saved} pictures; skipped ${skipped} unreadable files.`);
+    else if (saved) showMessage(`Created ${name} with ${saved} ${saved === 1 ? "picture" : "pictures"}.`);
     else showMessage(`Created folder: ${name}`);
   } catch (error) {
     showMessage(error.message, true, true);

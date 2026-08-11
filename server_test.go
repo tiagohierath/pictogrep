@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -78,6 +79,68 @@ func TestUploadWorksWithoutPythonOrAI(t *testing.T) {
 	}
 }
 
+func TestUploadValidatesDataBeforeChangingLibrary(t *testing.T) {
+	app, server := testHTTPServer(t)
+
+	request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/app/upload?name=fake.webp", bytes.NewReader([]byte{
+		'R', 'I', 'F', 'F', 4, 0, 0, 0, 'W', 'E', 'B', 'P',
+	}))
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value := responseJSON(t, response); response.StatusCode != http.StatusBadRequest || value["ok"] != false {
+		t.Fatalf("fake WebP was accepted: status=%d %#v", response.StatusCode, value)
+	}
+
+	picture := filepath.Join(t.TempDir(), "source.png")
+	writeTestPNG(t, picture)
+	data, _ := os.ReadFile(picture)
+	request, _ = http.NewRequest(http.MethodPost, server.URL+"/api/app/upload?name=source.png&folder=!!!", bytes.NewReader(data))
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value := responseJSON(t, response); response.StatusCode != http.StatusBadRequest || value["ok"] != false {
+		t.Fatalf("invalid folder was accepted: status=%d %#v", response.StatusCode, value)
+	}
+
+	request, _ = http.NewRequest(http.MethodPost, server.URL+"/api/app/upload?name=wrong.jpg", bytes.NewReader(data))
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value := responseJSON(t, response); response.StatusCode != http.StatusBadRequest || value["ok"] != false {
+		t.Fatalf("mismatched image type was accepted: status=%d %#v", response.StatusCode, value)
+	}
+
+	paths, _, _ := app.snapshot()
+	entries, _ := os.ReadDir(app.libraryDir)
+	if len(paths) != 0 || len(entries) != 0 {
+		t.Fatalf("rejected uploads changed the library: paths=%#v entries=%d", paths, len(entries))
+	}
+}
+
+func TestChunkedUploadWorks(t *testing.T) {
+	app, server := testHTTPServer(t)
+	picture := filepath.Join(t.TempDir(), "chunked.png")
+	writeTestPNG(t, picture)
+	data, _ := os.ReadFile(picture)
+	request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/app/upload?name=chunked.png", bytes.NewReader(data))
+	request.ContentLength = -1
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value := responseJSON(t, response); response.StatusCode != http.StatusOK || value["ok"] != true {
+		t.Fatalf("chunked upload failed: status=%d %#v", response.StatusCode, value)
+	}
+	paths, _, _ := app.snapshot()
+	if len(paths) != 1 {
+		t.Fatalf("chunked upload missing from library: %#v", paths)
+	}
+}
+
 func TestManualFoldersWorkWithoutAI(t *testing.T) {
 	app, server := testHTTPServer(t)
 	picture := filepath.Join(app.libraryDir, "reference.png")
@@ -99,6 +162,81 @@ func TestManualFoldersWorkWithoutAI(t *testing.T) {
 	value = responseJSON(t, response)
 	if value["total"].(float64) != 1 {
 		t.Fatalf("tagged image missing: %#v", value)
+	}
+}
+
+func TestBadTagRequestsHaveNoSideEffects(t *testing.T) {
+	app, server := testHTTPServer(t)
+	for _, payload := range []string{
+		`{"action":"unknown","tag":"ghost"}`,
+		`{"action":"create","tag":"ghost"} {}`,
+	} {
+		response, err := http.Post(server.URL+"/api/app/tags", "application/json", bytes.NewBufferString(payload))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if value := responseJSON(t, response); response.StatusCode != http.StatusBadRequest || value["ok"] != false {
+			t.Fatalf("bad tag request was accepted: status=%d %#v", response.StatusCode, value)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(app.tagsDir, "ghost")); !os.IsNotExist(err) {
+		t.Fatalf("bad request created a folder: %v", err)
+	}
+}
+
+func TestDecodeJSONEnforcesBodyLimit(t *testing.T) {
+	request := httptest.NewRequest(http.MethodPost, "/", bytes.NewBufferString(`{"ok":true} padded`))
+	var value map[string]any
+	if err := decodeJSON(request, &value, 12); err == nil {
+		t.Fatal("oversized JSON request was accepted")
+	}
+}
+
+func TestReferencesAndBoardsRejectInvalidImageData(t *testing.T) {
+	app, server := testHTTPServer(t)
+	picture := filepath.Join(app.libraryDir, "reference.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+
+	invalidReference, _ := json.Marshal(map[string]any{
+		"dataUrl": "data:image/png;base64," + base64.StdEncoding.EncodeToString([]byte("not an image")),
+		"name":    "fake.png",
+	})
+	response, err := http.Post(server.URL+"/api/references", "application/json", bytes.NewReader(invalidReference))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value := responseJSON(t, response); response.StatusCode != http.StatusBadRequest || value["ok"] != false {
+		t.Fatalf("invalid reference was accepted: status=%d %#v", response.StatusCode, value)
+	}
+
+	data, _ := os.ReadFile(picture)
+	invalidBoard, _ := json.Marshal(map[string]any{
+		"dataUrl":    "data:image/png;base64," + base64.StdEncoding.EncodeToString(data),
+		"hasDrawing": true,
+		"aspect":     "../../escape",
+		"index":      1,
+		"imageName":  "reference.png",
+		"imageId":    0,
+	})
+	response, err = http.Post(server.URL+"/api/save", "application/json", bytes.NewReader(invalidBoard))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value := responseJSON(t, response); response.StatusCode != http.StatusBadRequest || value["ok"] != false {
+		t.Fatalf("invalid board aspect was accepted: status=%d %#v", response.StatusCode, value)
+	}
+
+	references, _ := os.ReadDir(app.referenceDir)
+	boards, _ := os.ReadDir(app.boardsDir)
+	boardFiles := 0
+	for _, entry := range boards {
+		if !entry.IsDir() {
+			boardFiles++
+		}
+	}
+	if len(references) != 0 || boardFiles != 0 {
+		t.Fatalf("rejected image data changed files: references=%d boards=%d", len(references), boardFiles)
 	}
 }
 

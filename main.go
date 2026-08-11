@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"net"
@@ -72,7 +73,7 @@ func run(args []string) error {
 		return doctor(app)
 	case "index":
 		if len(commandArgs) < 1 {
-			return fmt.Errorf("usage: pictogrep index FOLDER...")
+			return fmt.Errorf("usage: pictogrep index FOLDER…")
 		}
 		fmt.Println("Scanning image folders…")
 		if err := app.indexFolders(commandArgs); err != nil {
@@ -203,8 +204,13 @@ func runningURL(port int, page string) string {
 	if err != nil {
 		return ""
 	}
-	_ = response.Body.Close()
-	if response.StatusCode != 200 {
+	defer response.Body.Close()
+	var state struct {
+		OK      bool              `json:"ok"`
+		Version string            `json:"version"`
+		Paths   map[string]string `json:"paths"`
+	}
+	if response.StatusCode != 200 || json.NewDecoder(response.Body).Decode(&state) != nil || !state.OK || state.Version == "" || state.Paths["home"] == "" {
 		return ""
 	}
 	if page == "practice" {

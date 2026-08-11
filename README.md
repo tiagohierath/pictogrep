@@ -87,3 +87,8 @@ nix run github:tiagohierath/pictogrep
 
 Useful development commands are `pictogrep doctor`, `pictogrep paths`, and
 `pictogrep web --no-open`. Run `pictogrep --help` for the complete list.
+
+## Roadmap
+
+- [ ] 2D map of images
+- [ ] Subfolders and folder structure visualizer

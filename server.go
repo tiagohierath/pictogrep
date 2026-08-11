@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"encoding/base64"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -464,7 +466,7 @@ func uniqueFile(directory, name string) string {
 }
 
 func (s *server) appUpload(w http.ResponseWriter, r *http.Request) {
-	if r.ContentLength <= 0 || r.ContentLength > maxUploadBytes {
+	if r.ContentLength == 0 || r.ContentLength > maxUploadBytes {
 		sendError(w, 400, fmt.Errorf("image must be between 1 byte and 100 MB"))
 		return
 	}
@@ -472,6 +474,14 @@ func (s *server) appUpload(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		sendError(w, 400, err)
 		return
+	}
+	folder := strings.TrimSpace(r.URL.Query().Get("folder"))
+	if folder != "" {
+		folder, err = collectionName(folder)
+		if err != nil {
+			sendError(w, 400, err)
+			return
+		}
 	}
 	target := uniqueFile(s.app.libraryDir, name)
 	file, err := os.OpenFile(target, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o644)
@@ -486,26 +496,64 @@ func (s *server) appUpload(w http.ResponseWriter, r *http.Request) {
 		sendError(w, 400, fmt.Errorf("could not save image"))
 		return
 	}
-	verify, err := os.Open(target)
-	if err == nil {
-		_, _, err = image.DecodeConfig(verify)
-		_ = verify.Close()
-	}
-	// Go's standard library cannot decode WebP, but browsers can. Other formats
-	// are verified before they enter the library.
-	if err != nil && strings.ToLower(filepath.Ext(target)) != ".webp" {
+	if !validImageFile(target) {
 		_ = os.Remove(target)
 		sendError(w, 400, fmt.Errorf("uploaded file is not a valid image"))
 		return
 	}
-	s.app.addPath(target)
-	if folder := strings.TrimSpace(r.URL.Query().Get("folder")); folder != "" {
+	if folder != "" {
 		if _, err := s.linkTag(folder, target); err != nil {
+			_ = os.Remove(target)
 			sendError(w, 400, err)
 			return
 		}
 	}
-	sendJSON(w, 200, map[string]any{"ok": true, "name": filepath.Base(target), "path": target, "folder": r.URL.Query().Get("folder")})
+	s.app.addPath(target)
+	sendJSON(w, 200, map[string]any{"ok": true, "name": filepath.Base(target), "path": target, "folder": folder})
+}
+
+func validImageFile(path string) bool {
+	file, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+	if _, format, err := image.DecodeConfig(file); err == nil {
+		return imageFormatMatches(strings.ToLower(filepath.Ext(path)), format)
+	}
+	if strings.ToLower(filepath.Ext(path)) != ".webp" {
+		return false
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		return false
+	}
+	header := make([]byte, 20)
+	_, err = io.ReadFull(file, header)
+	info, statErr := file.Stat()
+	return err == nil && statErr == nil && validWebPHeader(header, info.Size())
+}
+
+func imageFormatMatches(extension, format string) bool {
+	switch extension {
+	case ".jpg", ".jpeg":
+		return format == "jpeg"
+	case ".png":
+		return format == "png"
+	case ".gif":
+		return format == "gif"
+	default:
+		return false
+	}
+}
+
+func validWebPHeader(header []byte, size int64) bool {
+	if len(header) < 20 || size < 20 || string(header[:4]) != "RIFF" || string(header[8:12]) != "WEBP" {
+		return false
+	}
+	declaredSize := int64(binary.LittleEndian.Uint32(header[4:8])) + 8
+	chunkSize := int64(binary.LittleEndian.Uint32(header[16:20]))
+	chunk := string(header[12:16])
+	return declaredSize == size && chunkSize <= size-20 && (chunk == "VP8 " || chunk == "VP8L" || chunk == "VP8X")
 }
 
 func collectionName(value string) (string, error) {
@@ -542,11 +590,6 @@ func (s *server) appTags(w http.ResponseWriter, r *http.Request) {
 		sendError(w, 400, err)
 		return
 	}
-	directory := filepath.Join(s.app.tagsDir, name)
-	if err := os.MkdirAll(directory, 0o755); err != nil {
-		sendError(w, 400, err)
-		return
-	}
 	switch request.Action {
 	case "", "add":
 		paths, _, _ := s.app.snapshot()
@@ -561,6 +604,11 @@ func (s *server) appTags(w http.ResponseWriter, r *http.Request) {
 		}
 		sendJSON(w, 200, map[string]any{"ok": true, "tag": name, "added": added})
 	case "create":
+		directory := filepath.Join(s.app.tagsDir, name)
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			sendError(w, 400, err)
+			return
+		}
 		sendJSON(w, 200, map[string]any{"ok": true, "tag": name})
 	case "fill":
 		sendError(w, 400, fmt.Errorf("automatic folder filling is not available yet"))
@@ -732,7 +780,10 @@ func (s *server) boardRecords() []map[string]any {
 			continue
 		}
 		path := filepath.Join(s.app.boardsDir, entry.Name())
-		info, _ := entry.Info()
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
 		record := map[string]any{"name": entry.Name(), "url": "/board/" + url.PathEscape(entry.Name()), "mtime": info.ModTime().Unix(), "source": "", "aspect": "", "query": "", "tags": []string{}}
 		if data, err := os.ReadFile(strings.TrimSuffix(path, filepath.Ext(path)) + ".json"); err == nil {
 			var metadata map[string]any
@@ -834,7 +885,10 @@ func (s *server) references(w http.ResponseWriter, _ *http.Request) {
 		if entry.IsDir() {
 			continue
 		}
-		info, _ := entry.Info()
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
 		items = append(items, reference{Name: entry.Name(), URL: "/reference/" + url.PathEscape(entry.Name()), Time: info.ModTime().UnixNano()})
 	}
 	sort.SliceStable(items, func(i, j int) bool { return items[i].Time < items[j].Time })
@@ -882,18 +936,26 @@ func (s *server) addReference(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.SplitN(request.DataURL, ",", 2)
-	if len(parts) != 2 || !strings.HasPrefix(parts[0], "data:image/") {
+	if len(parts) != 2 {
+		sendError(w, 400, fmt.Errorf("reference must be an image"))
+		return
+	}
+	extensionByHeader := map[string]string{
+		"data:image/png;base64":  ".png",
+		"data:image/jpeg;base64": ".jpg",
+		"data:image/jpg;base64":  ".jpg",
+		"data:image/gif;base64":  ".gif",
+		"data:image/webp;base64": ".webp",
+	}
+	ext, ok := extensionByHeader[strings.ToLower(parts[0])]
+	if !ok {
 		sendError(w, 400, fmt.Errorf("reference must be an image"))
 		return
 	}
 	raw, err := base64.StdEncoding.DecodeString(parts[1])
-	if err != nil || len(raw) > 15<<20 {
+	if err != nil || len(raw) > 15<<20 || !validImageData(raw, ext) {
 		sendError(w, 400, fmt.Errorf("invalid or oversized reference image"))
 		return
-	}
-	ext := strings.ToLower(filepath.Ext(request.Name))
-	if !imageExtensions[ext] {
-		ext = ".png"
 	}
 	target := uniqueFile(s.app.referenceDir, cleanStem(request.Name)+ext)
 	if err := os.WriteFile(target, raw, 0o644); err != nil {
@@ -901,6 +963,13 @@ func (s *server) addReference(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendJSON(w, 200, map[string]any{"ok": true, "name": filepath.Base(target)})
+}
+
+func validImageData(raw []byte, extension string) bool {
+	if _, format, err := image.DecodeConfig(bytes.NewReader(raw)); err == nil {
+		return imageFormatMatches(extension, format)
+	}
+	return extension == ".webp" && validWebPHeader(raw, int64(len(raw)))
 }
 
 func (s *server) deleteReference(w http.ResponseWriter, r *http.Request) {
@@ -936,14 +1005,19 @@ func (s *server) saveBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	parts := strings.SplitN(request.DataURL, ",", 2)
-	if len(parts) != 2 {
+	if len(parts) != 2 || parts[0] != "data:image/png;base64" {
 		sendError(w, 400, fmt.Errorf("invalid drawing"))
 		return
 	}
 	raw, err := base64.StdEncoding.DecodeString(parts[1])
 	paths, _, _ := s.app.snapshot()
-	if err != nil || request.ImageID < 0 || request.ImageID >= len(paths) {
+	if err != nil || !validImageData(raw, ".png") || request.ImageID < 0 || request.ImageID >= len(paths) || request.Index < 1 || request.Index > 9999 {
 		sendError(w, 400, fmt.Errorf("invalid drawing"))
+		return
+	}
+	validAspects := map[string]bool{"16:9": true, "4:3": true, "2:1": true, "3:4": true}
+	if !validAspects[request.Aspect] {
+		sendError(w, 400, fmt.Errorf("invalid drawing aspect"))
 		return
 	}
 	aspect := strings.ReplaceAll(request.Aspect, ":", "x")
@@ -960,9 +1034,19 @@ func (s *server) saveBoard(w http.ResponseWriter, r *http.Request) {
 }
 
 func decodeJSON(r *http.Request, target any, limit int64) error {
-	decoder := json.NewDecoder(io.LimitReader(r.Body, limit))
+	data, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
+	if err != nil {
+		return fmt.Errorf("invalid request: %w", err)
+	}
+	if int64(len(data)) > limit {
+		return fmt.Errorf("invalid request: request is too large")
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	if err := decoder.Decode(target); err != nil {
 		return fmt.Errorf("invalid request: %w", err)
+	}
+	if decoder.Decode(&struct{}{}) != io.EOF {
+		return fmt.Errorf("invalid request: trailing data")
 	}
 	return nil
 }
