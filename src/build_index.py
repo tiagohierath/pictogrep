@@ -272,7 +272,13 @@ def prepare_image_for_index(file, manifest, settings):
         return file, "failed"
 
 
-def build_index(folders, remember=True, progress=True, optimization_settings=None):
+def build_index(
+    folders,
+    remember=True,
+    progress=True,
+    optimization_settings=None,
+    progress_callback=None,
+):
     import numpy as np
     import open_clip
     import torch
@@ -299,6 +305,9 @@ def build_index(folders, remember=True, progress=True, optimization_settings=Non
     if not files:
         raise SystemExit("No images found in: " + ", ".join(map(str, roots)))
 
+    if progress_callback:
+        progress_callback({"phase": "scanned", "current": 0, "total": len(files)})
+
     model, _, preprocess = open_clip.create_model_and_transforms(
         MODEL_NAME,
         pretrained=PRETRAINED,
@@ -309,11 +318,21 @@ def build_index(folders, remember=True, progress=True, optimization_settings=Non
         print(f"Found {len(files)} images in {len(scan_roots)} folder(s)")
     embeddings = []
     metadata = []
+    used_index_paths = []
     manifest = load_optimized_manifest()
     optimize_counts = {"optimized": 0, "reused": 0, "skipped": 0, "disabled": 0, "failed": 0}
     indexed_seen = set()
 
     for i, file in enumerate(files, start=1):
+        if progress_callback:
+            progress_callback(
+                {
+                    "phase": "indexing",
+                    "current": i,
+                    "total": len(files),
+                    "file": str(file),
+                }
+            )
         index_file, optimize_status = prepare_image_for_index(file, manifest, optimization_settings)
         optimize_counts[optimize_status] = optimize_counts.get(optimize_status, 0) + 1
         resolved_index_file = index_file.resolve()
@@ -327,7 +346,8 @@ def build_index(folders, remember=True, progress=True, optimization_settings=Non
                 vector = model.encode_image(image)
             vector /= vector.norm(dim=-1, keepdim=True)
             embeddings.append(vector.cpu().numpy()[0])
-            metadata.append(str(index_file))
+            metadata.append(str(file))
+            used_index_paths.append(str(index_file))
             if progress:
                 suffix = f" -> {index_file}" if index_file != file else ""
                 print(f"{i}/{len(files)} {file}{suffix}")
@@ -340,7 +360,7 @@ def build_index(folders, remember=True, progress=True, optimization_settings=Non
     with (DATA_DIR / "metadata.json").open("w") as fh:
         json.dump(metadata, fh, indent=2)
     save_optimized_manifest(manifest)
-    pruned = prune_unused_optimized_files(manifest, metadata)
+    pruned = prune_unused_optimized_files(manifest, used_index_paths)
     if pruned:
         save_optimized_manifest(manifest)
     if remember:

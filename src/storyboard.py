@@ -171,7 +171,7 @@ def page_html():
 <body>
   <header>
     <div class="title">
-      <strong>PICTOGREP STORYBOARD</strong>
+      <strong><a href="/" style="color:inherit;text-decoration:none" title="Back to Pictogrep">PICTOGREP</a> / STORYBOARD</strong>
       <span>rough redraws, one reference at a time</span>
     </div>
     <div class="controls primary">
@@ -1430,7 +1430,12 @@ def page_html():
       const opt = mode.options[mode.selectedIndex];
       count.hidden = !opt.dataset.custom;
       const n = opt.dataset.custom ? count.value : (opt.dataset.count || count.value);
-      const url = '/api/images?mode=' + encodeURIComponent(mode.value) + '&count=' + encodeURIComponent(n) + '&tag=' + encodeURIComponent(collection.value);
+      let url = '/api/images?mode=' + encodeURIComponent(mode.value) + '&count=' + encodeURIComponent(n) + '&tag=' + encodeURIComponent(collection.value);
+      if (!loadImages.usedInitialImage) {
+        const initialImage = new URLSearchParams(location.search).get('image');
+        if (initialImage !== null) url += '&image=' + encodeURIComponent(initialImage);
+        loadImages.usedInitialImage = true;
+      }
       const res = await fetch(url);
       const data = await res.json();
       images = data.images;
@@ -2054,7 +2059,12 @@ class StoryboardHandler(BaseHTTPRequestHandler):
                 count = 30
             tag = params.get("tag", [""])[0]
             try:
-                paths = collection_images(tag) if tag else self.server.paths
+                requested_image = params.get("image", [""])[0]
+                if requested_image:
+                    image_id = int(requested_image)
+                    paths = [self.server.paths[image_id]]
+                else:
+                    paths = collection_images(tag) if tag else self.server.paths
             except ValueError as exc:
                 self.send_json({"ok": False, "error": str(exc)}, status=400)
                 return

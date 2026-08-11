@@ -47,7 +47,9 @@ usage() {
 Pictogrep
 
 Usage:
-  pictogrep                  open the terminal UI
+  pictogrep                  open the local web app
+  pictogrep web [options]    open or serve the local web app
+  pictogrep tui              open the classic terminal UI
   pictogrep setup            create .venv and install Python packages
   pictogrep install-user     link pictogrep into ~/.local/bin
   pictogrep doctor           check dependencies, index, and viewer
@@ -134,7 +136,15 @@ case "${1:-}" in
     ;;
   storyboard|story|board|sb)
     shift
-    python "$DIR/src/storyboard.py" "$@"
+    python "$DIR/src/webapp.py" --page practice "$@"
+    ;;
+  web|app|serve)
+    shift
+    python "$DIR/src/webapp.py" "$@"
+    ;;
+  tui|terminal)
+    python "$DIR/src/build_index.py" --refresh --quiet-if-fresh
+    python "$DIR/src/tui.py"
     ;;
   search)
     shift
@@ -142,8 +152,7 @@ case "${1:-}" in
     python "$DIR/src/search.py" "$@"
     ;;
   "")
-    python "$DIR/src/build_index.py" --refresh --quiet-if-fresh
-    python "$DIR/src/tui.py"
+    python "$DIR/src/webapp.py"
     ;;
   *)
     python "$DIR/src/build_index.py" --refresh --quiet-if-fresh

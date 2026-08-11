@@ -255,8 +255,8 @@ class App:
         try:
             with urlopen(url + "api/images?mode=recent&count=1", timeout=0.25):
                 pass
-            webbrowser.open(url)
-            self.status = f"Opened existing storyboard: {url}"
+            webbrowser.open(url + "practice")
+            self.status = f"Opened existing storyboard: {url}practice"
             return
         except Exception:
             pass

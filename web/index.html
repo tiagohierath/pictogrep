@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Pictogrep</title>
+  <link rel="stylesheet" href="/assets/app.css">
+</head>
+<body>
+  <header class="app-header">
+    <span class="header-spacer"></span>
+    <a class="wordmark" href="/">pictogrep</a>
+    <button class="menu-button" id="menuButton" aria-label="Open menu" aria-expanded="false">☰</button>
+  </header>
+
+  <main class="main-content">
+    <form class="search" id="searchForm">
+      <input id="searchQuery" type="search" placeholder="Search pictures" autocomplete="off" aria-label="Search pictures">
+      <button type="submit">Search</button>
+    </form>
+
+    <div class="tabs" role="tablist" aria-label="Library view">
+      <button class="active" id="imagesTab" role="tab" aria-selected="true">Images <span id="imageCount"></span></button>
+      <button id="foldersTab" role="tab" aria-selected="false">Folders</button>
+    </div>
+
+    <section id="imagesPanel" aria-labelledby="imagesTab">
+      <div class="notice" id="notice" hidden></div>
+      <div class="image-grid" id="imageGrid" aria-live="polite"></div>
+      <div class="empty" id="imagesEmpty" hidden>
+        <p>No pictures yet.</p>
+        <button id="emptyAddImages">Add pictures</button>
+      </div>
+    </section>
+
+    <section id="foldersPanel" aria-labelledby="foldersTab" hidden>
+      <div class="folder-list" id="folderList"></div>
+      <div class="empty" id="foldersEmpty" hidden><p>No folders have been added.</p></div>
+    </section>
+  </main>
+
+  <div class="drawer-scrim" id="drawerScrim" hidden></div>
+  <aside class="drawer" id="drawer" aria-label="Pictogrep menu" aria-hidden="true">
+    <div class="drawer-header"><strong>Menu</strong><button id="closeMenu" aria-label="Close menu">×</button></div>
+
+    <nav class="drawer-actions">
+      <a href="/practice">Open storyboard</a>
+      <button id="showBoards">Saved boards <span id="boardCount"></span></button>
+      <button id="showAdd">Add pictures or folder</button>
+    </nav>
+
+    <section class="drawer-section" id="addSection" hidden>
+      <h2>Add pictures</h2>
+      <p>Copy pictures into Pictogrep:</p>
+      <label class="file-button">Choose images<input id="imageFiles" type="file" accept="image/*" multiple hidden></label>
+      <label class="file-button">Choose a folder<input id="imageFolder" type="file" accept="image/*" webkitdirectory multiple hidden></label>
+      <p>Or index pictures where they already are:</p>
+      <form id="folderForm" class="folder-form">
+        <input id="folderPath" type="text" placeholder="/path/to/pictures" spellcheck="false">
+        <button type="submit">Add folder</button>
+      </form>
+    </section>
+
+    <section class="drawer-section" id="boardsSection" hidden>
+      <div class="section-title"><h2>Saved boards</h2><a href="/practice">New</a></div>
+      <div class="board-list" id="boardList"></div>
+      <p id="boardsEmpty" hidden>No boards saved yet.</p>
+    </section>
+
+    <section class="drawer-section settings">
+      <h2>Settings</h2>
+      <dl>
+        <div><dt>Library</dt><dd id="indexSummary">Checking…</dd></div>
+        <div><dt>Model</dt><dd id="modelName">—</dd></div>
+        <div><dt>Boards</dt><dd id="boardsPath">—</dd></div>
+      </dl>
+      <div class="index-status" id="indexStatus" hidden>
+        <progress id="indexProgress" value="0" max="1"></progress>
+        <span id="indexMessage"></span>
+      </div>
+      <button id="rebuildIndex">Rebuild index</button>
+      <details>
+        <summary>Advanced CLI</summary>
+        <pre>pictogrep tui
+pictogrep search "foggy street"
+pictogrep doctor</pre>
+      </details>
+    </section>
+  </aside>
+
+  <dialog id="tagDialog">
+    <form id="tagForm">
+      <h2>Add to folder</h2>
+      <input id="tagName" list="tagOptions" placeholder="Folder name" autocomplete="off">
+      <datalist id="tagOptions"></datalist>
+      <input id="tagImageId" type="hidden">
+      <div class="dialog-actions"><button type="button" id="cancelTag">Cancel</button><button type="submit">Add</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="folderDialog">
+    <form id="createFolderForm">
+      <h2>Create folder</h2>
+      <label class="field-label" for="newFolderName">Name</label>
+      <input id="newFolderName" placeholder="e.g. to-draw" autocomplete="off" required>
+      <label class="field-label" for="folderPrompt">Fill with local AI (optional)</label>
+      <input id="folderPrompt" placeholder="e.g. cats, foggy streets, red costumes" autocomplete="off">
+      <p class="field-help">Adds the 50 closest matches from your current library. Nothing is uploaded.</p>
+      <label class="field-label" for="newFolderFiles">Pictures (optional)</label>
+      <input id="newFolderFiles" type="file" accept="image/*" multiple>
+      <div class="dialog-actions"><button type="button" id="cancelFolder">Cancel</button><button type="submit">Create</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="image-viewer" id="imageViewer">
+    <button id="closeViewer" aria-label="Close image">×</button>
+    <img id="viewerImage" alt="">
+  </dialog>
+
+  <div class="message" id="message" role="status" aria-live="polite" hidden></div>
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>

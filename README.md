@@ -4,16 +4,16 @@ Pictogrep is a small tool for two closely related jobs: **finding** the images
 you half-remember and **turning** them into rough storyboards before the idea
 evaporates.
 
-Point it at one or more folders of reference images, build a CLIP index, then
-search with plain language in a terminal UI:
+Install it once, then use the local browser app to add folders or pictures and
+search them with plain language:
 
 ```bash
 pictogrep
 ```
 
 Type `red cloak`, `foggy street`, `girl sitting`, `ornate helmet`, or whatever
-you remember. Pictogrep ranks your local images by visual meaning and opens the
-ones you choose.
+you remember. Pictogrep ranks your local images by visual meaning and shows
+them in a stable masonry gallery.
 
 When a reference wants to become a shot, open the browser storyboard mode. It
 puts the reference beside a simple drawing surface so you can make fast, ugly,
@@ -28,9 +28,12 @@ This is the shortest path for someone who just cloned the repo:
 cd pictogrep
 ./bin/pictogrep setup
 ./bin/pictogrep install-user
-pictogrep index ~/Pictures
 pictogrep
 ```
+
+Use **Add pictures or folder** in the browser menu. You can copy images into
+Pictogrep, index them where they already live, create visual folders manually,
+or fill a folder from a local CLIP prompt such as `cats`.
 
 If something feels wrong:
 
@@ -42,12 +45,17 @@ pictogrep doctor
 
 - Searches your own image library with natural language.
 - Runs locally; your images are not uploaded anywhere.
-- Opens a simple TUI when you run `pictogrep`.
+- Opens the complete local browser app when you run `pictogrep`.
+- Imports pictures, indexes existing folders, and shows natural-aspect-ratio
+  previews without uploading anything.
+- Creates visual folders manually or fills them from a local CLIP prompt.
+- Opens any library image directly in the storyboard studio.
 - Keeps the fast CLI flow: `pictogrep "girl sitting"`.
 - Refreshes remembered image folders automatically every seven days when used.
 - Creates editable image tags, manually or from CLIP search results.
 - Opens a browser storyboard tool for turning references into quick, useful
-  shot drawings.
+  shot drawings, then shows saved boards in the app.
+- Keeps the classic terminal UI available as `pictogrep tui`.
 - Uses `mpv` for viewing images when available.
 
 ## Quick Start With Nix
@@ -58,7 +66,6 @@ cd pictogrep
 nix develop
 ./bin/pictogrep setup
 ./bin/pictogrep install-user
-pictogrep index ~/Pictures/reference
 pictogrep
 ```
 
@@ -67,14 +74,13 @@ model is cached locally.
 
 ## Quick Start Without Nix
 
-You need Python 3.12+, pip, and preferably `mpv`.
+You need Python 3.12+ and pip. `mpv` is optional for advanced CLI viewing.
 
 ```bash
 git clone https://github.com/tiagohierath/pictogrep.git
 cd pictogrep
 ./bin/pictogrep setup
 ./bin/pictogrep install-user
-pictogrep index ~/Pictures/reference
 pictogrep
 ```
 
@@ -90,10 +96,23 @@ export PICTOGREP_VIEWER="feh"
 Every command supports `--help`. `pictogrep version` prints the installed
 release and `pictogrep paths` prints the local state locations.
 
-Open the TUI:
+Open the browser app:
 
 ```bash
 pictogrep
+```
+
+Serve it without opening a browser, or use another port:
+
+```bash
+pictogrep web --no-open
+pictogrep web --port 9000
+```
+
+Open the classic terminal UI:
+
+```bash
+pictogrep tui
 ```
 
 Build or rebuild the index. Pictogrep remembers these folders and refreshes
@@ -201,7 +220,21 @@ Limit results:
 pictogrep search "foggy city" --limit 12
 ```
 
-## TUI Keys
+## Browser App
+
+The browser app binds only to `127.0.0.1`. It provides the normal Pictogrep
+workflow in one place:
+
+- Search the local CLIP index and view results in a masonry layout.
+- Click an image to inspect it, or right-click for **Draw** and **Add to folder**.
+- Browse source and tag folders through visual preview cards.
+- Create an empty folder, upload pictures into it, or fill it with the top 50
+  matches for a local AI prompt.
+- Open the storyboard studio and review saved boards.
+- Add image files, remember an existing image folder, rebuild the index, and
+  inspect local paths from the menu.
+
+## Terminal UI Keys
 
 - Type normally; `Backspace`, `Delete`, `Left`, and `Right` edit the search.
 - Press `Enter` to search and open one MPV slideshow with the results.
@@ -282,13 +315,14 @@ Pictogrep writes its local index here:
 data/embeddings.npy
 data/metadata.json
 data/index-state.json
+library/
 collections/
 storyboards/
 ```
 
 Those files are ignored by git because they are machine-specific and can be
-large. The same is true for `images/`, `.venv/`, and loose image files in the
-project folder.
+large. The same is true for `images/`, `library/`, `.venv/`, and loose image
+files in the project folder.
 
 ## Notes
 

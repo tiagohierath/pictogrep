@@ -9,7 +9,7 @@ import tempfile
 import time
 
 BASE = Path(__file__).resolve().parents[1]
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 DATA_DIR = BASE / "data"
 EMBEDDINGS_PATH = DATA_DIR / "embeddings.npy"
 METADATA_PATH = DATA_DIR / "metadata.json"
