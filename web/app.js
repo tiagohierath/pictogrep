@@ -13,10 +13,14 @@ let aiRequestId = 0;
 let imageLoadId = 0;
 let semanticIndexPromise = null;
 let semanticWarmupPromise = null;
-let semanticQuery = "";
-let semanticQueryVector = null;
+let textWarmupPromise = null;
+let quietTextWarmup = false;
+let foregroundTextRequests = 0;
+let queryPrimeTimer = null;
 const failedSemanticPaths = new Set();
 const aiRequests = new Map();
+const semanticVectors = new Map();
+const semanticResults = new Map();
 
 async function request(url, options = {}) {
   const response = await fetch(url, options);
@@ -37,6 +41,7 @@ function getAIWorker() {
   aiWorker.onmessage = event => {
     const message = event.data;
     if (message.type === "progress") {
+      if (message.kind === "text" && quietTextWarmup && foregroundTextRequests === 0) return;
       const detail = message.detail || {};
       if (detail.status === "progress" && Number.isFinite(detail.progress)) {
         showMessage(`Preparing search… ${Math.round(detail.progress)}%`, false, true);
@@ -71,17 +76,53 @@ function runAI(type, values = {}) {
   });
 }
 
+function remember(cache, key, value, limit) {
+  cache.delete(key);
+  cache.set(key, value);
+  while (cache.size > limit) cache.delete(cache.keys().next().value);
+  return value;
+}
+
+function normalizedQuery(query) {
+  return query.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 function semanticVector(query) {
-  if (query !== semanticQuery || !semanticQueryVector) {
-    semanticQuery = query;
-    const pending = runAI("search", {query});
-    const wrapped = pending.catch(error => {
-      if (semanticQueryVector === wrapped) semanticQueryVector = null;
-      throw error;
+  const key = normalizedQuery(query);
+  const existing = semanticVectors.get(key);
+  if (existing) return remember(semanticVectors, key, existing, 48);
+  const pending = (async () => {
+    const cached = await request(`/api/app/ai/query?q=${encodeURIComponent(key)}`);
+    if (cached.cached && cached.vector?.length === 512) return cached.vector;
+    quietTextWarmup = false;
+    foregroundTextRequests++;
+    let vector;
+    try {
+      vector = await runAI("search", {query: key});
+    } finally {
+      foregroundTextRequests--;
+    }
+    await request("/api/app/ai/query", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({query: key, vector}),
     });
-    semanticQueryVector = wrapped;
-  }
-  return semanticQueryVector;
+    return vector;
+  })().catch(error => {
+    semanticVectors.delete(key);
+    throw error;
+  });
+  return remember(semanticVectors, key, pending, 48);
+}
+
+function warmTextSearch() {
+  if (textWarmupPromise) return textWarmupPromise;
+  quietTextWarmup = true;
+  textWarmupPromise = runAI("warmText").catch(() => {}).finally(() => {
+    quietTextWarmup = false;
+    textWarmupPromise = null;
+  });
+  return textWarmupPromise;
 }
 
 async function saveSemanticEmbedding(item) {
@@ -93,20 +134,29 @@ async function saveSemanticEmbedding(item) {
   });
 }
 
-async function requestSemanticResults(query) {
+function semanticResultKey(query) {
+  return JSON.stringify([normalizedQuery(query), currentTag, currentSource]);
+}
+
+async function requestSemanticResults(query, refresh = false) {
+  const key = semanticResultKey(query);
+  if (!refresh && semanticResults.has(key)) {
+    return remember(semanticResults, key, semanticResults.get(key), 24);
+  }
   const vector = await semanticVector(query);
-  return request("/api/app/ai/search", {
+  const data = await request("/api/app/ai/search", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({vector, limit: 120, tag: currentTag, source: currentSource}),
   });
+  return remember(semanticResults, key, data, 24);
 }
 
 async function refreshSemanticResults() {
   const query = currentQuery;
   if (!query || !appState?.aiAvailable) return;
   try {
-    const data = await requestSemanticResults(query);
+    const data = await requestSemanticResults(query, true);
     if (query === currentQuery) renderImages(data.images, data.images.length);
   } catch (_) {
     // The active search already reports errors. Background refreshes stay quiet.
@@ -372,7 +422,9 @@ function showAllImages() {
 async function loadImages() {
   const loadId = ++imageLoadId;
   switchTab("images");
-  setLoading();
+  const preserveResults = Boolean(currentQuery && $("#imageGrid .image-card"));
+  if (!preserveResults) setLoading();
+  else showMessage(`Searching for “${currentQuery}”…`, false, true);
   updateNotice();
   try {
     if (currentQuery) {
@@ -392,7 +444,7 @@ async function loadImages() {
     }
   } catch (error) {
     if (loadId !== imageLoadId) return;
-    renderImages([]);
+    if (!preserveResults) renderImages([]);
     showMessage(error.message, true, true);
   }
 }
@@ -505,6 +557,7 @@ async function refreshState() {
 
 async function startIndex(payload) {
   try {
+    semanticResults.clear();
     const data = await request("/api/app/index", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
@@ -545,6 +598,7 @@ async function uploadFiles(files) {
       skipped++;
     }
   }
+  if (saved) semanticResults.clear();
   await refreshState();
   await loadImages();
   await loadFolders();
@@ -587,6 +641,7 @@ async function createFolder(event) {
         skipped++;
       }
     }
+    if (saved) semanticResults.clear();
     $("#folderDialog").close();
     await refreshState();
     await loadImages();
@@ -616,6 +671,7 @@ async function saveTag(event) {
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({action: "add", tag, imageId: Number($("#tagImageId").value)}),
     });
+    semanticResults.clear();
     $("#tagDialog").close();
     showMessage(`Added tag: ${tag}`);
     await refreshState();
@@ -668,9 +724,30 @@ $("#imageFiles").onchange = event => uploadFiles(event.target.files);
 $("#imageFolder").onchange = event => uploadFiles(event.target.files);
 $("#searchForm").onsubmit = event => {
   event.preventDefault();
+  clearTimeout(queryPrimeTimer);
   currentQuery = $("#searchQuery").value.trim();
   loadImages();
 };
+$("#searchQuery").addEventListener("input", event => {
+  clearTimeout(queryPrimeTimer);
+  const query = event.target.value.trim();
+  if (!query) {
+    if (currentQuery) {
+      currentQuery = "";
+      currentTag = "";
+      currentSource = "";
+      currentFolderName = "";
+      loadImages();
+    }
+    return;
+  }
+  if (query.length < 2) return;
+  queryPrimeTimer = setTimeout(() => {
+    if ($("#searchQuery").value.trim() !== query || currentQuery === query) return;
+    currentQuery = query;
+    loadImages();
+  }, 280);
+});
 $("#searchQuery").addEventListener("search", () => {
   if (!$("#searchQuery").value) {
     currentQuery = "";
@@ -702,6 +779,7 @@ async function start() {
   await refreshState();
   await loadImages();
   await loadFolders();
+  if (appState?.index?.count) setTimeout(warmTextSearch, 700);
 }
 
 start();

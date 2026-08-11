@@ -14,16 +14,16 @@ let visionPromise;
 let tokenizerPromise;
 let textPromise;
 
-function progress(detail) {
-  self.postMessage({ type: "progress", detail });
+function progress(kind) {
+  return detail => self.postMessage({ type: "progress", kind, detail });
 }
 
 async function visionParts() {
   try {
-    processorPromise ??= AutoProcessor.from_pretrained(MODEL, { progress_callback: progress });
+    processorPromise ??= AutoProcessor.from_pretrained(MODEL, { progress_callback: progress("image") });
     visionPromise ??= CLIPVisionModelWithProjection.from_pretrained(MODEL, {
       ...MODEL_OPTIONS,
-      progress_callback: progress,
+      progress_callback: progress("image"),
     });
     return await Promise.all([processorPromise, visionPromise]);
   } catch (error) {
@@ -36,10 +36,10 @@ async function visionParts() {
 
 async function textParts() {
   try {
-    tokenizerPromise ??= AutoTokenizer.from_pretrained(MODEL, { progress_callback: progress });
+    tokenizerPromise ??= AutoTokenizer.from_pretrained(MODEL, { progress_callback: progress("text") });
     textPromise ??= CLIPTextModelWithProjection.from_pretrained(MODEL, {
       ...MODEL_OPTIONS,
-      progress_callback: progress,
+      progress_callback: progress("text"),
     });
     return await Promise.all([tokenizerPromise, textPromise]);
   } catch (error) {
@@ -52,6 +52,11 @@ async function textParts() {
 self.addEventListener("message", async event => {
   const { id, type } = event.data;
   try {
+    if (type === "warmText") {
+      await textParts();
+      self.postMessage({ type: "result", id, result: true });
+      return;
+    }
     if (type === "embed") {
       const [processor, model] = await visionParts();
       try {

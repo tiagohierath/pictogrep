@@ -285,3 +285,33 @@ func TestNativeSemanticIndexRoundTrip(t *testing.T) {
 		t.Fatalf("semantic search failed: %#v", result)
 	}
 }
+
+func TestSemanticQueryCacheRoundTrip(t *testing.T) {
+	_, server := testHTTPServer(t)
+	response, err := http.Get(server.URL + "/api/app/ai/query?q=red%20car")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value := responseJSON(t, response); response.StatusCode != http.StatusOK || value["cached"] != false {
+		t.Fatalf("unexpected initial query cache: status=%d %#v", response.StatusCode, value)
+	}
+	vector := make([]float32, semanticVectorSize)
+	vector[4] = 1
+	payload, _ := json.Marshal(map[string]any{"query": "  Red   Car ", "vector": vector})
+	response, err = http.Post(server.URL+"/api/app/ai/query", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value := responseJSON(t, response); response.StatusCode != http.StatusOK || value["cached"] != true || value["query"] != "red car" {
+		t.Fatalf("query cache save failed: status=%d %#v", response.StatusCode, value)
+	}
+	response, err = http.Get(server.URL + "/api/app/ai/query?q=RED%20%20CAR")
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := responseJSON(t, response)
+	cached := value["vector"].([]any)
+	if response.StatusCode != http.StatusOK || value["cached"] != true || len(cached) != semanticVectorSize || cached[4].(float64) != 1 {
+		t.Fatalf("query cache lookup failed: status=%d %#v", response.StatusCode, value)
+	}
+}

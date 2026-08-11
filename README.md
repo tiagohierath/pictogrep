@@ -43,6 +43,11 @@ results in the background. This requires an internet connection once. Later
 searches use the cached model. Image analysis and searching happen locally;
 pictures are never uploaded.
 
+Each picture is analyzed once and only reprocessed if the file changes. Its
+compact search vector is kept on disk and loaded into memory when Pictogrep
+starts. Repeated text searches are cached too, so they remain fast after closing
+and reopening the app.
+
 The menu also opens the storyboard studio, where a reference can be redrawn,
 traced, annotated, and saved as a board.
 

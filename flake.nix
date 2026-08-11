@@ -23,7 +23,7 @@
         in {
           default = pkgs.buildGoModule {
             pname = "pictogrep";
-            version = "0.3.3";
+            version = "0.3.4";
             src = self;
             vendorHash = null;
             subPackages = [ "." ];

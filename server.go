@@ -64,6 +64,8 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/app/tags", s.appTags)
 	mux.HandleFunc("GET /api/app/ai", s.aiState)
 	mux.HandleFunc("POST /api/app/ai/embeddings", s.aiEmbeddings)
+	mux.HandleFunc("GET /api/app/ai/query", s.aiQuery)
+	mux.HandleFunc("POST /api/app/ai/query", s.saveAIQuery)
 	mux.HandleFunc("POST /api/app/ai/search", s.aiSearch)
 	mux.HandleFunc("GET /image/{id}", s.image)
 	mux.HandleFunc("GET /board/{name}", s.board)
@@ -174,7 +176,7 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 		index = map[string]any{"count": len(paths), "sources": sources, "due": false, "maintenance_due": false, "duplicates": 0}
 	}
 	sendJSON(w, 200, map[string]any{
-		"ok": true, "version": version, "model": "ViT-B-32", "pretrained": "laion2b_s34b_b79k",
+		"ok": true, "version": version, "model": "ViT-B-32", "pretrained": "laion2b_s34b_b79k", "semanticModel": semanticModelKey,
 		"index": index, "indexJob": job, "sources": sources, "tags": tags,
 		"boards": len(s.boardRecords()), "aiAvailable": true,
 		"paths":  map[string]string{"home": s.app.home, "library": s.app.libraryDir, "boards": s.app.boardsDir, "tags": s.app.tagsDir},
@@ -224,6 +226,32 @@ func (s *server) aiEmbeddings(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, 200, map[string]any{"ok": true, "saved": len(records)})
 }
 
+func (s *server) aiQuery(w http.ResponseWriter, r *http.Request) {
+	query := normalizeSemanticQuery(r.URL.Query().Get("q"))
+	if query == "" || len(query) > 500 {
+		sendError(w, 400, fmt.Errorf("search must be between 1 and 500 characters"))
+		return
+	}
+	vector, found := s.app.queryEmbedding(query)
+	sendJSON(w, 200, map[string]any{"ok": true, "cached": found, "query": query, "vector": vector})
+}
+
+func (s *server) saveAIQuery(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Query  string    `json:"query"`
+		Vector []float32 `json:"vector"`
+	}
+	if err := decodeJSON(r, &request, 1<<20); err != nil {
+		sendError(w, 400, err)
+		return
+	}
+	if err := s.app.updateQueryEmbedding(request.Query, request.Vector); err != nil {
+		sendError(w, 400, err)
+		return
+	}
+	sendJSON(w, 200, map[string]any{"ok": true, "cached": true, "query": normalizeSemanticQuery(request.Query)})
+}
+
 func (s *server) aiSearch(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Vector []float32 `json:"vector"`
@@ -235,7 +263,7 @@ func (s *server) aiSearch(w http.ResponseWriter, r *http.Request) {
 		sendError(w, 400, err)
 		return
 	}
-	if len(request.Vector) != 512 {
+	if len(request.Vector) != semanticVectorSize {
 		sendError(w, 400, fmt.Errorf("invalid search vector"))
 		return
 	}
