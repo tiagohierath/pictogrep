@@ -92,3 +92,4 @@ Useful development commands are `pictogrep doctor`, `pictogrep paths`, and
 
 - [ ] 2D map of images
 - [ ] Subfolders and folder structure visualizer
+- [ ] Similar images below an opened image
