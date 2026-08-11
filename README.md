@@ -51,6 +51,17 @@ and reopening the app.
 The menu also opens the storyboard studio, where a reference can be redrawn,
 traced, annotated, and saved as a board.
 
+The **Folders** view mirrors indexed source folders and their nested subfolders.
+Click any level of the hierarchy to see the pictures inside it. The folder's
+**Canvas** action opens a free 2D workspace where pictures can be dragged into
+any arrangement; those positions save automatically without moving the files.
+
+The untouched home view mixes the library into a fresh random selection each
+time it opens. Folder views and search results keep their meaningful order.
+
+Open a picture and scroll below it to see its tags and semantically similar
+pictures from the local index.
+
 ## Updating and Removing
 
 Run the Linux installer again to update. Remove only the application with:
@@ -70,7 +81,8 @@ Pictogrep stores its own data separately from the executable:
 - Windows: `%LOCALAPPDATA%\Pictogrep`
 
 Imported images are copied into `library`; folder membership is stored under
-`collections`; drawings are saved under `storyboards`.
+`collections`; canvas coordinates stay under `data`; drawings are saved under
+`storyboards`.
 
 ## Build From Source
 
@@ -95,6 +107,6 @@ Useful development commands are `pictogrep doctor`, `pictogrep paths`, and
 
 ## Roadmap
 
-- [ ] 2D map of images
-- [ ] Subfolders and folder structure visualizer
-- [ ] Similar images below an opened image
+- [x] Subfolders and folder structure visualizer
+- [x] Similar images below an opened image
+- [ ] Optional plugin system for installing add-on features without expanding the core app

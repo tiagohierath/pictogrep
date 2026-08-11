@@ -94,7 +94,27 @@
 
   <dialog class="image-viewer" id="imageViewer">
     <button id="closeViewer" aria-label="Close image">×</button>
-    <img id="viewerImage" alt="">
+    <div class="viewer-picture"><img id="viewerImage" alt=""></div>
+    <div class="viewer-details">
+      <section class="viewer-tags" aria-labelledby="viewerTagsTitle">
+        <h2 id="viewerTagsTitle">Tags</h2>
+        <div id="viewerTagsList"></div>
+      </section>
+      <section class="related-images" aria-labelledby="relatedTitle">
+        <h2 id="relatedTitle">Similar images</h2>
+        <p id="relatedStatus">Finding similar pictures…</p>
+        <div class="related-grid" id="relatedGrid"></div>
+      </section>
+    </div>
+  </dialog>
+
+  <dialog class="folder-canvas" id="canvasDialog">
+    <button id="closeCanvas" aria-label="Close canvas">×</button>
+    <p class="canvas-hint">Drag pictures to arrange · Drag empty space to move · Scroll to zoom</p>
+    <div class="canvas-viewport" id="canvasViewport">
+      <div class="canvas-world" id="canvasWorld"></div>
+    </div>
+    <span class="canvas-status" id="canvasStatus" role="status" aria-live="polite"></span>
   </dialog>
 
   <div class="message" id="message" role="status" aria-live="polite" hidden></div>

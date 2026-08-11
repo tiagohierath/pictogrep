@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var version = "0.3.4"
+var version = "0.4.0"
 
 const (
 	semanticModelKey   = "clip-vit-base-patch32-q8-v1"
@@ -58,8 +58,11 @@ type application struct {
 	embeddingsDir      string
 	embeddingStorePath string
 	queryCacheDir      string
+	canvasDir          string
+	thumbnailDir       string
 
 	mu         sync.RWMutex
+	canvasMu   sync.Mutex
 	paths      []string
 	sources    []string
 	job        jobState
@@ -125,11 +128,13 @@ func newApplication() (*application, error) {
 		embeddingsDir:      filepath.Join(home, "data", "embeddings"),
 		embeddingStorePath: filepath.Join(home, "data", "embeddings-v1.bin"),
 		queryCacheDir:      filepath.Join(home, "data", "queries"),
+		canvasDir:          filepath.Join(home, "data", "canvases"),
+		thumbnailDir:       filepath.Join(home, "data", "thumbnails"),
 		embeddings:         map[string]embeddingRecord{},
 		queries:            map[string]queryEmbeddingRecord{},
 		job:                jobState{State: "idle", Message: "Ready", UpdatedAt: time.Now().Unix()},
 	}
-	for _, directory := range []string{a.dataDir, a.embeddingsDir, a.queryCacheDir, a.libraryDir, a.tagsDir, a.boardsDir, a.referenceDir} {
+	for _, directory := range []string{a.dataDir, a.embeddingsDir, a.queryCacheDir, a.canvasDir, a.thumbnailDir, a.libraryDir, a.tagsDir, a.boardsDir, a.referenceDir} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return nil, err
 		}
@@ -470,6 +475,30 @@ func embeddingMtime(path string) int64 {
 		return info.ModTime().UnixMilli()
 	}
 	return 0
+}
+
+func (a *application) imageEmbedding(path string) ([]float32, bool) {
+	path = expandPath(path)
+	a.mu.RLock()
+	record, found := a.embeddings[path]
+	a.mu.RUnlock()
+	if !found || record.Mtime != embeddingMtime(path) || len(record.Vector) != semanticVectorSize {
+		return nil, false
+	}
+	return append([]float32(nil), record.Vector...), true
+}
+
+func (a *application) indexedEmbeddingCount() int {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	count := 0
+	for _, path := range a.paths {
+		record, found := a.embeddings[path]
+		if found && record.Mtime == embeddingMtime(path) && len(record.Vector) == semanticVectorSize {
+			count++
+		}
+	}
+	return count
 }
 
 func (a *application) vectorSearch(vector []float32, limit int) []searchResult {

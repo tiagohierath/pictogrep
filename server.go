@@ -2,15 +2,18 @@ package main
 
 import (
 	"bytes"
+	"crypto/sha256"
 	"encoding/base64"
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"image"
 	_ "image/gif"
-	_ "image/jpeg"
+	"image/jpeg"
 	_ "image/png"
 	"io"
+	"math"
+	"math/rand"
 	"mime"
 	"net/http"
 	"net/url"
@@ -58,6 +61,9 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/app/images", s.appImages)
 	mux.HandleFunc("GET /api/app/folders", s.appFolders)
 	mux.HandleFunc("GET /api/app/search", s.appSearch)
+	mux.HandleFunc("GET /api/app/related/{id}", s.appRelated)
+	mux.HandleFunc("GET /api/app/canvas", s.appCanvas)
+	mux.HandleFunc("POST /api/app/canvas", s.saveAppCanvas)
 	mux.HandleFunc("GET /api/app/boards", s.appBoards)
 	mux.HandleFunc("POST /api/app/index", s.appIndex)
 	mux.HandleFunc("POST /api/app/upload", s.appUpload)
@@ -68,6 +74,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/app/ai/query", s.saveAIQuery)
 	mux.HandleFunc("POST /api/app/ai/search", s.aiSearch)
 	mux.HandleFunc("GET /image/{id}", s.image)
+	mux.HandleFunc("GET /thumbnail/{id}", s.thumbnail)
 	mux.HandleFunc("GET /board/{name}", s.board)
 	mux.HandleFunc("GET /api/images", s.practiceImages)
 	mux.HandleFunc("GET /api/collections", s.practiceCollections)
@@ -347,6 +354,9 @@ func (s *server) appImages(w http.ResponseWriter, r *http.Request) {
 	}
 	if r.URL.Query().Get("mode") == "recent" {
 		sort.SliceStable(paths, func(i, j int) bool { return fileMtime(paths[i]) > fileMtime(paths[j]) })
+	} else if r.URL.Query().Get("mode") == "random" {
+		random := rand.New(rand.NewSource(time.Now().UnixNano()))
+		random.Shuffle(len(paths), func(i, j int) { paths[i], paths[j] = paths[j], paths[i] })
 	}
 	total := len(paths)
 	count := boundedInt(r.URL.Query().Get("count"), 120, 1, 500)
@@ -397,32 +407,243 @@ func (s *server) appSearch(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, 200, map[string]any{"ok": true, "images": images, "query": query, "ai": ai})
 }
 
+func (s *server) appRelated(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	paths, _, _ := s.app.snapshot()
+	if err != nil || id < 0 || id >= len(paths) {
+		sendError(w, 400, fmt.Errorf("unknown image"))
+		return
+	}
+	limit := boundedInt(r.URL.Query().Get("limit"), 18, 1, 30)
+	indexed := s.app.indexedEmbeddingCount()
+	vector, ready := s.app.imageEmbedding(paths[id])
+	images := []imageRecord{}
+	if ready {
+		for _, result := range s.app.vectorSearch(vector, limit+1) {
+			if result.Path == paths[id] {
+				continue
+			}
+			score := result.Score
+			images = append(images, s.imageRecord(result.Path, &score))
+			if len(images) == limit {
+				break
+			}
+		}
+	}
+	sendJSON(w, 200, map[string]any{
+		"ok": true, "ready": ready, "images": images,
+		"indexed": indexed, "total": len(paths),
+	})
+}
+
+func (s *server) canvasScope(tag, source string) (string, []string, error) {
+	if tag != "" && source != "" {
+		return "", nil, fmt.Errorf("choose one folder")
+	}
+	if tag != "" {
+		paths, err := s.filteredPaths(tag, "")
+		if err != nil {
+			return "", nil, err
+		}
+		return "tag:" + tag, paths, nil
+	}
+	if source == "" {
+		return "", nil, fmt.Errorf("open a folder first")
+	}
+	source = expandPath(source)
+	info, err := os.Stat(source)
+	if err != nil || !info.IsDir() {
+		return "", nil, fmt.Errorf("unknown folder")
+	}
+	_, sources, _ := s.app.snapshot()
+	known := false
+	for _, root := range sources {
+		if source == root || pathInside(source, root) {
+			known = true
+			break
+		}
+	}
+	if !known {
+		return "", nil, fmt.Errorf("unknown folder")
+	}
+	paths, err := s.filteredPaths("", source)
+	if err != nil {
+		return "", nil, err
+	}
+	return "source:" + source, paths, nil
+}
+
+func (s *server) canvasImageRecords(paths []string) []imageRecord {
+	allPaths, _, _ := s.app.snapshot()
+	pathIDs := make(map[string]int, len(allPaths))
+	for id, path := range allPaths {
+		pathIDs[path] = id
+	}
+	tagsByPath := map[string][]string{}
+	for _, name := range s.collectionNames() {
+		for _, path := range s.collectionImages(name) {
+			tagsByPath[path] = append(tagsByPath[path], name)
+		}
+	}
+	images := make([]imageRecord, 0, len(paths))
+	for _, path := range paths {
+		id, found := pathIDs[path]
+		if !found {
+			continue
+		}
+		images = append(images, imageRecord{ID: id, Name: filepath.Base(path), Path: path, URL: "/image/" + strconv.Itoa(id), Tags: tagsByPath[path]})
+	}
+	return images
+}
+
+func (s *server) appCanvas(w http.ResponseWriter, r *http.Request) {
+	scope, paths, err := s.canvasScope(r.URL.Query().Get("tag"), r.URL.Query().Get("source"))
+	if err != nil {
+		sendError(w, 400, err)
+		return
+	}
+	stored, err := s.app.loadCanvasLayout(scope)
+	if err != nil {
+		sendError(w, 500, fmt.Errorf("could not open canvas"))
+		return
+	}
+	images := s.canvasImageRecords(paths)
+	positions := map[string]canvasPoint{}
+	for _, image := range images {
+		if point, found := stored[image.Path]; found {
+			positions[strconv.Itoa(image.ID)] = point
+		}
+	}
+	sendJSON(w, 200, map[string]any{"ok": true, "images": images, "positions": positions})
+}
+
+func (s *server) saveAppCanvas(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Tag       string `json:"tag"`
+		Source    string `json:"source"`
+		Positions []struct {
+			ID int     `json:"id"`
+			X  float64 `json:"x"`
+			Y  float64 `json:"y"`
+		} `json:"positions"`
+	}
+	if err := decodeJSON(r, &request, 8<<20); err != nil {
+		sendError(w, 400, err)
+		return
+	}
+	scope, paths, err := s.canvasScope(request.Tag, request.Source)
+	if err != nil {
+		sendError(w, 400, err)
+		return
+	}
+	allPaths, _, _ := s.app.snapshot()
+	allowed := map[int]string{}
+	pathSet := map[string]bool{}
+	for _, path := range paths {
+		pathSet[path] = true
+	}
+	for id, path := range allPaths {
+		if pathSet[path] {
+			allowed[id] = path
+		}
+	}
+	positions := map[string]canvasPoint{}
+	for _, item := range request.Positions {
+		path, found := allowed[item.ID]
+		if !found || math.IsNaN(item.X) || math.IsNaN(item.Y) || math.IsInf(item.X, 0) || math.IsInf(item.Y, 0) || math.Abs(item.X) > 1e7 || math.Abs(item.Y) > 1e7 {
+			sendError(w, 400, fmt.Errorf("invalid canvas position"))
+			return
+		}
+		positions[path] = canvasPoint{X: item.X, Y: item.Y}
+	}
+	if err := s.app.saveCanvasLayout(scope, positions); err != nil {
+		sendError(w, 500, fmt.Errorf("could not save canvas"))
+		return
+	}
+	sendJSON(w, 200, map[string]any{"ok": true, "saved": len(positions)})
+}
+
 func (s *server) appFolders(w http.ResponseWriter, _ *http.Request) {
 	paths, sources, _ := s.app.snapshot()
 	folders := []map[string]any{}
+	pathIDs := make(map[string]int, len(paths))
+	for id, path := range paths {
+		pathIDs[path] = id
+	}
 	for _, source := range sources {
-		matched := []string{}
-		for _, path := range paths {
-			if pathInside(path, source) {
-				matched = append(matched, path)
-			}
-		}
-		folders = append(folders, s.folderRecord("source", filepath.Base(source), source, matched))
+		folders = append(folders, s.sourceFolderRecords(source, paths, pathIDs)...)
 	}
 	for _, name := range s.collectionNames() {
-		folders = append(folders, s.folderRecord("tag", name, name, s.collectionImages(name)))
+		record := s.folderRecord("tag", name, name, s.collectionImages(name), pathIDs)
+		record["depth"] = 0
+		folders = append(folders, record)
 	}
 	sendJSON(w, 200, map[string]any{"ok": true, "folders": folders})
 }
 
-func (s *server) folderRecord(kind, name, value string, paths []string) map[string]any {
+func (s *server) sourceFolderRecords(source string, paths []string, pathIDs map[string]int) []map[string]any {
+	byDirectory := map[string][]string{source: {}}
+	for _, path := range paths {
+		if !pathInside(path, source) {
+			continue
+		}
+		byDirectory[source] = append(byDirectory[source], path)
+		relative, err := filepath.Rel(source, filepath.Dir(path))
+		if err != nil || relative == "." || relative == "" {
+			continue
+		}
+		current := source
+		for _, part := range strings.Split(filepath.Clean(relative), string(filepath.Separator)) {
+			if part == "" || part == "." || part == ".." {
+				continue
+			}
+			current = filepath.Join(current, part)
+			byDirectory[current] = append(byDirectory[current], path)
+		}
+	}
+
+	directories := make([]string, 0, len(byDirectory)-1)
+	for directory := range byDirectory {
+		if directory != source {
+			directories = append(directories, directory)
+		}
+	}
+	sort.Slice(directories, func(i, j int) bool {
+		left, _ := filepath.Rel(source, directories[i])
+		right, _ := filepath.Rel(source, directories[j])
+		return strings.ToLower(filepath.ToSlash(left)) < strings.ToLower(filepath.ToSlash(right))
+	})
+	directories = append([]string{source}, directories...)
+
+	records := make([]map[string]any, 0, len(directories))
+	for _, directory := range directories {
+		relative, _ := filepath.Rel(source, directory)
+		depth := 0
+		name := filepath.Base(source)
+		if relative != "." && relative != "" {
+			depth = len(strings.Split(filepath.Clean(relative), string(filepath.Separator)))
+			name = filepath.Base(directory)
+		}
+		record := s.folderRecord("source", name, directory, byDirectory[directory], pathIDs)
+		record["depth"] = depth
+		record["relative"] = filepath.ToSlash(relative)
+		records = append(records, record)
+	}
+	return records
+}
+
+func (s *server) folderRecord(kind, name, value string, paths []string, pathIDs map[string]int) map[string]any {
 	sort.SliceStable(paths, func(i, j int) bool { return fileMtime(paths[i]) > fileMtime(paths[j]) })
 	previews := []imageRecord{}
 	for _, path := range paths {
 		if len(previews) == 4 {
 			break
 		}
-		previews = append(previews, s.imageRecord(path, nil))
+		id, found := pathIDs[path]
+		if !found {
+			continue
+		}
+		previews = append(previews, imageRecord{ID: id, Name: filepath.Base(path), Path: path, Mtime: fileMtime(path), URL: "/image/" + strconv.Itoa(id)})
 	}
 	return map[string]any{"kind": kind, "name": name, "value": value, "count": len(paths), "images": previews}
 }
@@ -786,6 +1007,74 @@ func (s *server) image(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.ServeFile(w, r, paths[id])
+}
+
+func (s *server) thumbnail(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.Atoi(r.PathValue("id"))
+	paths, _, _ := s.app.snapshot()
+	if err != nil || id < 0 || id >= len(paths) {
+		http.NotFound(w, r)
+		return
+	}
+	path := paths[id]
+	key := sha256.Sum256([]byte(path + "\x00" + strconv.FormatInt(embeddingMtime(path), 10)))
+	target := filepath.Join(s.app.thumbnailDir, hashHex(key[:])+".jpg")
+	if file, err := os.Open(target); err == nil {
+		defer file.Close()
+		info, _ := file.Stat()
+		w.Header().Set("Content-Type", "image/jpeg")
+		http.ServeContent(w, r, filepath.Base(target), info.ModTime(), file)
+		return
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		http.NotFound(w, r)
+		return
+	}
+	source, _, decodeErr := image.Decode(file)
+	_ = file.Close()
+	if decodeErr != nil {
+		s.image(w, r)
+		return
+	}
+	bounds := source.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+	const maximum = 160
+	if width > maximum || height > maximum {
+		scale := math.Min(float64(maximum)/float64(width), float64(maximum)/float64(height))
+		width = max(1, int(float64(width)*scale))
+		height = max(1, int(float64(height)*scale))
+	}
+	thumbnail := image.NewRGBA(image.Rect(0, 0, width, height))
+	for y := 0; y < height; y++ {
+		sourceY := bounds.Min.Y + y*bounds.Dy()/height
+		for x := 0; x < width; x++ {
+			sourceX := bounds.Min.X + x*bounds.Dx()/width
+			thumbnail.Set(x, y, source.At(sourceX, sourceY))
+		}
+	}
+	output, err := os.CreateTemp(s.app.thumbnailDir, "thumbnail-*.tmp")
+	if err != nil {
+		s.image(w, r)
+		return
+	}
+	temporary := output.Name()
+	err = jpeg.Encode(output, thumbnail, &jpeg.Options{Quality: 72})
+	closeErr := output.Close()
+	if err != nil || closeErr != nil || os.Rename(temporary, target) != nil {
+		_ = os.Remove(temporary)
+		s.image(w, r)
+		return
+	}
+	file, err = os.Open(target)
+	if err != nil {
+		s.image(w, r)
+		return
+	}
+	defer file.Close()
+	info, _ := file.Stat()
+	w.Header().Set("Content-Type", "image/jpeg")
+	http.ServeContent(w, r, filepath.Base(target), info.ModTime(), file)
 }
 
 func (s *server) board(w http.ResponseWriter, r *http.Request) {

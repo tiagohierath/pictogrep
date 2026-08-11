@@ -17,6 +17,14 @@ let textWarmupPromise = null;
 let quietTextWarmup = false;
 let foregroundTextRequests = 0;
 let queryPrimeTimer = null;
+let currentViewerItem = null;
+let relatedLoadId = 0;
+let canvasPositions = new Map();
+let canvasImages = [];
+let canvasPan = {x: 0, y: 0};
+let canvasZoom = 1;
+let canvasSaveTimer = null;
+let canvasPointer = null;
 const failedSemanticPaths = new Set();
 const aiRequests = new Map();
 const semanticVectors = new Map();
@@ -178,9 +186,13 @@ function continueSemanticIndex(items, completed, total) {
         continue;
       }
       showMessage(`Making search better: ${ready} of ${total} pictures…`, false, true);
-      if (ready % 24 === 0) await refreshSemanticResults();
+      if (ready % 24 === 0) {
+        await refreshSemanticResults();
+        await refreshRelatedResults();
+      }
     }
     await refreshSemanticResults();
+    await refreshRelatedResults();
     const skipped = total - ready;
     showMessage(skipped > 0
       ? `Search is ready for ${ready} pictures; ${skipped} could not be read.`
@@ -373,10 +385,101 @@ function closeCardMenus() {
 
 function openImageViewer(item) {
   const viewer = $("#imageViewer");
+  showViewerImage(item);
+  if (!viewer.open) viewer.showModal();
+}
+
+function showViewerImage(item) {
+  const viewer = $("#imageViewer");
   const image = $("#viewerImage");
+  currentViewerItem = item;
   image.src = item.url;
   image.alt = item.name;
-  viewer.showModal();
+  viewer.scrollTop = 0;
+  renderViewerTags(item.tags || []);
+  loadRelatedImages(item);
+}
+
+function renderViewerTags(tags) {
+  const list = $("#viewerTagsList");
+  if (!tags.length) {
+    const empty = document.createElement("span");
+    empty.className = "viewer-tags-empty";
+    empty.textContent = "No tags yet";
+    list.replaceChildren(empty);
+    return;
+  }
+  list.replaceChildren(...tags.map(value => {
+    const tag = document.createElement("span");
+    tag.className = "viewer-tag";
+    tag.textContent = `#${value}`;
+    return tag;
+  }));
+}
+
+function renderRelatedImages(data) {
+  const grid = $("#relatedGrid");
+  grid.replaceChildren(...data.images.map(item => {
+    const button = document.createElement("button");
+    button.className = "related-card";
+    button.type = "button";
+    button.title = item.name;
+    const image = document.createElement("img");
+    image.src = item.url;
+    image.alt = item.name;
+    image.loading = "lazy";
+    button.append(image);
+    button.onclick = () => showViewerImage(item);
+    return button;
+  }));
+  const status = $("#relatedStatus");
+  if (!data.ready) status.textContent = "Preparing this picture for similarity search…";
+  else if (!data.images.length && data.indexed < data.total) status.textContent = "Similar pictures will appear as indexing finishes.";
+  else if (!data.images.length) status.textContent = "No similar pictures yet.";
+  else if (data.indexed < data.total) status.textContent = `Comparing ${data.indexed} of ${data.total} indexed pictures; results will improve in the background.`;
+  else status.textContent = "";
+  status.hidden = !status.textContent;
+}
+
+async function refreshRelatedResults() {
+  const item = currentViewerItem;
+  if (!item || !$("#imageViewer").open) return;
+  const loadId = relatedLoadId;
+  try {
+    const data = await request(`/api/app/related/${encodeURIComponent(item.id)}?limit=18`);
+    if (loadId === relatedLoadId && currentViewerItem?.id === item.id) renderRelatedImages(data);
+  } catch (_) {
+    // Background refreshes stay quiet; the initial load reports useful errors.
+  }
+}
+
+async function loadRelatedImages(item) {
+  const loadId = ++relatedLoadId;
+  $("#relatedGrid").replaceChildren();
+  $("#relatedStatus").hidden = false;
+  $("#relatedStatus").textContent = "Finding similar pictures…";
+  try {
+    let data = await request(`/api/app/related/${encodeURIComponent(item.id)}?limit=18`);
+    let state = null;
+    if (!data.ready) {
+      state = await request("/api/app/ai");
+      const missing = state.missing.find(candidate => candidate.path === item.path);
+      if (missing) {
+        await saveSemanticEmbedding(missing);
+        data = await request(`/api/app/related/${encodeURIComponent(item.id)}?limit=18`);
+      }
+    }
+    if (loadId !== relatedLoadId || currentViewerItem?.id !== item.id) return;
+    renderRelatedImages(data);
+    if (data.indexed < data.total) {
+      state ||= await request("/api/app/ai");
+      continueSemanticIndex(state.missing, state.indexed, state.total);
+    }
+  } catch (error) {
+    if (loadId !== relatedLoadId) return;
+    $("#relatedStatus").hidden = false;
+    $("#relatedStatus").textContent = `Similar pictures are not ready: ${error.message}`;
+  }
 }
 
 function renderImages(images, total = images.length) {
@@ -401,7 +504,17 @@ function updateNotice() {
   const returnHint = insideFolder
     ? "Click Images to return to your full library."
     : "Clear the search box to return to all images.";
-  notice.textContent = `${context.join(" · ")} — ${returnHint}`;
+  const text = document.createElement("span");
+  text.textContent = `${context.join(" · ")} — ${returnHint}`;
+  notice.replaceChildren(text);
+  if (insideFolder) {
+    const canvas = document.createElement("button");
+    canvas.type = "button";
+    canvas.className = "open-canvas";
+    canvas.textContent = "Canvas";
+    canvas.onclick = openFolderCanvas;
+    notice.append(canvas);
+  }
   notice.hidden = false;
   $("#imagesTab").title = "Return to all images";
 }
@@ -438,7 +551,8 @@ async function loadImages() {
       } else if (!data.images.length) showMessage("No matching pictures. Try fewer words.");
       else if (!semanticIndexPromise && !semanticWarmupPromise) $("#message").hidden = true;
     } else {
-      const data = await request(`/api/app/images?mode=recent&count=300&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}`);
+      const mode = currentTag || currentSource ? "recent" : "random";
+      const data = await request(`/api/app/images?mode=${mode}&count=300&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}`);
       if (loadId !== imageLoadId) return;
       renderImages(data.images, data.total);
     }
@@ -453,6 +567,10 @@ function folderCard(folder) {
   const card = document.createElement("button");
   card.className = "folder-card";
   card.type = "button";
+  const depth = Number(folder.depth) || 0;
+  card.dataset.depth = String(depth);
+  card.style.setProperty("--folder-depth", depth);
+  card.title = folder.kind === "source" ? folder.value : folder.name;
   const preview = document.createElement("span");
   preview.className = `folder-preview images-${Math.min(4, folder.images.length)}`;
   folder.images.forEach(item => {
@@ -471,7 +589,10 @@ function folderCard(folder) {
   name.textContent = folder.name;
   const count = document.createElement("small");
   count.textContent = `${folder.count} ${folder.count === 1 ? "picture" : "pictures"}`;
-  card.append(preview, name, count);
+  const details = document.createElement("span");
+  details.className = "folder-details";
+  details.append(name, count);
+  card.append(preview, details);
   card.onclick = () => {
     currentTag = folder.kind === "tag" ? folder.value : "";
     currentSource = folder.kind === "source" ? folder.value : "";
@@ -487,13 +608,19 @@ function newFolderCard() {
   const card = document.createElement("button");
   card.className = "folder-card new-folder";
   card.type = "button";
+  card.dataset.depth = "0";
   const preview = document.createElement("span");
   preview.className = "folder-preview";
   const create = document.createElement("span");
   create.className = "folder-create-button";
-  create.textContent = "Create folder";
+  create.textContent = "+";
+  const details = document.createElement("span");
+  details.className = "folder-details";
+  const name = document.createElement("strong");
+  name.textContent = "Create folder";
+  details.append(name);
   preview.append(create);
-  card.append(preview);
+  card.append(preview, details);
   card.onclick = openCreateFolder;
   return card;
 }
@@ -507,6 +634,139 @@ async function loadFolders() {
   } catch (error) {
     $("#foldersEmpty").hidden = false;
     showMessage(error.message, true);
+  }
+}
+
+function canvasScope() {
+  return currentTag
+    ? {tag: currentTag, source: ""}
+    : {tag: "", source: currentSource};
+}
+
+function canvasQuery() {
+  const scope = canvasScope();
+  return `tag=${encodeURIComponent(scope.tag)}&source=${encodeURIComponent(scope.source)}`;
+}
+
+function defaultCanvasPoint(index, total) {
+  const columns = Math.max(1, Math.ceil(Math.sqrt(total * 1.35)));
+  const rows = Math.max(1, Math.ceil(total / columns));
+  return {
+    x: (index % columns - (columns - 1) / 2) * 132,
+    y: (Math.floor(index / columns) - (rows - 1) / 2) * 112,
+  };
+}
+
+function applyCanvasTransform() {
+  $("#canvasWorld").style.transform = `translate(${canvasPan.x}px, ${canvasPan.y}px) scale(${canvasZoom})`;
+}
+
+function canvasCard(item, point) {
+  const card = document.createElement("button");
+  card.className = "canvas-image";
+  card.type = "button";
+  card.dataset.id = String(item.id);
+  card.title = item.name;
+  card.style.left = `${point.x}px`;
+  card.style.top = `${point.y}px`;
+  const image = document.createElement("img");
+  image.src = `/thumbnail/${encodeURIComponent(item.id)}`;
+  image.alt = item.name;
+  image.loading = "lazy";
+  image.draggable = false;
+  card.append(image);
+  card.onpointerdown = event => {
+    event.stopPropagation();
+    card.setPointerCapture(event.pointerId);
+    canvasPointer = {kind: "image", id: item.id, startX: event.clientX, startY: event.clientY, x: point.x, y: point.y, moved: false, card};
+  };
+  card.onpointermove = moveCanvasPointer;
+  card.onpointerup = endCanvasPointer;
+  card.onpointercancel = endCanvasPointer;
+  return card;
+}
+
+function renderCanvas() {
+  const world = $("#canvasWorld");
+  world.replaceChildren(...canvasImages.map((item, index) => {
+    let point = canvasPositions.get(item.id);
+    if (!point) {
+      point = defaultCanvasPoint(index, canvasImages.length);
+      canvasPositions.set(item.id, point);
+    }
+    return canvasCard(item, point);
+  }));
+}
+
+function moveCanvasPointer(event) {
+  if (!canvasPointer) return;
+  const dx = event.clientX - canvasPointer.startX;
+  const dy = event.clientY - canvasPointer.startY;
+  if (Math.abs(dx) + Math.abs(dy) > 3) canvasPointer.moved = true;
+  if (canvasPointer.kind === "image") {
+    const point = {x: canvasPointer.x + dx / canvasZoom, y: canvasPointer.y + dy / canvasZoom};
+    canvasPositions.set(canvasPointer.id, point);
+    canvasPointer.card.style.left = `${point.x}px`;
+    canvasPointer.card.style.top = `${point.y}px`;
+  } else {
+    canvasPan = {x: canvasPointer.x + dx, y: canvasPointer.y + dy};
+    applyCanvasTransform();
+  }
+}
+
+function endCanvasPointer(event) {
+  if (!canvasPointer) return;
+  const finished = canvasPointer;
+  if (finished.kind === "image" && finished.moved) scheduleCanvasSave();
+  if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+  canvasPointer = null;
+  if (finished.kind === "image" && !finished.moved) {
+    const item = canvasImages.find(candidate => candidate.id === finished.id);
+    if (item) openImageViewer(item);
+  }
+}
+
+function scheduleCanvasSave() {
+  clearTimeout(canvasSaveTimer);
+  $("#canvasStatus").textContent = "Saving…";
+  canvasSaveTimer = setTimeout(saveCanvas, 350);
+}
+
+async function saveCanvas() {
+  const scope = canvasScope();
+  const positions = canvasImages.map(item => ({id: item.id, ...canvasPositions.get(item.id)}));
+  try {
+    await request("/api/app/canvas", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({...scope, positions}),
+    });
+    $("#canvasStatus").textContent = "Saved";
+  } catch (error) {
+    $("#canvasStatus").textContent = error.message;
+  }
+}
+
+async function openFolderCanvas() {
+  if (!currentTag && !currentSource) return;
+  const dialog = $("#canvasDialog");
+  canvasImages = [];
+  canvasPositions = new Map();
+  $("#canvasWorld").replaceChildren();
+  $("#canvasStatus").textContent = "Loading…";
+  dialog.showModal();
+  try {
+    const data = await request(`/api/app/canvas?${canvasQuery()}`);
+    canvasImages = data.images;
+    for (const [id, point] of Object.entries(data.positions || {})) canvasPositions.set(Number(id), point);
+    canvasZoom = 1;
+    const viewport = $("#canvasViewport");
+    canvasPan = {x: viewport.clientWidth / 2, y: viewport.clientHeight / 2};
+    renderCanvas();
+    applyCanvasTransform();
+    $("#canvasStatus").textContent = `${canvasImages.length} ${canvasImages.length === 1 ? "picture" : "pictures"}`;
+  } catch (error) {
+    $("#canvasStatus").textContent = error.message;
   }
 }
 
@@ -765,6 +1025,30 @@ $("#closeViewer").onclick = () => $("#imageViewer").close();
 $("#imageViewer").onclick = event => {
   if (event.target === $("#imageViewer")) $("#imageViewer").close();
 };
+$("#imageViewer").addEventListener("close", () => {
+  currentViewerItem = null;
+  relatedLoadId++;
+});
+$("#closeCanvas").onclick = () => $("#canvasDialog").close();
+$("#canvasViewport").onpointerdown = event => {
+  if (event.target !== $("#canvasViewport")) return;
+  event.currentTarget.setPointerCapture(event.pointerId);
+  canvasPointer = {kind: "pan", startX: event.clientX, startY: event.clientY, x: canvasPan.x, y: canvasPan.y};
+};
+$("#canvasViewport").onpointermove = moveCanvasPointer;
+$("#canvasViewport").onpointerup = endCanvasPointer;
+$("#canvasViewport").onpointercancel = endCanvasPointer;
+$("#canvasViewport").addEventListener("wheel", event => {
+  event.preventDefault();
+  const viewport = $("#canvasViewport");
+  const bounds = viewport.getBoundingClientRect();
+  const mouse = {x: event.clientX - bounds.left, y: event.clientY - bounds.top};
+  const world = {x: (mouse.x - canvasPan.x) / canvasZoom, y: (mouse.y - canvasPan.y) / canvasZoom};
+  const next = Math.max(0.25, Math.min(3, canvasZoom * (event.deltaY < 0 ? 1.1 : 0.9)));
+  canvasPan = {x: mouse.x - world.x * next, y: mouse.y - world.y * next};
+  canvasZoom = next;
+  applyCanvasTransform();
+}, {passive: false});
 document.addEventListener("keydown", event => {
   if (event.key === "Escape") { closeMenu(); closeCardMenus(); }
   if (event.key === "/" && !["INPUT", "TEXTAREA"].includes(document.activeElement.tagName)) {

@@ -10,6 +10,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"testing"
 )
 
@@ -165,6 +166,130 @@ func TestManualFoldersWorkWithoutAI(t *testing.T) {
 	}
 }
 
+func TestFoldersAPIIncludesNestedSourceStructure(t *testing.T) {
+	app, server := testHTTPServer(t)
+	source := t.TempDir()
+	rootImage := filepath.Join(source, "root.png")
+	firstImage := filepath.Join(source, "animals", "cat.png")
+	deepImage := filepath.Join(source, "animals", "favorites", "sleeping.png")
+	if err := os.MkdirAll(filepath.Dir(deepImage), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{rootImage, firstImage, deepImage} {
+		writeTestPNG(t, path)
+	}
+	if err := app.indexFolders([]string{source}); err != nil {
+		t.Fatal(err)
+	}
+
+	response, err := http.Get(server.URL + "/api/app/folders")
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := responseJSON(t, response)
+	folders := value["folders"].([]any)
+	if len(folders) != 3 {
+		t.Fatalf("expected source and two nested folders, got %#v", folders)
+	}
+	for index, expected := range []struct {
+		name  string
+		value string
+		depth float64
+		count float64
+	}{
+		{filepath.Base(source), source, 0, 3},
+		{"animals", filepath.Join(source, "animals"), 1, 2},
+		{"favorites", filepath.Join(source, "animals", "favorites"), 2, 1},
+	} {
+		folder := folders[index].(map[string]any)
+		if folder["name"] != expected.name || folder["value"] != expected.value || folder["depth"] != expected.depth || folder["count"] != expected.count {
+			t.Fatalf("folder %d does not match hierarchy: %#v", index, folder)
+		}
+	}
+}
+
+func TestFolderCanvasPositionsPersistWithoutMovingImages(t *testing.T) {
+	app, server := testHTTPServer(t)
+	source := t.TempDir()
+	paths := []string{filepath.Join(source, "one.png"), filepath.Join(source, "nested", "two.png")}
+	if err := os.MkdirAll(filepath.Dir(paths[1]), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range paths {
+		writeTestPNG(t, path)
+	}
+	if err := app.indexFolders([]string{source}); err != nil {
+		t.Fatal(err)
+	}
+	query := "?source=" + url.QueryEscape(source)
+	response, err := http.Get(server.URL + "/api/app/canvas" + query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := responseJSON(t, response)
+	images := value["images"].([]any)
+	if response.StatusCode != http.StatusOK || len(images) != 2 || len(value["positions"].(map[string]any)) != 0 {
+		t.Fatalf("unexpected initial canvas: status=%d %#v", response.StatusCode, value)
+	}
+	firstID := int(images[0].(map[string]any)["id"].(float64))
+	payload, _ := json.Marshal(map[string]any{
+		"source":    source,
+		"positions": []map[string]any{{"id": firstID, "x": 123.5, "y": -45.25}},
+	})
+	response, err = http.Post(server.URL+"/api/app/canvas", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if saved := responseJSON(t, response); response.StatusCode != http.StatusOK || saved["saved"] != float64(1) {
+		t.Fatalf("canvas did not save: status=%d %#v", response.StatusCode, saved)
+	}
+	response, err = http.Get(server.URL + "/api/app/canvas" + query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value = responseJSON(t, response)
+	point := value["positions"].(map[string]any)[strconv.Itoa(firstID)].(map[string]any)
+	if point["x"] != 123.5 || point["y"] != -45.25 {
+		t.Fatalf("canvas position did not persist: %#v", value)
+	}
+	for _, path := range paths {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("canvas changed an image: %v", err)
+		}
+	}
+}
+
+func TestCanvasRejectsFoldersOutsideIndexedSources(t *testing.T) {
+	_, server := testHTTPServer(t)
+	response, err := http.Get(server.URL + "/api/app/canvas?source=" + url.QueryEscape(t.TempDir()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value := responseJSON(t, response); response.StatusCode != http.StatusBadRequest || value["ok"] != false {
+		t.Fatalf("unknown canvas folder was accepted: status=%d %#v", response.StatusCode, value)
+	}
+}
+
+func TestCanvasThumbnailIsGeneratedLocally(t *testing.T) {
+	app, server := testHTTPServer(t)
+	picture := filepath.Join(app.libraryDir, "thumbnail.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+	response, err := http.Get(server.URL + "/thumbnail/0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	data, _ := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "image/jpeg" || len(data) < 100 {
+		t.Fatalf("thumbnail failed: status=%d type=%q bytes=%d", response.StatusCode, response.Header.Get("Content-Type"), len(data))
+	}
+	paths, _, _ := app.snapshot()
+	if len(paths) != 1 || paths[0] != picture {
+		t.Fatalf("thumbnail changed the library: %#v", paths)
+	}
+}
+
 func TestBadTagRequestsHaveNoSideEffects(t *testing.T) {
 	app, server := testHTTPServer(t)
 	for _, payload := range []string{
@@ -305,6 +430,41 @@ func TestLegacyEmbeddingTimestampIsUpgraded(t *testing.T) {
 	}
 	if missing := app.missingEmbeddings(); len(missing) != 0 {
 		t.Fatalf("legacy timestamp was not normalized: %#v", missing)
+	}
+}
+
+func TestRelatedImagesUseCachedSemanticEmbeddings(t *testing.T) {
+	app, server := testHTTPServer(t)
+	paths := []string{
+		filepath.Join(app.libraryDir, "reference.png"),
+		filepath.Join(app.libraryDir, "closest.png"),
+		filepath.Join(app.libraryDir, "different.png"),
+	}
+	records := map[string]embeddingRecord{}
+	for index, path := range paths {
+		writeTestPNG(t, path)
+		app.addPath(path)
+		vector := make([]float32, semanticVectorSize)
+		vector[0] = []float32{1, 0.9, 0.1}[index]
+		vector[1] = []float32{0, 0.1, 0.9}[index]
+		records[path] = embeddingRecord{Mtime: embeddingMtime(path), Vector: vector}
+	}
+	if err := app.updateEmbeddings(records); err != nil {
+		t.Fatal(err)
+	}
+
+	response, err := http.Get(server.URL + "/api/app/related/0?limit=2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := responseJSON(t, response)
+	images := value["images"].([]any)
+	if response.StatusCode != http.StatusOK || value["ready"] != true || len(images) != 2 {
+		t.Fatalf("related images were not returned: status=%d %#v", response.StatusCode, value)
+	}
+	first := images[0].(map[string]any)
+	if first["name"] != "closest.png" || first["id"] == float64(0) {
+		t.Fatalf("closest image was not ranked first or source was included: %#v", images)
 	}
 }
 
