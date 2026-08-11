@@ -14,7 +14,13 @@ const aiRequests = new Map();
 
 async function request(url, options = {}) {
   const response = await fetch(url, options);
-  const data = await response.json();
+  const body = await response.text();
+  let data;
+  try {
+    data = JSON.parse(body);
+  } catch (_) {
+    throw new Error(`Pictogrep returned an invalid response (${response.status})`);
+  }
   if (!response.ok || data.ok === false) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
 }
@@ -251,7 +257,9 @@ async function loadImages() {
   updateNotice();
   try {
     if (currentQuery) {
-      const data = await semanticSearch(currentQuery);
+      const data = appState?.aiAvailable
+        ? await semanticSearch(currentQuery)
+        : await request(`/api/app/search?q=${encodeURIComponent(currentQuery)}&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}&limit=120`);
       renderImages(data.images, data.images.length);
       if (!data.images.length) showMessage("No matching pictures. Try fewer words.");
       else $("#message").hidden = true;
