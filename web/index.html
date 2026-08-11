@@ -51,14 +51,8 @@
 
     <section class="drawer-section" id="addSection" hidden>
       <h2>Add pictures</h2>
-      <p>Copy pictures into Pictogrep:</p>
       <label class="file-button">Choose images<input id="imageFiles" type="file" accept="image/*" multiple hidden></label>
       <label class="file-button">Choose a folder<input id="imageFolder" type="file" accept="image/*" webkitdirectory multiple hidden></label>
-      <p>Or index pictures where they already are:</p>
-      <form id="folderForm" class="folder-form">
-        <input id="folderPath" type="text" placeholder="/path/to/pictures" spellcheck="false">
-        <button type="submit">Add folder</button>
-      </form>
     </section>
 
     <section class="drawer-section" id="boardsSection" hidden>
@@ -67,24 +61,12 @@
       <p id="boardsEmpty" hidden>No boards saved yet.</p>
     </section>
 
-    <section class="drawer-section settings">
-      <h2>Settings</h2>
-      <dl>
-        <div><dt>Library</dt><dd id="indexSummary">Checking…</dd></div>
-        <div><dt>Model</dt><dd id="modelName">—</dd></div>
-        <div><dt>Boards</dt><dd id="boardsPath">—</dd></div>
-      </dl>
+    <section class="drawer-section">
+      <p id="indexSummary">Checking library…</p>
       <div class="index-status" id="indexStatus" hidden>
         <progress id="indexProgress" value="0" max="1"></progress>
         <span id="indexMessage"></span>
       </div>
-      <button id="rebuildIndex">Rebuild index</button>
-      <details>
-        <summary>Advanced CLI</summary>
-        <pre>pictogrep tui
-pictogrep search "foggy street"
-pictogrep doctor</pre>
-      </details>
     </section>
   </aside>
 
@@ -103,9 +85,6 @@ pictogrep doctor</pre>
       <h2>Create folder</h2>
       <label class="field-label" for="newFolderName">Name</label>
       <input id="newFolderName" placeholder="e.g. to-draw" autocomplete="off" required>
-      <label class="field-label" for="folderPrompt">Fill with local AI (optional)</label>
-      <input id="folderPrompt" placeholder="e.g. cats, foggy streets, red costumes" autocomplete="off">
-      <p class="field-help">Adds the 50 closest matches from your current library. Nothing is uploaded.</p>
       <label class="field-label" for="newFolderFiles">Pictures (optional)</label>
       <input id="newFolderFiles" type="file" accept="image/*" multiple>
       <div class="dialog-actions"><button type="button" id="cancelFolder">Cancel</button><button type="submit">Create</button></div>

@@ -8,12 +8,79 @@ let currentQuery = "";
 let messageTimer = null;
 let pollTimer = null;
 let lastJobState = "idle";
+let aiWorker = null;
+let aiRequestId = 0;
+const aiRequests = new Map();
 
 async function request(url, options = {}) {
   const response = await fetch(url, options);
   const data = await response.json();
   if (!response.ok || data.ok === false) throw new Error(data.error || `Request failed (${response.status})`);
   return data;
+}
+
+function getAIWorker() {
+  if (aiWorker) return aiWorker;
+  aiWorker = new Worker("/assets/ai-worker.js", {type: "module"});
+  aiWorker.onmessage = event => {
+    const message = event.data;
+    if (message.type === "progress") {
+      const detail = message.detail || {};
+      if (detail.status === "progress" && Number.isFinite(detail.progress)) {
+        showMessage(`Preparing search… ${Math.round(detail.progress)}%`, false, true);
+      } else if (detail.status === "initiate") {
+        showMessage("Preparing search for the first time…", false, true);
+      }
+      return;
+    }
+    const pending = aiRequests.get(message.id);
+    if (!pending) return;
+    aiRequests.delete(message.id);
+    if (message.type === "error") pending.reject(new Error(message.error));
+    else pending.resolve(message.result);
+  };
+  aiWorker.onerror = event => {
+    for (const pending of aiRequests.values()) pending.reject(new Error(event.message || "Search could not start"));
+    aiRequests.clear();
+    aiWorker.terminate();
+    aiWorker = null;
+  };
+  return aiWorker;
+}
+
+function runAI(type, values = {}) {
+  const id = ++aiRequestId;
+  return new Promise((resolve, reject) => {
+    aiRequests.set(id, {resolve, reject});
+    getAIWorker().postMessage({id, type, ...values});
+  });
+}
+
+async function ensureSemanticIndex() {
+  const state = await request("/api/app/ai");
+  if (!state.missing.length) return;
+  showMessage(`Preparing search: 0 of ${state.missing.length} pictures…`, false, true);
+  for (let index = 0; index < state.missing.length; index++) {
+    const item = state.missing[index];
+    const vector = await runAI("embed", {item});
+    await request("/api/app/ai/embeddings", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({items: [{path: item.path, mtime: item.mtime, vector}]}),
+    });
+    showMessage(`Preparing search: ${index + 1} of ${state.missing.length} pictures…`, false, true);
+  }
+}
+
+async function semanticSearch(query) {
+  await ensureSemanticIndex();
+  showMessage(`Searching for “${query}”…`, false, true);
+  const vector = await runAI("search", {query});
+  return request("/api/app/ai/search", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({vector, limit: 120, tag: currentTag, source: currentSource}),
+  });
 }
 
 function showMessage(text, error = false, persist = false) {
@@ -184,10 +251,10 @@ async function loadImages() {
   updateNotice();
   try {
     if (currentQuery) {
-      const url = `/api/app/search?q=${encodeURIComponent(currentQuery)}&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}&limit=120`;
-      const data = await request(url);
+      const data = await semanticSearch(currentQuery);
       renderImages(data.images, data.images.length);
       if (!data.images.length) showMessage("No matching pictures. Try fewer words.");
+      else $("#message").hidden = true;
     } else {
       const data = await request(`/api/app/images?mode=recent&count=300&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}`);
       renderImages(data.images, data.total);
@@ -262,9 +329,7 @@ async function loadFolders() {
 function renderState() {
   if (!appState) return;
   const stats = appState.index;
-  $("#indexSummary").textContent = stats ? `${stats.count} indexed images` : "No index yet";
-  $("#modelName").textContent = appState.model;
-  $("#boardsPath").textContent = appState.paths.boards;
+  $("#indexSummary").textContent = stats ? `${stats.count} pictures in your library` : "No pictures yet";
   $("#boardCount").textContent = appState.boards ? `(${appState.boards})` : "";
 
   const options = $("#tagOptions");
@@ -279,7 +344,6 @@ function renderState() {
   $("#indexMessage").textContent = job.message || "";
   $("#indexProgress").max = job.total || 1;
   $("#indexProgress").value = job.current || 0;
-  $("#rebuildIndex").disabled = active || !(appState.sources || []).length;
 }
 
 async function refreshState() {
@@ -345,7 +409,6 @@ async function uploadFiles(files) {
 
 function openCreateFolder() {
   $("#newFolderName").value = "";
-  $("#folderPrompt").value = "";
   $("#newFolderFiles").value = "";
   $("#folderDialog").showModal();
   $("#newFolderName").focus();
@@ -354,7 +417,6 @@ function openCreateFolder() {
 async function createFolder(event) {
   event.preventDefault();
   const name = $("#newFolderName").value.trim();
-  const prompt = $("#folderPrompt").value.trim();
   const files = Array.from($("#newFolderFiles").files || []).filter(file => file.type.startsWith("image/"));
   if (!name) return;
   try {
@@ -363,16 +425,6 @@ async function createFolder(event) {
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({action: "create", tag: name}),
     });
-    let aiAdded = 0;
-    if (prompt) {
-      showMessage(`Finding pictures for “${prompt}” with local AI…`, false, true);
-      const result = await request("/api/app/tags", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({action: "fill", tag: name, prompt, limit: 50}),
-      });
-      aiAdded = result.added;
-    }
     for (let index = 0; index < files.length; index++) {
       const file = files[index];
       showMessage(`Adding ${index + 1} of ${files.length}: ${file.name}`, false, true);
@@ -386,7 +438,7 @@ async function createFolder(event) {
     await refreshState();
     await loadFolders();
     if (files.length) await startIndex({includeLibrary: true});
-    else showMessage(aiAdded ? `Created ${name} with ${aiAdded} AI matches.` : `Created folder: ${name}`);
+    else showMessage(`Created folder: ${name}`);
   } catch (error) {
     showMessage(error.message, true, true);
   }
@@ -459,16 +511,6 @@ $("#showAdd").onclick = () => {
 $("#emptyAddImages").onclick = () => { openMenu(); $("#addSection").hidden = false; };
 $("#imageFiles").onchange = event => uploadFiles(event.target.files);
 $("#imageFolder").onchange = event => uploadFiles(event.target.files);
-$("#folderForm").onsubmit = async event => {
-  event.preventDefault();
-  const folder = $("#folderPath").value.trim();
-  if (!folder) return;
-  try {
-    await startIndex({folder});
-    $("#folderPath").value = "";
-  } catch (_) {}
-};
-$("#rebuildIndex").onclick = () => startIndex({});
 $("#searchForm").onsubmit = event => {
   event.preventDefault();
   currentQuery = $("#searchQuery").value.trim();

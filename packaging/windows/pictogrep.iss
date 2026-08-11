@@ -1,0 +1,36 @@
+#define MyAppName "Pictogrep"
+#define MyAppVersion GetEnv("PICTOGREP_VERSION")
+#define MyAppPublisher "Tiago Hierath"
+#define MyAppURL "https://github.com/tiagohierath/pictogrep"
+
+[Setup]
+AppId={{75F49D9A-81CD-47CB-B329-2355B197C8B3}
+AppName={#MyAppName}
+AppVersion={#MyAppVersion}
+AppPublisher={#MyAppPublisher}
+AppPublisherURL={#MyAppURL}
+DefaultDirName={localappdata}\Programs\Pictogrep
+DefaultGroupName=Pictogrep
+DisableProgramGroupPage=yes
+OutputDir=..\..\dist
+OutputBaseFilename=pictogrep-windows-x86_64-setup
+Compression=lzma2
+SolidCompression=yes
+PrivilegesRequired=lowest
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
+WizardStyle=modern
+UninstallDisplayIcon={app}\pictogrep.exe
+
+[Files]
+Source: "..\..\dist\pictogrep.exe"; DestDir: "{app}"; Flags: ignoreversion
+
+[Icons]
+Name: "{autoprograms}\Pictogrep"; Filename: "{app}\pictogrep.exe"
+Name: "{userdesktop}\Pictogrep"; Filename: "{app}\pictogrep.exe"; Tasks: desktopicon
+
+[Tasks]
+Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
+
+[Run]
+Filename: "{app}\pictogrep.exe"; Description: "Launch Pictogrep"; Flags: nowait postinstall skipifsilent

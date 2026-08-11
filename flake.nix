@@ -1,30 +1,69 @@
 {
-  description = "pictogrep";
+  description = "Local image search and storyboarding without runtime dependencies";
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
   outputs = { self, nixpkgs }:
-  let
-    system = "x86_64-linux";
-    pkgs = import nixpkgs {
-      inherit system;
+    let
+      systems = [ "x86_64-linux" "aarch64-linux" ];
+      forAllSystems = function:
+        nixpkgs.lib.genAttrs systems (system: function (import nixpkgs { inherit system; }));
+    in {
+      packages = forAllSystems (pkgs:
+        let
+          desktopItem = pkgs.makeDesktopItem {
+            name = "pictogrep";
+            desktopName = "Pictogrep";
+            comment = "Find and storyboard your pictures";
+            exec = "pictogrep";
+            terminal = false;
+            categories = [ "Graphics" "Photography" ];
+          };
+        in {
+          default = pkgs.buildGoModule {
+            pname = "pictogrep";
+            version = "0.3.0";
+            src = self;
+            vendorHash = null;
+            subPackages = [ "." ];
+            ldflags = [ "-s" "-w" ];
+            postInstall = ''
+              mkdir -p $out/share/applications
+              cp ${desktopItem}/share/applications/pictogrep.desktop $out/share/applications/
+            '';
+            meta = {
+              description = "Local image search and storyboarding application";
+              homepage = "https://github.com/tiagohierath/pictogrep";
+              mainProgram = "pictogrep";
+              platforms = pkgs.lib.platforms.linux;
+            };
+          };
+        });
+
+      apps = forAllSystems (pkgs: {
+        default = {
+          type = "app";
+          program = "${self.packages.${pkgs.stdenv.hostPlatform.system}.default}/bin/pictogrep";
+          meta.description = "Open Pictogrep";
+        };
+      });
+
+      devShells = forAllSystems (pkgs: {
+        default = pkgs.mkShell {
+          packages = [
+            pkgs.go
+            pkgs.python312
+            pkgs.python312Packages.pip
+            pkgs.python312Packages.virtualenv
+            pkgs.stdenv.cc.cc.lib
+            pkgs.zlib
+            pkgs.mpv
+          ];
+          shellHook = ''
+            export PICTOGREP_LIBSTDCPP="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib pkgs.zlib ]}"
+            export LD_LIBRARY_PATH="$PICTOGREP_LIBSTDCPP''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+          '';
+        };
+      });
     };
-  in {
-    devShells.${system}.default = pkgs.mkShell {
-      packages = [
-        pkgs.python312
-        pkgs.python312Packages.pip
-        pkgs.python312Packages.virtualenv
-        pkgs.python312Packages.numpy
-        pkgs.python312Packages.pillow
-        pkgs.stdenv.cc.cc.lib
-        pkgs.zlib
-        pkgs.mpv
-      ];
-      shellHook = ''
-        export PICTOGREP_LIBSTDCPP="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib pkgs.zlib ]}"
-        export LD_LIBRARY_PATH="$PICTOGREP_LIBSTDCPP''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-      '';
-    };
-  };
 }
