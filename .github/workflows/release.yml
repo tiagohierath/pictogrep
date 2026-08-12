@@ -31,6 +31,7 @@ jobs:
           mkdir -p dist
           VERSION="${GITHUB_REF_NAME#v}"
           go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o dist/pictogrep .
+          cp dist/pictogrep pictogrep-linux-${{ matrix.archive_arch }}
           tar -C dist -czf pictogrep-linux-${{ matrix.archive_arch }}.tar.gz pictogrep
       - name: Install ARM64 emulator
         if: matrix.goarch == 'arm64'
@@ -61,7 +62,9 @@ jobs:
           wait "$APP_PID" || true
       - uses: softprops/action-gh-release@v3
         with:
-          files: pictogrep-linux-${{ matrix.archive_arch }}.tar.gz
+          files: |
+            pictogrep-linux-${{ matrix.archive_arch }}
+            pictogrep-linux-${{ matrix.archive_arch }}.tar.gz
 
   windows:
     runs-on: windows-latest

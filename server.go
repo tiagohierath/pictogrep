@@ -58,6 +58,8 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /practice", s.practicePage)
 	mux.HandleFunc("GET /assets/{name}", s.asset)
 	mux.HandleFunc("GET /api/app/state", s.appState)
+	mux.HandleFunc("GET /api/app/update", s.appUpdate)
+	mux.HandleFunc("POST /api/app/update", s.installAppUpdate)
 	mux.HandleFunc("GET /api/app/images", s.appImages)
 	mux.HandleFunc("GET /api/app/folders", s.appFolders)
 	mux.HandleFunc("GET /api/app/search", s.appSearch)
@@ -85,6 +87,39 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /reference/{name}", s.reference)
 	mux.HandleFunc("POST /api/save", s.saveBoard)
 	return securityHeaders(mux)
+}
+
+func (s *server) appUpdate(w http.ResponseWriter, _ *http.Request) {
+	state, err := checkForUpdate()
+	if err != nil {
+		sendError(w, http.StatusBadGateway, err)
+		return
+	}
+	sendJSON(w, http.StatusOK, struct {
+		OK bool `json:"ok"`
+		updateState
+	}{OK: true, updateState: state})
+}
+
+func (s *server) installAppUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Header.Get("X-Pictogrep-Action") != "install-update" {
+		sendError(w, http.StatusForbidden, fmt.Errorf("update confirmation is required"))
+		return
+	}
+	state, err := checkForUpdate()
+	if err != nil {
+		sendError(w, http.StatusBadGateway, err)
+		return
+	}
+	if !state.Available {
+		sendJSON(w, http.StatusOK, map[string]any{"ok": true, "updated": false, "currentVersion": version})
+		return
+	}
+	if err := installUpdate(state); err != nil {
+		sendError(w, http.StatusBadRequest, err)
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "updated": true, "version": state.LatestVersion, "restartRequired": true})
 }
 
 func securityHeaders(next http.Handler) http.Handler {
@@ -184,7 +219,8 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 	}
 	sendJSON(w, 200, map[string]any{
 		"ok": true, "version": version, "model": "ViT-B-32", "pretrained": "laion2b_s34b_b79k", "semanticModel": semanticModelKey,
-		"index": index, "indexJob": job, "sources": sources, "tags": tags,
+		"updateMethod": updateMethod(),
+		"index":        index, "indexJob": job, "sources": sources, "tags": tags,
 		"boards": len(s.boardRecords()), "aiAvailable": true,
 		"paths":  map[string]string{"home": s.app.home, "library": s.app.libraryDir, "boards": s.app.boardsDir, "tags": s.app.tagsDir},
 		"viewer": "Browser",

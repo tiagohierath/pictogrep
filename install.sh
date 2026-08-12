@@ -26,7 +26,7 @@ case "${1:-}" in
     if [ -x "$TARGET" ]; then
       "$TARGET" uninstall-desktop 2>/dev/null || true
     fi
-    rm -f "$TARGET" \
+    rm -f "$TARGET" "$TARGET.install-sh" \
       "$DATA_HOME/applications/pictogrep.desktop" \
       "$DATA_HOME/icons/hicolor/512x512/apps/pictogrep.png"
     say "Removed the Pictogrep application."
@@ -85,8 +85,11 @@ fi
 chmod 755 "$TEMP_DIR/pictogrep"
 "$TEMP_DIR/pictogrep" version >/dev/null || fail "the downloaded binary could not run on this system"
 mkdir -p "$BIN_DIR"
+BIN_DIR=$(CDPATH= cd -- "$BIN_DIR" && pwd)
+TARGET="$BIN_DIR/pictogrep"
 mv "$TEMP_DIR/pictogrep" "$TARGET.new"
 mv "$TARGET.new" "$TARGET"
+printf '%s\n' "$TARGET" > "$TARGET.install-sh"
 
 "$TARGET" install-desktop
 

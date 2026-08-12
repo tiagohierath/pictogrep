@@ -127,6 +127,25 @@ button, a, summary, label { cursor: pointer; }
 .section-title { display: flex; align-items: center; justify-content: space-between; }
 .section-title a { color: #171717; font-size: 12px; }
 
+.about-heading { display: grid; grid-template-columns: 48px 1fr; gap: 12px; align-items: center; margin-bottom: 18px; }
+.about-heading img { display: block; width: 48px; height: 48px; border-radius: 9px; }
+.about-heading h2 { margin-bottom: 3px; font-size: 17px; }
+.about-heading p { margin: 0; }
+.about-section dl { margin: 0 0 17px; }
+.about-section dl div { display: grid; grid-template-columns: 70px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid #eee; font-size: 12px; }
+.about-section dl div:first-child { border-top: 1px solid #eee; }
+.about-section dt { color: #666; }
+.about-section dd { margin: 0; }
+.update-panel { padding: 14px; border: 1px solid #ddd; border-radius: 5px; background: #fafafa; }
+.update-panel p { min-height: 18px; margin: 0 0 12px; color: #444; }
+.update-panel button, .update-panel a { display: inline-block; padding: 8px 11px; border: 1px solid #888; border-radius: 3px; background: #fff; color: #171717; text-decoration: none; font-size: 12px; }
+.update-panel button:hover, .update-panel a:hover { background: #eee; }
+.update-panel button:disabled { color: #777; cursor: wait; }
+.update-panel .primary { border-color: #222; background: #222; color: #fff; }
+.update-panel .primary:hover { background: #444; }
+.update-panel .success { color: #28632f; }
+.update-panel .error { color: #8a1f1f; }
+
 .settings dl { margin: 0 0 15px; }
 .settings dl div { display: grid; grid-template-columns: 70px 1fr; gap: 10px; padding: 7px 0; border-bottom: 1px solid #eee; font-size: 11px; }
 .settings dt { color: #666; }

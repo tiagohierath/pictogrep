@@ -48,6 +48,7 @@
       <a href="/practice">Open storyboard</a>
       <button id="showBoards">Saved boards <span id="boardCount"></span></button>
       <button id="showAdd">Add pictures or folder</button>
+      <button id="showAbout">About</button>
     </nav>
 
     <section class="drawer-section" id="addSection" hidden>
@@ -60,6 +61,23 @@
       <div class="section-title"><h2>Saved boards</h2><a href="/practice">New</a></div>
       <div class="board-list" id="boardList"></div>
       <p id="boardsEmpty" hidden>No boards saved yet.</p>
+    </section>
+
+    <section class="drawer-section about-section" id="aboutSection" hidden>
+      <div class="about-heading">
+        <img src="/assets/pictogrep.png" alt="">
+        <div><h2>Pictogrep</h2><p>Find pictures by what you remember.</p></div>
+      </div>
+      <dl>
+        <div><dt>Version</dt><dd id="currentVersion">—</dd></div>
+        <div><dt>Updates</dt><dd id="updateMethod">—</dd></div>
+      </dl>
+      <div class="update-panel" id="updatePanel" aria-live="polite">
+        <p id="updateStatus">Updates are checked only when you ask.</p>
+        <button type="button" id="checkForUpdates">Check for updates</button>
+        <button type="button" id="installUpdate" hidden>Update</button>
+        <a id="downloadUpdate" target="_blank" rel="noopener" hidden>View newest release</a>
+      </div>
     </section>
 
     <section class="drawer-section">

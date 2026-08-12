@@ -1023,6 +1023,7 @@ async function saveTag(event) {
 
 async function loadBoards() {
   $("#addSection").hidden = true;
+  $("#aboutSection").hidden = true;
   $("#boardsSection").hidden = false;
   openMenu();
   try {
@@ -1048,17 +1049,104 @@ async function loadBoards() {
   }
 }
 
+function showAbout() {
+  $("#addSection").hidden = true;
+  $("#boardsSection").hidden = true;
+  $("#aboutSection").hidden = false;
+  $("#currentVersion").textContent = appState?.version ? `v${appState.version}` : "Unknown";
+  $("#updateMethod").textContent = appState?.updateMethod || "GitHub Releases";
+  openMenu();
+}
+
+async function checkForUpdates() {
+  const button = $("#checkForUpdates");
+  const status = $("#updateStatus");
+  button.disabled = true;
+  button.textContent = "Checking…";
+  status.className = "";
+  status.textContent = "Checking GitHub Releases…";
+  $("#installUpdate").hidden = true;
+  $("#downloadUpdate").hidden = true;
+  try {
+    const update = await request("/api/app/update");
+    if (!update.available) {
+      status.className = "success";
+      status.textContent = "Pictogrep is up to date ✓";
+      button.textContent = "Check again";
+      return;
+    }
+    status.textContent = `Pictogrep v${update.latestVersion} is available. ${update.hint || ""}`.trim();
+    button.hidden = true;
+    if (update.action === "replace") {
+      const install = $("#installUpdate");
+      install.hidden = false;
+      install.className = "primary";
+      install.textContent = `Update to v${update.latestVersion}`;
+    } else {
+      const download = $("#downloadUpdate");
+      download.hidden = false;
+      download.href = update.url;
+      if (update.action === "download") download.textContent = "Download installer";
+      else if (update.action === "managed") download.textContent = "View release notes";
+      else download.textContent = "View newest release";
+    }
+  } catch (error) {
+    status.className = "error";
+    status.textContent = error.message;
+    button.textContent = "Try again";
+  } finally {
+    button.disabled = false;
+  }
+}
+
+async function installAvailableUpdate() {
+  const button = $("#installUpdate");
+  const status = $("#updateStatus");
+  button.disabled = true;
+  button.textContent = "Updating…";
+  status.className = "";
+  status.textContent = "Downloading and installing the update… Keep Pictogrep open.";
+  try {
+    const result = await request("/api/app/update", {
+      method: "POST",
+      headers: {"X-Pictogrep-Action": "install-update"},
+    });
+    if (!result.updated) {
+      status.className = "success";
+      status.textContent = "Pictogrep is already up to date ✓";
+    } else {
+      status.className = "success";
+      status.textContent = `Pictogrep v${result.version} is installed. Restart the app to use it.`;
+    }
+    button.hidden = true;
+  } catch (error) {
+    status.className = "error";
+    status.textContent = error.message;
+    button.disabled = false;
+    button.textContent = "Try update again";
+  }
+}
+
 $("#menuButton").onclick = openMenu;
 $("#closeMenu").onclick = closeMenu;
 $("#drawerScrim").onclick = closeMenu;
 $("#imagesTab").onclick = showAllImages;
 $("#foldersTab").onclick = () => { switchTab("folders"); loadFolders(); };
 $("#showBoards").onclick = loadBoards;
+$("#showAbout").onclick = showAbout;
+$("#checkForUpdates").onclick = checkForUpdates;
+$("#installUpdate").onclick = installAvailableUpdate;
 $("#showAdd").onclick = () => {
   $("#boardsSection").hidden = true;
+  $("#aboutSection").hidden = true;
   $("#addSection").hidden = !$("#addSection").hidden;
 };
-$("#emptyAddImages").onclick = () => { openMenu(); $("#addSection").hidden = false; };
+$("#emptyAddImages").onclick = () => {
+  $("#boardsSection").hidden = true;
+  $("#aboutSection").hidden = true;
+  $("#addSection").hidden = false;
+  openMenu();
+};
 $("#imageFiles").onchange = event => uploadFiles(event.target.files);
 $("#imageFolder").onchange = event => uploadFiles(event.target.files);
 $("#searchForm").onsubmit = event => {
