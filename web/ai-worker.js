@@ -4,82 +4,150 @@ import {
   CLIPTextModelWithProjection,
   CLIPVisionModelWithProjection,
   RawImage,
-} from "https://cdn.jsdelivr.net/npm/@huggingface/transformers@3.7.1/+esm";
+  env,
+} from "./transformers.web.min.js";
 
-const MODEL = "Xenova/clip-vit-base-patch32";
-const MODEL_OPTIONS = { device: "wasm", dtype: "q8" };
+env.backends.onnx.wasm.wasmPaths = "/assets/";
 
-let processorPromise;
-let visionPromise;
-let tokenizerPromise;
-let textPromise;
+const embeddingBackends = {
+  clip: createCLIPBackend,
+};
+
+let activeModelKey = "";
+let activeBackend = null;
 
 function progress(kind) {
-  return detail => self.postMessage({ type: "progress", kind, detail });
+  return detail => self.postMessage({type: "progress", kind, detail});
 }
 
-async function visionParts() {
-  try {
-    processorPromise ??= AutoProcessor.from_pretrained(MODEL, { progress_callback: progress("image") });
-    visionPromise ??= CLIPVisionModelWithProjection.from_pretrained(MODEL, {
-      ...MODEL_OPTIONS,
-      progress_callback: progress("image"),
-    });
-    return await Promise.all([processorPromise, visionPromise]);
-  } catch (error) {
-    // A temporary network/cache failure must not poison every later retry.
-    processorPromise = undefined;
-    visionPromise = undefined;
-    throw error;
+function validateModel(model) {
+  if (!model || typeof model.key !== "string" || typeof model.backend !== "string" ||
+      typeof model.modelId !== "string" || typeof model.revision !== "string" ||
+      typeof model.dtype !== "string" || !Number.isInteger(model.dimensions) ||
+      model.dimensions < 1 || model.dimensions > 1 << 20) {
+    throw new Error("Invalid embedding model configuration");
   }
+  return model;
 }
 
-async function textParts() {
-  try {
-    tokenizerPromise ??= AutoTokenizer.from_pretrained(MODEL, { progress_callback: progress("text") });
-    textPromise ??= CLIPTextModelWithProjection.from_pretrained(MODEL, {
-      ...MODEL_OPTIONS,
-      progress_callback: progress("text"),
-    });
-    return await Promise.all([tokenizerPromise, textPromise]);
-  } catch (error) {
-    tokenizerPromise = undefined;
-    textPromise = undefined;
-    throw error;
+function backendFor(model) {
+  model = validateModel(model);
+  if (activeBackend) {
+    if (model.key !== activeModelKey) throw new Error("Embedding model changed; reload Pictogrep");
+    return activeBackend;
   }
+  const createBackend = embeddingBackends[model.backend];
+  if (!createBackend) throw new Error(`Unsupported embedding backend: ${model.backend}`);
+  activeModelKey = model.key;
+  activeBackend = createBackend(model);
+  return activeBackend;
+}
+
+function normalizedVector(tensor, dimensions) {
+  const vector = Array.from(tensor.normalize().data);
+  if (vector.length !== dimensions || vector.some(value => !Number.isFinite(value))) {
+    throw new Error("Embedding model returned an invalid vector");
+  }
+  return vector;
+}
+
+function createCLIPBackend(model) {
+  const options = {device: "wasm", dtype: model.dtype, revision: model.revision};
+  let processorPromise;
+  let visionPromise;
+  let tokenizerPromise;
+  let textPromise;
+
+  async function visionParts() {
+    try {
+      processorPromise ??= AutoProcessor.from_pretrained(model.modelId, {
+        revision: model.revision,
+        progress_callback: progress("image"),
+      });
+      visionPromise ??= CLIPVisionModelWithProjection.from_pretrained(model.modelId, {
+        ...options,
+        progress_callback: progress("image"),
+      });
+      return await Promise.all([processorPromise, visionPromise]);
+    } catch (error) {
+      // A temporary network/cache failure must not poison every later attempt.
+      processorPromise = undefined;
+      visionPromise = undefined;
+      throw error;
+    }
+  }
+
+  async function textParts() {
+    try {
+      tokenizerPromise ??= AutoTokenizer.from_pretrained(model.modelId, {
+        revision: model.revision,
+        progress_callback: progress("text"),
+      });
+      textPromise ??= CLIPTextModelWithProjection.from_pretrained(model.modelId, {
+        ...options,
+        progress_callback: progress("text"),
+      });
+      return await Promise.all([tokenizerPromise, textPromise]);
+    } catch (error) {
+      tokenizerPromise = undefined;
+      textPromise = undefined;
+      throw error;
+    }
+  }
+
+  return {
+    async warmText() {
+      await textParts();
+    },
+
+    async embedImage(item) {
+      const [processor, visionModel] = await visionParts();
+      try {
+        const image = await RawImage.fromURL(new URL(item.url, self.location.origin).href);
+        const inputs = await processor(image);
+        const {image_embeds: embedding} = await visionModel(inputs);
+        return normalizedVector(embedding, model.dimensions);
+      } catch (error) {
+        const imageError = error instanceof Error ? error : new Error(String(error));
+        imageError.kind = "image";
+        throw imageError;
+      }
+    },
+
+    async embedText(query) {
+      const [tokenizer, textModel] = await textParts();
+      const inputs = tokenizer(query, {padding: true, truncation: true});
+      const {text_embeds: embedding} = await textModel(inputs);
+      return normalizedVector(embedding, model.dimensions);
+    },
+  };
 }
 
 self.addEventListener("message", async event => {
-  const { id, type } = event.data;
+  const {id, type} = event.data;
   try {
+    const backend = backendFor(event.data.model);
+    if (type === "health") {
+      self.postMessage({type: "result", id, result: {model: activeModelKey}});
+      return;
+    }
     if (type === "warmText") {
-      await textParts();
-      self.postMessage({ type: "result", id, result: true });
+      await backend.warmText();
+      self.postMessage({type: "result", id, result: true});
       return;
     }
     if (type === "embed") {
-      const [processor, model] = await visionParts();
-      try {
-        const image = await RawImage.fromURL(new URL(event.data.item.url, self.location.origin).href);
-        const inputs = await processor(image);
-        const { image_embeds } = await model(inputs);
-        const vector = Array.from(image_embeds.normalize().data);
-        self.postMessage({ type: "result", id, result: vector });
-      } catch (error) {
-        self.postMessage({ type: "error", id, kind: "image", error: error?.message || String(error) });
-      }
+      const vector = await backend.embedImage(event.data.item);
+      self.postMessage({type: "result", id, result: vector});
       return;
     }
     if (type === "search") {
-      const [tokenizer, model] = await textParts();
-      const inputs = tokenizer(event.data.query, { padding: true, truncation: true });
-      const { text_embeds } = await model(inputs);
-      const vector = Array.from(text_embeds.normalize().data);
-      self.postMessage({ type: "result", id, result: vector });
+      const vector = await backend.embedText(event.data.query);
+      self.postMessage({type: "result", id, result: vector});
       return;
     }
     throw new Error("Unknown AI request");
   } catch (error) {
-    self.postMessage({ type: "error", id, kind: "model", error: error?.message || String(error) });
+    self.postMessage({type: "error", id, kind: error?.kind || "model", error: error?.message || String(error)});
   }
 });

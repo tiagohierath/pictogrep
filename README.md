@@ -45,6 +45,12 @@ results in the background. This requires an internet connection once. Later
 searches use the cached model. Image analysis and searching happen locally;
 pictures are never uploaded.
 
+The browser AI runtime is bundled with Pictogrep from pinned, checksum-verified
+sources. Model files are fetched from a pinned Hugging Face revision.
+Pictogrep keeps the image/text embedding model behind a small internal contract;
+CLIP is the default backend today, while model identity and vector dimensions
+remain explicit so a future backend cannot silently mix incompatible vectors.
+
 Each picture is analyzed once and only reprocessed if the file changes. Its
 compact search vector is kept on disk and loaded into memory when Pictogrep
 starts. Repeated text searches are cached too, so they remain fast after closing

@@ -124,7 +124,7 @@ func TestCompactEmbeddingStoreSurvivesRestart(t *testing.T) {
 	picture := filepath.Join(app.libraryDir, "still.png")
 	writeTestPNG(t, picture)
 	app.addPath(picture)
-	vector := make([]float32, semanticVectorSize)
+	vector := make([]float32, defaultEmbeddingModel.Dimensions)
 	vector[0] = 1
 	record := embeddingRecord{Mtime: embeddingMtime(picture), Vector: vector}
 	if err := app.updateEmbeddings(map[string]embeddingRecord{picture: record}); err != nil {
@@ -154,12 +154,60 @@ func TestCompactEmbeddingStoreSurvivesRestart(t *testing.T) {
 	}
 }
 
+func TestEmbeddingModelsUseIndependentStoresAndDimensions(t *testing.T) {
+	t.Setenv("PICTOGREP_HOME", t.TempDir())
+	app, err := newApplication()
+	if err != nil {
+		t.Fatal(err)
+	}
+	picture := filepath.Join(app.libraryDir, "still.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+	defaultVector := make([]float32, defaultEmbeddingModel.Dimensions)
+	defaultVector[0] = 1
+	if err := app.updateEmbeddings(map[string]embeddingRecord{
+		picture: {Mtime: embeddingMtime(picture), Vector: defaultVector},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.updateQueryEmbedding("ocean", defaultVector); err != nil {
+		t.Fatal(err)
+	}
+
+	alternate := defaultEmbeddingModel
+	alternate.Key = "test-embedding-v1"
+	alternate.Dimensions = 3
+	alternate.storeFile = "embeddings-test.bin"
+	alternateApp, err := newApplicationWithEmbeddingModel(alternate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing := alternateApp.missingEmbeddings(); len(missing) != 1 {
+		t.Fatalf("alternate model reused default vectors: %#v", missing)
+	}
+	if _, found := alternateApp.queryEmbedding("ocean"); found {
+		t.Fatal("alternate model reused the default query cache")
+	}
+	alternateVector := []float32{1, 0, 0}
+	if err := alternateApp.updateEmbeddings(map[string]embeddingRecord{
+		picture: {Mtime: embeddingMtime(picture), Vector: alternateVector},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if results := alternateApp.vectorSearch(alternateVector, 1); len(results) != 1 {
+		t.Fatalf("alternate model was not searchable: %#v", results)
+	}
+	if app.embeddingStorePath == alternateApp.embeddingStorePath {
+		t.Fatal("embedding models share a store path")
+	}
+}
+
 func TestLegacyEmbeddingMigratesWithoutReindexing(t *testing.T) {
 	app := testApplication(t)
 	picture := filepath.Join(app.libraryDir, "legacy.png")
 	writeTestPNG(t, picture)
 	app.addPath(picture)
-	vector := make([]float32, semanticVectorSize)
+	vector := make([]float32, defaultEmbeddingModel.Dimensions)
 	vector[1] = 1
 	info, _ := os.Stat(picture)
 	legacy := storedEmbedding{Path: picture, embeddingRecord: embeddingRecord{Mtime: info.ModTime().Unix(), Vector: vector}}
@@ -185,7 +233,7 @@ func TestLegacyEmbeddingMigratesWithoutReindexing(t *testing.T) {
 
 func TestQueryEmbeddingCacheSurvivesRestart(t *testing.T) {
 	app := testApplication(t)
-	vector := make([]float32, semanticVectorSize)
+	vector := make([]float32, defaultEmbeddingModel.Dimensions)
 	vector[7] = 1
 	if err := app.updateQueryEmbedding("  Red   CAR ", vector); err != nil {
 		t.Fatal(err)
@@ -195,7 +243,7 @@ func TestQueryEmbeddingCacheSurvivesRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 	cached, found := reloaded.queryEmbedding("red car")
-	if !found || len(cached) != semanticVectorSize || cached[7] != 1 {
+	if !found || len(cached) != defaultEmbeddingModel.Dimensions || cached[7] != 1 {
 		t.Fatalf("query vector was not cached: found=%v vector=%#v", found, cached)
 	}
 }
@@ -206,7 +254,7 @@ func TestVectorSearchSkipsEmbeddingAfterImageChanges(t *testing.T) {
 	writeTestPNG(t, picture)
 	app.addPath(picture)
 
-	vector := make([]float32, semanticVectorSize)
+	vector := make([]float32, defaultEmbeddingModel.Dimensions)
 	vector[0] = 1
 	record := embeddingRecord{Mtime: embeddingMtime(picture), Vector: vector}
 	if err := app.updateEmbeddings(map[string]embeddingRecord{picture: record}); err != nil {

@@ -55,17 +55,7 @@
         default = pkgs.mkShell {
           packages = [
             pkgs.go
-            pkgs.python312
-            pkgs.python312Packages.pip
-            pkgs.python312Packages.virtualenv
-            pkgs.stdenv.cc.cc.lib
-            pkgs.zlib
-            pkgs.mpv
           ];
-          shellHook = ''
-            export PICTOGREP_LIBSTDCPP="${pkgs.lib.makeLibraryPath [ pkgs.stdenv.cc.cc.lib pkgs.zlib ]}"
-            export LD_LIBRARY_PATH="$PICTOGREP_LIBSTDCPP''${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
-          '';
         };
       });
     };

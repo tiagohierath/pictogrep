@@ -23,10 +23,8 @@ import (
 var version = "0.4.2"
 
 const (
-	semanticModelKey   = "clip-vit-base-patch32-q8-v1"
-	semanticVectorSize = 512
-	maxCachedQueries   = 512
-	embeddingMagic     = "PGE1"
+	maxCachedQueries = 512
+	embeddingMagic   = "PGE1"
 )
 
 var imageExtensions = map[string]bool{
@@ -60,6 +58,7 @@ type application struct {
 	queryCacheDir      string
 	canvasDir          string
 	thumbnailDir       string
+	embeddingModel     embeddingModel
 
 	mu         sync.RWMutex
 	canvasMu   sync.Mutex
@@ -116,6 +115,13 @@ func expandPath(value string) string {
 }
 
 func newApplication() (*application, error) {
+	return newApplicationWithEmbeddingModel(defaultEmbeddingModel)
+}
+
+func newApplicationWithEmbeddingModel(model embeddingModel) (*application, error) {
+	if err := model.validate(); err != nil {
+		return nil, err
+	}
 	home := defaultHome()
 	a := &application{
 		home:               home,
@@ -126,10 +132,11 @@ func newApplication() (*application, error) {
 		referenceDir:       filepath.Join(home, "storyboards", "references"),
 		statePath:          filepath.Join(home, "data", "library-state.json"),
 		embeddingsDir:      filepath.Join(home, "data", "embeddings"),
-		embeddingStorePath: filepath.Join(home, "data", "embeddings-v1.bin"),
+		embeddingStorePath: filepath.Join(home, "data", model.storeFile),
 		queryCacheDir:      filepath.Join(home, "data", "queries"),
 		canvasDir:          filepath.Join(home, "data", "canvases"),
 		thumbnailDir:       filepath.Join(home, "data", "thumbnails"),
+		embeddingModel:     model,
 		embeddings:         map[string]embeddingRecord{},
 		queries:            map[string]queryEmbeddingRecord{},
 		job:                jobState{State: "idle", Message: "Ready", UpdatedAt: time.Now().Unix()},
@@ -151,6 +158,11 @@ func (a *application) loadEmbeddings() error {
 	if err := a.loadEmbeddingStore(); err != nil {
 		return err
 	}
+	// The JSON format predates model identities and belongs to the original
+	// default model. Other models must never claim those vectors.
+	if a.embeddingModel.Key != defaultEmbeddingModel.Key {
+		return nil
+	}
 	entries, err := os.ReadDir(a.embeddingsDir)
 	if err != nil {
 		return err
@@ -165,7 +177,7 @@ func (a *application) loadEmbeddings() error {
 			continue
 		}
 		var stored storedEmbedding
-		if json.Unmarshal(data, &stored) == nil && stored.Path != "" && len(stored.Vector) == semanticVectorSize {
+		if json.Unmarshal(data, &stored) == nil && stored.Path != "" && len(stored.Vector) == a.embeddingModel.Dimensions {
 			path := expandPath(stored.Path)
 			stored.Mtime = upgradedEmbeddingMtime(path, stored.Mtime)
 			if existing, found := a.embeddings[path]; !found || stored.Mtime >= existing.Mtime {
@@ -190,11 +202,11 @@ func (a *application) updateEmbeddings(records map[string]embeddingRecord) error
 	defer a.mu.Unlock()
 	pending := map[string]embeddingRecord{}
 	for path, record := range records {
-		if len(record.Vector) != semanticVectorSize {
+		if len(record.Vector) != a.embeddingModel.Dimensions {
 			return fmt.Errorf("invalid embedding size for %s", filepath.Base(path))
 		}
 		path = expandPath(path)
-		if existing, found := a.embeddings[path]; found && existing.Mtime == record.Mtime && len(existing.Vector) == semanticVectorSize {
+		if existing, found := a.embeddings[path]; found && existing.Mtime == record.Mtime && len(existing.Vector) == a.embeddingModel.Dimensions {
 			continue
 		}
 		pending[path] = embeddingRecord{Mtime: record.Mtime, Vector: append([]float32(nil), record.Vector...)}
@@ -223,12 +235,12 @@ func upgradedEmbeddingMtime(path string, value int64) int64 {
 	return value
 }
 
-func encodeEmbedding(path string, record embeddingRecord) ([]byte, error) {
-	if path == "" || len(path) > 1<<20 || len(record.Vector) != semanticVectorSize {
+func encodeEmbedding(model embeddingModel, path string, record embeddingRecord) ([]byte, error) {
+	if path == "" || len(path) > 1<<20 || len(record.Vector) != model.Dimensions {
 		return nil, fmt.Errorf("invalid image embedding")
 	}
 	pathBytes := []byte(path)
-	data := make([]byte, 16+len(pathBytes)+semanticVectorSize*4+4)
+	data := make([]byte, 16+len(pathBytes)+model.Dimensions*4+4)
 	copy(data[:4], embeddingMagic)
 	binary.LittleEndian.PutUint32(data[4:8], uint32(len(pathBytes)))
 	binary.LittleEndian.PutUint64(data[8:16], uint64(record.Mtime))
@@ -258,7 +270,7 @@ func (a *application) loadEmbeddingStore() error {
 		}
 		pathLength := int(binary.LittleEndian.Uint32(data[offset+4 : offset+8]))
 		mtime := int64(binary.LittleEndian.Uint64(data[offset+8 : offset+16]))
-		recordLength := 16 + pathLength + semanticVectorSize*4 + 4
+		recordLength := 16 + pathLength + a.embeddingModel.Dimensions*4 + 4
 		if pathLength < 1 || pathLength > 1<<20 || recordLength > len(data)-offset {
 			break
 		}
@@ -267,7 +279,7 @@ func (a *application) loadEmbeddingStore() error {
 			break
 		}
 		path := expandPath(string(data[offset+16 : offset+16+pathLength]))
-		vector := make([]float32, semanticVectorSize)
+		vector := make([]float32, a.embeddingModel.Dimensions)
 		vectorOffset := offset + 16 + pathLength
 		for index := range vector {
 			vector[index] = math.Float32frombits(binary.LittleEndian.Uint32(data[vectorOffset : vectorOffset+4]))
@@ -293,7 +305,7 @@ func (a *application) appendEmbeddingRecordsLocked(records map[string]embeddingR
 	}
 	sort.Strings(paths)
 	for _, path := range paths {
-		data, encodeErr := encodeEmbedding(path, records[path])
+		data, encodeErr := encodeEmbedding(a.embeddingModel, path, records[path])
 		if encodeErr != nil {
 			_ = file.Close()
 			return encodeErr
@@ -322,7 +334,7 @@ func (a *application) writeEmbeddingStoreLocked() error {
 	}
 	sort.Strings(paths)
 	for _, path := range paths {
-		data, encodeErr := encodeEmbedding(path, a.embeddings[path])
+		data, encodeErr := encodeEmbedding(a.embeddingModel, path, a.embeddings[path])
 		if encodeErr != nil {
 			_ = file.Close()
 			_ = os.Remove(tmp)
@@ -353,7 +365,7 @@ func (a *application) compactEmbeddingStoreLocked() {
 	}
 	liveSize := int64(0)
 	for path := range a.embeddings {
-		liveSize += int64(16 + len(path) + semanticVectorSize*4 + 4)
+		liveSize += int64(16 + len(path) + a.embeddingModel.Dimensions*4 + 4)
 	}
 	if info.Size() > liveSize*2+(1<<20) {
 		_ = a.writeEmbeddingStoreLocked()
@@ -365,7 +377,7 @@ func normalizeSemanticQuery(value string) string {
 }
 
 func (a *application) queryCachePath(query string) string {
-	digest := sha256.Sum256([]byte(semanticModelKey + "\n" + query))
+	digest := sha256.Sum256([]byte(a.embeddingModel.Key + "\n" + query))
 	return filepath.Join(a.queryCacheDir, fmt.Sprintf("%x.json", digest[:16]))
 }
 
@@ -387,7 +399,7 @@ func (a *application) loadQueryEmbeddings() error {
 			continue
 		}
 		query := normalizeSemanticQuery(record.Query)
-		if query != "" && query == record.Query && record.Model == semanticModelKey && len(record.Vector) == semanticVectorSize {
+		if query != "" && query == record.Query && record.Model == a.embeddingModel.Key && len(record.Vector) == a.embeddingModel.Dimensions {
 			a.queries[query] = record
 		}
 	}
@@ -400,7 +412,7 @@ func (a *application) queryEmbedding(query string) ([]float32, bool) {
 	a.mu.RLock()
 	record, found := a.queries[query]
 	a.mu.RUnlock()
-	if !found || record.Model != semanticModelKey || len(record.Vector) != semanticVectorSize {
+	if !found || record.Model != a.embeddingModel.Key || len(record.Vector) != a.embeddingModel.Dimensions {
 		return nil, false
 	}
 	return append([]float32(nil), record.Vector...), true
@@ -411,11 +423,11 @@ func (a *application) updateQueryEmbedding(query string, vector []float32) error
 	if query == "" || len(query) > 500 {
 		return fmt.Errorf("search must be between 1 and 500 characters")
 	}
-	if len(vector) != semanticVectorSize {
+	if len(vector) != a.embeddingModel.Dimensions {
 		return fmt.Errorf("invalid search vector")
 	}
 	record := queryEmbeddingRecord{
-		Query: query, Model: semanticModelKey, UpdatedAt: time.Now().UnixNano(), Vector: append([]float32(nil), vector...),
+		Query: query, Model: a.embeddingModel.Key, UpdatedAt: time.Now().UnixNano(), Vector: append([]float32(nil), vector...),
 	}
 	data, err := json.Marshal(record)
 	if err != nil {
@@ -461,7 +473,7 @@ func (a *application) missingEmbeddings() []map[string]any {
 	for index, path := range a.paths {
 		mtime := embeddingMtime(path)
 		record, found := a.embeddings[path]
-		if !found || record.Mtime != mtime || len(record.Vector) != semanticVectorSize {
+		if !found || record.Mtime != mtime || len(record.Vector) != a.embeddingModel.Dimensions {
 			items = append(items, map[string]any{
 				"id": index, "name": filepath.Base(path), "url": "/image/" + strconv.Itoa(index), "path": path, "mtime": mtime,
 			})
@@ -482,7 +494,7 @@ func (a *application) imageEmbedding(path string) ([]float32, bool) {
 	a.mu.RLock()
 	record, found := a.embeddings[path]
 	a.mu.RUnlock()
-	if !found || record.Mtime != embeddingMtime(path) || len(record.Vector) != semanticVectorSize {
+	if !found || record.Mtime != embeddingMtime(path) || len(record.Vector) != a.embeddingModel.Dimensions {
 		return nil, false
 	}
 	return append([]float32(nil), record.Vector...), true
@@ -494,7 +506,7 @@ func (a *application) indexedEmbeddingCount() int {
 	count := 0
 	for _, path := range a.paths {
 		record, found := a.embeddings[path]
-		if found && record.Mtime == embeddingMtime(path) && len(record.Vector) == semanticVectorSize {
+		if found && record.Mtime == embeddingMtime(path) && len(record.Vector) == a.embeddingModel.Dimensions {
 			count++
 		}
 	}
@@ -504,7 +516,7 @@ func (a *application) indexedEmbeddingCount() int {
 func (a *application) vectorSearch(vector []float32, limit int) []searchResult {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
-	if len(vector) != semanticVectorSize {
+	if len(vector) != a.embeddingModel.Dimensions {
 		return nil
 	}
 	results := make([]searchResult, 0, len(a.embeddings))

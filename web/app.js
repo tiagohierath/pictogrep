@@ -68,7 +68,9 @@ function getAIWorker() {
     } else pending.resolve(message.result);
   };
   aiWorker.onerror = event => {
-    for (const pending of aiRequests.values()) pending.reject(new Error(event.message || "Search could not start"));
+    const error = new Error(event.message || "Search could not start");
+    error.kind = "model";
+    for (const pending of aiRequests.values()) pending.reject(error);
     aiRequests.clear();
     aiWorker.terminate();
     aiWorker = null;
@@ -80,7 +82,14 @@ function runAI(type, values = {}) {
   const id = ++aiRequestId;
   return new Promise((resolve, reject) => {
     aiRequests.set(id, {resolve, reject});
-    getAIWorker().postMessage({id, type, ...values});
+    try {
+      getAIWorker().postMessage({id, type, model: appState?.embeddingModel, ...values});
+    } catch (error) {
+      aiRequests.delete(id);
+      const workerError = error instanceof Error ? error : new Error(String(error));
+      workerError.kind ??= "model";
+      reject(workerError);
+    }
   });
 }
 
@@ -101,7 +110,7 @@ function semanticVector(query) {
   if (existing) return remember(semanticVectors, key, existing, 48);
   const pending = (async () => {
     const cached = await request(`/api/app/ai/query?q=${encodeURIComponent(key)}`);
-    if (cached.cached && cached.vector?.length === 512) return cached.vector;
+    if (cached.cached && cached.model === appState.embeddingModel.key && cached.vector?.length === appState.embeddingModel.dimensions) return cached.vector;
     quietTextWarmup = false;
     foregroundTextRequests++;
     let vector;
@@ -113,7 +122,7 @@ function semanticVector(query) {
     await request("/api/app/ai/query", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({query: key, vector}),
+      body: JSON.stringify({model: appState.embeddingModel.key, query: key, vector}),
     });
     return vector;
   })().catch(error => {
@@ -138,7 +147,7 @@ async function saveSemanticEmbedding(item) {
   await request("/api/app/ai/embeddings", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({items: [{path: item.path, mtime: item.mtime, vector}]}),
+    body: JSON.stringify({model: appState.embeddingModel.key, items: [{path: item.path, mtime: item.mtime, vector}]}),
   });
 }
 
@@ -155,7 +164,7 @@ async function requestSemanticResults(query, refresh = false) {
   const data = await request("/api/app/ai/search", {
     method: "POST",
     headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({vector, limit: 120, tag: currentTag, source: currentSource}),
+    body: JSON.stringify({model: appState.embeddingModel.key, vector, limit: 120, tag: currentTag, source: currentSource}),
   });
   return remember(semanticResults, key, data, 24);
 }
@@ -963,7 +972,7 @@ async function createFolder(event) {
       const result = await request("/api/app/tags", {
         method: "POST",
         headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({action: "fill", tag: name, prompt, limit: 50, vector}),
+        body: JSON.stringify({action: "fill", model: appState.embeddingModel.key, tag: name, prompt, limit: 50, vector}),
       });
       filled = result.added;
       indexed = result.indexed;

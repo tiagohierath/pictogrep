@@ -31,3 +31,6 @@ collections/
 # OS/editor noise
 .DS_Store
 *.swp
+
+# Local build output
+/bin/pictogrep

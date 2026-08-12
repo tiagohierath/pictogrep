@@ -57,6 +57,7 @@ func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", s.home)
 	mux.HandleFunc("GET /practice", s.practicePage)
+	mux.HandleFunc("GET /licenses", s.licenses)
 	mux.HandleFunc("GET /assets/{name}", s.asset)
 	mux.HandleFunc("GET /api/app/state", s.appState)
 	mux.HandleFunc("GET /api/app/update", s.appUpdate)
@@ -200,6 +201,30 @@ func (s *server) practicePage(w http.ResponseWriter, r *http.Request) {
 	serveBytes(w, r, "practice.html", "text/html; charset=utf-8", s.practice)
 }
 
+func (s *server) licenses(w http.ResponseWriter, r *http.Request) {
+	files := []struct {
+		name  string
+		label string
+	}{
+		{name: "LICENSE", label: "Pictogrep — MIT"},
+		{name: "third_party/transformers.js/LICENSE", label: "Transformers.js — Apache-2.0"},
+		{name: "third_party/onnxruntime/LICENSE", label: "ONNX Runtime — MIT"},
+		{name: "third_party/onnxruntime/ThirdPartyNotices.txt", label: "ONNX Runtime third-party notices"},
+	}
+	var output bytes.Buffer
+	for _, file := range files {
+		data, err := embeddedFiles.ReadFile(file.name)
+		if err != nil {
+			http.Error(w, "could not read embedded licenses", http.StatusInternalServerError)
+			return
+		}
+		fmt.Fprintf(&output, "%s\n%s\n\n", file.label, strings.Repeat("=", len(file.label)))
+		output.Write(data)
+		output.WriteString("\n\n")
+	}
+	serveBytes(w, r, "licenses.txt", "text/plain; charset=utf-8", output.Bytes())
+}
+
 func (s *server) asset(w http.ResponseWriter, r *http.Request) {
 	name := filepath.Base(r.PathValue("name"))
 	path := "web/" + name
@@ -212,6 +237,12 @@ func (s *server) asset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	contentType := mime.TypeByExtension(filepath.Ext(name))
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".js", ".mjs":
+		contentType = "text/javascript; charset=utf-8"
+	case ".wasm":
+		contentType = "application/wasm"
+	}
 	serveBytes(w, r, name, contentType, data)
 }
 
@@ -220,7 +251,7 @@ func serveBytes(w http.ResponseWriter, r *http.Request, name, contentType string
 		w.Header().Set("Content-Type", contentType)
 	}
 	w.Header().Set("Cache-Control", "no-cache")
-	http.ServeContent(w, r, name, time.Time{}, strings.NewReader(string(data)))
+	http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(data))
 }
 
 func (s *server) imageRecord(path string, score *float64) imageRecord {
@@ -260,7 +291,8 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 		index = map[string]any{"count": len(paths), "sources": sources, "due": false, "maintenance_due": false, "duplicates": 0}
 	}
 	sendJSON(w, 200, map[string]any{
-		"ok": true, "version": version, "model": "ViT-B-32", "pretrained": "laion2b_s34b_b79k", "semanticModel": semanticModelKey,
+		"ok": true, "version": version, "model": s.app.embeddingModel.ModelID, "pretrained": s.app.embeddingModel.Revision,
+		"semanticModel": s.app.embeddingModel.Key, "embeddingModel": s.app.embeddingModel,
 		"updateMethod": updateMethod(),
 		"index":        index, "indexJob": job, "sources": sources, "tags": tags,
 		"boards": len(s.boardRecords()), "aiAvailable": true,
@@ -274,12 +306,13 @@ func (s *server) aiState(w http.ResponseWriter, _ *http.Request) {
 	missing := s.app.missingEmbeddings()
 	sendJSON(w, 200, map[string]any{
 		"ok": true, "ready": len(paths) > 0 && len(missing) == 0,
-		"indexed": len(paths) - len(missing), "total": len(paths), "missing": missing,
+		"indexed": len(paths) - len(missing), "total": len(paths), "missing": missing, "model": s.app.embeddingModel,
 	})
 }
 
 func (s *server) aiEmbeddings(w http.ResponseWriter, r *http.Request) {
 	var request struct {
+		Model string `json:"model"`
 		Items []struct {
 			Path   string    `json:"path"`
 			Mtime  int64     `json:"mtime"`
@@ -288,6 +321,10 @@ func (s *server) aiEmbeddings(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := decodeJSON(r, &request, 16<<20); err != nil {
 		sendError(w, 400, err)
+		return
+	}
+	if request.Model != s.app.embeddingModel.Key {
+		sendError(w, 409, fmt.Errorf("embedding model changed; reload Pictogrep"))
 		return
 	}
 	paths, _, _ := s.app.snapshot()
@@ -323,16 +360,21 @@ func (s *server) aiQuery(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	vector, found := s.app.queryEmbedding(query)
-	sendJSON(w, 200, map[string]any{"ok": true, "cached": found, "query": query, "vector": vector})
+	sendJSON(w, 200, map[string]any{"ok": true, "cached": found, "query": query, "vector": vector, "model": s.app.embeddingModel.Key})
 }
 
 func (s *server) saveAIQuery(w http.ResponseWriter, r *http.Request) {
 	var request struct {
+		Model  string    `json:"model"`
 		Query  string    `json:"query"`
 		Vector []float32 `json:"vector"`
 	}
 	if err := decodeJSON(r, &request, 1<<20); err != nil {
 		sendError(w, 400, err)
+		return
+	}
+	if request.Model != s.app.embeddingModel.Key {
+		sendError(w, 409, fmt.Errorf("embedding model changed; reload Pictogrep"))
 		return
 	}
 	if err := s.app.updateQueryEmbedding(request.Query, request.Vector); err != nil {
@@ -344,6 +386,7 @@ func (s *server) saveAIQuery(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) aiSearch(w http.ResponseWriter, r *http.Request) {
 	var request struct {
+		Model  string    `json:"model"`
 		Vector []float32 `json:"vector"`
 		Limit  int       `json:"limit"`
 		Tag    string    `json:"tag"`
@@ -353,7 +396,11 @@ func (s *server) aiSearch(w http.ResponseWriter, r *http.Request) {
 		sendError(w, 400, err)
 		return
 	}
-	if len(request.Vector) != semanticVectorSize {
+	if request.Model != s.app.embeddingModel.Key {
+		sendError(w, 409, fmt.Errorf("embedding model changed; reload Pictogrep"))
+		return
+	}
+	if len(request.Vector) != s.app.embeddingModel.Dimensions {
 		sendError(w, 400, fmt.Errorf("invalid search vector"))
 		return
 	}
@@ -908,6 +955,7 @@ func collectionName(value string) (string, error) {
 func (s *server) appTags(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		Action  string    `json:"action"`
+		Model   string    `json:"model"`
 		Tag     string    `json:"tag"`
 		Prompt  string    `json:"prompt"`
 		Limit   int       `json:"limit"`
@@ -949,7 +997,11 @@ func (s *server) appTags(w http.ResponseWriter, r *http.Request) {
 			sendError(w, 400, fmt.Errorf("folder search must be between 1 and 500 characters"))
 			return
 		}
-		if len(request.Vector) != semanticVectorSize {
+		if request.Model != s.app.embeddingModel.Key {
+			sendError(w, 409, fmt.Errorf("embedding model changed; reload Pictogrep"))
+			return
+		}
+		if len(request.Vector) != s.app.embeddingModel.Dimensions {
 			sendError(w, 400, fmt.Errorf("invalid folder search vector"))
 			return
 		}

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"io"
@@ -9,9 +10,12 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 )
 
 func testHTTPServer(t *testing.T) (*application, *httptest.Server) {
@@ -89,6 +93,110 @@ func TestEmbeddedBrowserAndStoryboardPages(t *testing.T) {
 		if response.StatusCode != 200 || len(body) < 100 {
 			t.Fatalf("%s: status=%d bytes=%d", path, response.StatusCode, len(body))
 		}
+	}
+}
+
+func TestEmbeddedAIRuntimeIsLocalAndPinned(t *testing.T) {
+	_, server := testHTTPServer(t)
+	response, err := http.Get(server.URL + "/api/app/state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	state := responseJSON(t, response)
+	model := state["embeddingModel"].(map[string]any)
+	if model["key"] != defaultEmbeddingModel.Key || model["backend"] != defaultEmbeddingModel.Backend ||
+		model["modelId"] != defaultEmbeddingModel.ModelID || model["revision"] != defaultEmbeddingModel.Revision ||
+		model["dimensions"] != float64(defaultEmbeddingModel.Dimensions) {
+		t.Fatalf("server published unexpected embedding model: %#v", model)
+	}
+	assets := []struct {
+		path        string
+		contentType string
+		minimumSize int64
+	}{
+		{path: "/assets/transformers.web.min.js", contentType: "text/javascript", minimumSize: 400_000},
+		{path: "/assets/ort.wasm.bundle.min.mjs", contentType: "text/javascript", minimumSize: 40_000},
+		{path: "/assets/ort-wasm-simd-threaded.mjs", contentType: "text/javascript", minimumSize: 20_000},
+		{path: "/assets/ort-wasm-simd-threaded.wasm", contentType: "application/wasm", minimumSize: 11_000_000},
+		{path: "/licenses", contentType: "text/plain", minimumSize: 300_000},
+	}
+	for _, asset := range assets {
+		request, _ := http.NewRequest(http.MethodHead, server.URL+asset.path, nil)
+		response, err := http.DefaultClient.Do(request)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = response.Body.Close()
+		if response.StatusCode != http.StatusOK || !strings.HasPrefix(response.Header.Get("Content-Type"), asset.contentType) || response.ContentLength < asset.minimumSize {
+			t.Errorf("%s: status=%d type=%q size=%d", asset.path, response.StatusCode, response.Header.Get("Content-Type"), response.ContentLength)
+		}
+	}
+
+	response, err = http.Get(server.URL + "/assets/ai-worker.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	worker, _ := io.ReadAll(response.Body)
+	_ = response.Body.Close()
+	source := string(worker)
+	if strings.Contains(source, "cdn.jsdelivr.net") || !strings.Contains(source, `from "./transformers.web.min.js"`) || !strings.Contains(source, "embeddingBackends") {
+		t.Fatal("AI worker does not use the local runtime and embedding backend boundary")
+	}
+	runtime, err := embeddedFiles.ReadFile("web/transformers.web.min.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeSource := string(runtime[:min(len(runtime), 256)])
+	if strings.Contains(runtimeSource, `from"onnxruntime-`) || !strings.Contains(runtimeSource, `from"./ort.wasm.bundle.min.mjs"`) {
+		t.Fatal("browser AI runtime contains an unresolved package import")
+	}
+}
+
+func TestBrowserSmoke(t *testing.T) {
+	browser := ""
+	if configured := os.Getenv("PICTOGREP_BROWSER"); configured != "" {
+		resolved, err := exec.LookPath(configured)
+		if err != nil {
+			t.Fatalf("PICTOGREP_BROWSER is unavailable: %v", err)
+		}
+		browser = resolved
+	} else {
+		for _, candidate := range []string{"google-chrome", "chromium", "chromium-browser"} {
+			if resolved, err := exec.LookPath(candidate); err == nil {
+				browser = resolved
+				break
+			}
+		}
+		if browser == "" {
+			t.Skip("Chrome or Chromium is not installed")
+		}
+	}
+
+	_, server := testHTTPServer(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 25*time.Second)
+	defer cancel()
+	command := exec.CommandContext(ctx, browser,
+		"--headless=new",
+		"--no-sandbox",
+		"--disable-gpu",
+		"--disable-dev-shm-usage",
+		"--user-data-dir="+t.TempDir(),
+		"--virtual-time-budget=2500",
+		"--dump-dom",
+		server.URL+"/",
+	)
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("browser smoke test failed: %v", err)
+	}
+	html := string(output)
+	for _, expected := range []string{`id="searchQuery"`, `id="imagesEmpty"`, "No pictures yet.", "navylily.tv/pictogrep"} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("rendered app is missing %q", expected)
+		}
+	}
+	if strings.Contains(html, `id="imagesEmpty" hidden`) {
+		t.Fatal("browser JavaScript did not finish loading the empty library")
 	}
 }
 
@@ -218,7 +326,7 @@ func TestPromptFolderUsesCachedSemanticEmbeddings(t *testing.T) {
 	for index, path := range paths {
 		writeTestPNG(t, path)
 		app.addPath(path)
-		vector := make([]float32, semanticVectorSize)
+		vector := make([]float32, defaultEmbeddingModel.Dimensions)
 		vector[0] = []float32{1, 0.8, 0.1}[index]
 		vector[1] = []float32{0, 0.2, 0.9}[index]
 		records[path] = embeddingRecord{Mtime: embeddingMtime(path), Vector: vector}
@@ -226,10 +334,10 @@ func TestPromptFolderUsesCachedSemanticEmbeddings(t *testing.T) {
 	if err := app.updateEmbeddings(records); err != nil {
 		t.Fatal(err)
 	}
-	query := make([]float32, semanticVectorSize)
+	query := make([]float32, defaultEmbeddingModel.Dimensions)
 	query[0] = 1
 	payload, _ := json.Marshal(map[string]any{
-		"action": "fill", "tag": "Cats", "prompt": " cats ", "limit": 2, "vector": query,
+		"action": "fill", "model": defaultEmbeddingModel.Key, "tag": "Cats", "prompt": " cats ", "limit": 2, "vector": query,
 	})
 	response, err := http.Post(server.URL+"/api/app/tags", "application/json", bytes.NewReader(payload))
 	if err != nil {
@@ -379,7 +487,7 @@ func TestBadTagRequestsHaveNoSideEffects(t *testing.T) {
 	for _, payload := range []string{
 		`{"action":"unknown","tag":"ghost"}`,
 		`{"action":"create","tag":"ghost"} {}`,
-		`{"action":"fill","tag":"ghost","prompt":"cats","vector":[1]}`,
+		`{"action":"fill","model":"` + defaultEmbeddingModel.Key + `","tag":"ghost","prompt":"cats","vector":[1]}`,
 	} {
 		response, err := http.Post(server.URL+"/api/app/tags", "application/json", bytes.NewBufferString(payload))
 		if err != nil {
@@ -466,9 +574,9 @@ func TestNativeSemanticIndexRoundTrip(t *testing.T) {
 		t.Fatalf("expected one missing embedding: %#v", state)
 	}
 	item := missing[0].(map[string]any)
-	vector := make([]float32, 512)
+	vector := make([]float32, defaultEmbeddingModel.Dimensions)
 	vector[0] = 1
-	payload, _ := json.Marshal(map[string]any{"items": []any{map[string]any{
+	payload, _ := json.Marshal(map[string]any{"model": defaultEmbeddingModel.Key, "items": []any{map[string]any{
 		"path": picture, "mtime": int64(item["mtime"].(float64)), "vector": vector,
 	}}})
 	response, err = http.Post(server.URL+"/api/app/ai/embeddings", "application/json", bytes.NewReader(payload))
@@ -485,7 +593,7 @@ func TestNativeSemanticIndexRoundTrip(t *testing.T) {
 	if missing := reloaded.missingEmbeddings(); len(missing) != 0 {
 		t.Fatalf("saved embedding did not survive restart: %#v", missing)
 	}
-	payload, _ = json.Marshal(map[string]any{"vector": vector, "limit": 10})
+	payload, _ = json.Marshal(map[string]any{"model": defaultEmbeddingModel.Key, "vector": vector, "limit": 10})
 	response, err = http.Post(server.URL+"/api/app/ai/search", "application/json", bytes.NewReader(payload))
 	if err != nil {
 		t.Fatal(err)
@@ -501,9 +609,9 @@ func TestLegacyEmbeddingTimestampIsUpgraded(t *testing.T) {
 	picture := filepath.Join(app.libraryDir, "reference.png")
 	writeTestPNG(t, picture)
 	app.addPath(picture)
-	vector := make([]float32, semanticVectorSize)
+	vector := make([]float32, defaultEmbeddingModel.Dimensions)
 	vector[0] = 1
-	payload, _ := json.Marshal(map[string]any{"items": []any{map[string]any{
+	payload, _ := json.Marshal(map[string]any{"model": defaultEmbeddingModel.Key, "items": []any{map[string]any{
 		"path": picture, "mtime": embeddingMtime(picture) / 1000, "vector": vector,
 	}}})
 	response, err := http.Post(server.URL+"/api/app/ai/embeddings", "application/json", bytes.NewReader(payload))
@@ -529,7 +637,7 @@ func TestRelatedImagesUseCachedSemanticEmbeddings(t *testing.T) {
 	for index, path := range paths {
 		writeTestPNG(t, path)
 		app.addPath(path)
-		vector := make([]float32, semanticVectorSize)
+		vector := make([]float32, defaultEmbeddingModel.Dimensions)
 		vector[0] = []float32{1, 0.9, 0.1}[index]
 		vector[1] = []float32{0, 0.1, 0.9}[index]
 		records[path] = embeddingRecord{Mtime: embeddingMtime(path), Vector: vector}
@@ -562,9 +670,9 @@ func TestSemanticQueryCacheRoundTrip(t *testing.T) {
 	if value := responseJSON(t, response); response.StatusCode != http.StatusOK || value["cached"] != false {
 		t.Fatalf("unexpected initial query cache: status=%d %#v", response.StatusCode, value)
 	}
-	vector := make([]float32, semanticVectorSize)
+	vector := make([]float32, defaultEmbeddingModel.Dimensions)
 	vector[4] = 1
-	payload, _ := json.Marshal(map[string]any{"query": "  Red   Car ", "vector": vector})
+	payload, _ := json.Marshal(map[string]any{"model": defaultEmbeddingModel.Key, "query": "  Red   Car ", "vector": vector})
 	response, err = http.Post(server.URL+"/api/app/ai/query", "application/json", bytes.NewReader(payload))
 	if err != nil {
 		t.Fatal(err)
@@ -578,7 +686,7 @@ func TestSemanticQueryCacheRoundTrip(t *testing.T) {
 	}
 	value := responseJSON(t, response)
 	cached := value["vector"].([]any)
-	if response.StatusCode != http.StatusOK || value["cached"] != true || len(cached) != semanticVectorSize || cached[4].(float64) != 1 {
+	if response.StatusCode != http.StatusOK || value["cached"] != true || len(cached) != defaultEmbeddingModel.Dimensions || cached[4].(float64) != 1 {
 		t.Fatalf("query cache lookup failed: status=%d %#v", response.StatusCode, value)
 	}
 }
