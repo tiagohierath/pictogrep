@@ -1,0 +1,14 @@
+pkgbase = pictogrep
+	pkgdesc = Find local pictures using natural-language descriptions
+	pkgver = 0.4.2
+	pkgrel = 1
+	url = https://github.com/tiagohierath/pictogrep
+	arch = x86_64
+	license = MIT
+	makedepends = go
+	source = pictogrep-0.4.2.tar.gz::https://github.com/tiagohierath/pictogrep/archive/refs/tags/v0.4.2.tar.gz
+	source = pictogrep.desktop
+	sha256sums = fa0b16db7f12ca13947825c7b5877574766e0b610946702cc3ec812d5a75f15a
+	sha256sums = df9a4705e0dbee6be4a9b05233c6058e5bbf3a34722062e0863f34af370bdf9d
+
+pkgname = pictogrep

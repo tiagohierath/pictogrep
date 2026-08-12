@@ -1,0 +1,43 @@
+# Maintainer: Tiago Hierath <tiagohierath@gmail.com>
+
+pkgname=pictogrep
+pkgver=0.4.2
+pkgrel=1
+pkgdesc="Find local pictures using natural-language descriptions"
+arch=('x86_64')
+url="https://github.com/tiagohierath/pictogrep"
+license=('MIT')
+makedepends=('go')
+source=(
+  "$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+  'pictogrep.desktop'
+)
+sha256sums=(
+  'fa0b16db7f12ca13947825c7b5877574766e0b610946702cc3ec812d5a75f15a'
+  'df9a4705e0dbee6be4a9b05233c6058e5bbf3a34722062e0863f34af370bdf9d'
+)
+
+build() {
+  cd "$pkgname-$pkgver"
+  export CGO_CPPFLAGS="${CPPFLAGS}"
+  export CGO_CFLAGS="${CFLAGS}"
+  export CGO_CXXFLAGS="${CXXFLAGS}"
+  export CGO_LDFLAGS="${LDFLAGS}"
+  export GOFLAGS="-buildmode=pie -trimpath -mod=readonly -modcacherw"
+  go build -ldflags="-linkmode=external -s -w -X main.version=$pkgver" -o pictogrep .
+}
+
+check() {
+  cd "$pkgname-$pkgver"
+  go test ./...
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  install -Dm755 pictogrep "$pkgdir/usr/bin/pictogrep"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+  install -Dm644 assets/pictogrep.png \
+    "$pkgdir/usr/share/icons/hicolor/512x512/apps/pictogrep.png"
+  install -Dm644 "$srcdir/pictogrep.desktop" \
+    "$pkgdir/usr/share/applications/pictogrep.desktop"
+}

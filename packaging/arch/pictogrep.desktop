@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Pictogrep
+Comment=Find and storyboard your pictures
+Exec=pictogrep
+Icon=pictogrep
+Terminal=false
+Categories=Graphics;Photography;
+Keywords=images;search;storyboard;
