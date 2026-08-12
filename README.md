@@ -111,3 +111,7 @@ Useful development commands are `pictogrep doctor`, `pictogrep paths`, and
 - [x] Similar images below an opened image
 - [ ] Optional plugin system for installing add-on features without expanding the core app
 - [ ] Translations for Portuguese, Japanese, and German
+
+## License
+
+Pictogrep is available under the [MIT License](LICENSE).

@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var version = "0.4.1"
+var version = "0.4.2"
 
 const (
 	semanticModelKey   = "clip-vit-base-patch32-q8-v1"
