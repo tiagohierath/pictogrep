@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func writeTestPNG(t *testing.T, path string) {
@@ -196,5 +197,30 @@ func TestQueryEmbeddingCacheSurvivesRestart(t *testing.T) {
 	cached, found := reloaded.queryEmbedding("red car")
 	if !found || len(cached) != semanticVectorSize || cached[7] != 1 {
 		t.Fatalf("query vector was not cached: found=%v vector=%#v", found, cached)
+	}
+}
+
+func TestVectorSearchSkipsEmbeddingAfterImageChanges(t *testing.T) {
+	app := testApplication(t)
+	picture := filepath.Join(app.libraryDir, "changing.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+
+	vector := make([]float32, semanticVectorSize)
+	vector[0] = 1
+	record := embeddingRecord{Mtime: embeddingMtime(picture), Vector: vector}
+	if err := app.updateEmbeddings(map[string]embeddingRecord{picture: record}); err != nil {
+		t.Fatal(err)
+	}
+	if results := app.vectorSearch(vector, 10); len(results) != 1 {
+		t.Fatalf("current embedding was not searchable: %#v", results)
+	}
+
+	changed := time.Now().Add(2 * time.Second)
+	if err := os.Chtimes(picture, changed, changed); err != nil {
+		t.Fatal(err)
+	}
+	if results := app.vectorSearch(vector, 10); len(results) != 0 {
+		t.Fatalf("stale embedding remained searchable: %#v", results)
 	}
 }

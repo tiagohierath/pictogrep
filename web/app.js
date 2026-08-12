@@ -370,6 +370,7 @@ function openImageContextMenu(event, item) {
   const menu = $("#imageContextMenu");
   const dialog = event.currentTarget.closest("dialog[open]");
   (dialog || document.body).append(menu);
+  menu.classList.add("cursor-menu");
   $("#contextImageName").textContent = item.name;
   $("#contextImageName").title = item.path || item.name;
   $("#contextDraw").href = `/practice?image=${encodeURIComponent(item.id)}`;
@@ -759,20 +760,25 @@ function endCanvasPointer(event) {
   }
 }
 
+function canvasSavePayload() {
+  const scope = canvasScope();
+  const positions = canvasImages.map(item => ({id: item.id, ...canvasPositions.get(item.id)}));
+  return {...scope, positions};
+}
+
 function scheduleCanvasSave() {
   clearTimeout(canvasSaveTimer);
   $("#canvasStatus").textContent = "Saving…";
-  canvasSaveTimer = setTimeout(saveCanvas, 350);
+  const payload = canvasSavePayload();
+  canvasSaveTimer = setTimeout(() => saveCanvas(payload), 350);
 }
 
-async function saveCanvas() {
-  const scope = canvasScope();
-  const positions = canvasImages.map(item => ({id: item.id, ...canvasPositions.get(item.id)}));
+async function saveCanvas(payload = canvasSavePayload()) {
   try {
     await request("/api/app/canvas", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({...scope, positions}),
+      body: JSON.stringify(payload),
     });
     $("#canvasStatus").textContent = "Saved";
   } catch (error) {
@@ -965,7 +971,7 @@ async function createFolder(event) {
       const state = await request("/api/app/ai");
       continueSemanticIndex(state.missing, state.indexed, state.total);
     }
-    if (saved) semanticResults.clear();
+    if (saved || filled) semanticResults.clear();
     $("#folderDialog").close();
     await refreshState();
     await loadImages();

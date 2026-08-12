@@ -510,7 +510,7 @@ func (a *application) vectorSearch(vector []float32, limit int) []searchResult {
 	results := make([]searchResult, 0, len(a.embeddings))
 	for _, path := range a.paths {
 		record, found := a.embeddings[path]
-		if !found || len(record.Vector) != len(vector) {
+		if !found || record.Mtime != embeddingMtime(path) || len(record.Vector) != len(vector) {
 			continue
 		}
 		var score float64
