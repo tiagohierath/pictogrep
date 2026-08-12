@@ -3,6 +3,8 @@
 Pictogrep finds local pictures from a plain-language description and turns
 references into rough storyboards. Your pictures stay on your computer.
 
+[Website](https://navylily.tv/pictogrep) · [Releases](https://github.com/tiagohierath/pictogrep/releases)
+
 ## Windows
 
 1. Download

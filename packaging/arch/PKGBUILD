@@ -5,11 +5,12 @@ pkgver=0.4.2
 pkgrel=1
 pkgdesc="Find local pictures using natural-language descriptions"
 arch=('x86_64')
-url="https://github.com/tiagohierath/pictogrep"
+url="https://navylily.tv/pictogrep"
 license=('MIT')
 makedepends=('go')
+_source_url="https://github.com/tiagohierath/pictogrep"
 source=(
-  "$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz"
+  "$pkgname-$pkgver.tar.gz::$_source_url/archive/refs/tags/v$pkgver.tar.gz"
   'pictogrep.desktop'
 )
 sha256sums=(

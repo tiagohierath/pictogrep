@@ -36,7 +36,7 @@
             '';
             meta = {
               description = "Local image search and storyboarding application";
-              homepage = "https://github.com/tiagohierath/pictogrep";
+              homepage = "https://navylily.tv/pictogrep";
               mainProgram = "pictogrep";
               platforms = pkgs.lib.platforms.linux;
             };

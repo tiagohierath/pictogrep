@@ -1,7 +1,7 @@
 #define MyAppName "Pictogrep"
 #define MyAppVersion GetEnv("PICTOGREP_VERSION")
 #define MyAppPublisher "Tiago Hierath"
-#define MyAppURL "https://github.com/tiagohierath/pictogrep"
+#define MyAppURL "https://navylily.tv/pictogrep"
 
 [Setup]
 AppId={{75F49D9A-81CD-47CB-B329-2355B197C8B3}
