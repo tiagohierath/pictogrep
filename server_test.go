@@ -36,6 +36,47 @@ func responseJSON(t *testing.T, response *http.Response) map[string]any {
 	return value
 }
 
+func TestLocalRequestProtection(t *testing.T) {
+	handler := securityHeaders(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	tests := []struct {
+		name      string
+		method    string
+		host      string
+		origin    string
+		fetchSite string
+		status    int
+	}{
+		{name: "local page", method: http.MethodGet, host: "127.0.0.1:8765", status: http.StatusNoContent},
+		{name: "non-local host", method: http.MethodGet, host: "pictogrep.attacker.example", status: http.StatusForbidden},
+		{name: "same origin mutation", method: http.MethodPost, host: "127.0.0.1:8765", origin: "http://127.0.0.1:8765", status: http.StatusNoContent},
+		{name: "localhost origin", method: http.MethodPost, host: "localhost:8765", origin: "http://localhost:8765", status: http.StatusNoContent},
+		{name: "CLI mutation", method: http.MethodPost, host: "127.0.0.1:8765", status: http.StatusNoContent},
+		{name: "foreign origin", method: http.MethodPost, host: "127.0.0.1:8765", origin: "https://attacker.example", status: http.StatusForbidden},
+		{name: "wrong local port", method: http.MethodPost, host: "127.0.0.1:8765", origin: "http://127.0.0.1:9999", status: http.StatusForbidden},
+		{name: "null origin", method: http.MethodDelete, host: "127.0.0.1:8765", origin: "null", status: http.StatusForbidden},
+		{name: "cross-site fetch", method: http.MethodPost, host: "127.0.0.1:8765", fetchSite: "cross-site", status: http.StatusForbidden},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			request := httptest.NewRequest(test.method, "http://"+test.host+"/api/app/index", nil)
+			request.Host = test.host
+			if test.origin != "" {
+				request.Header.Set("Origin", test.origin)
+			}
+			if test.fetchSite != "" {
+				request.Header.Set("Sec-Fetch-Site", test.fetchSite)
+			}
+			response := httptest.NewRecorder()
+			handler.ServeHTTP(response, request)
+			if response.Code != test.status {
+				t.Fatalf("status=%d, want %d", response.Code, test.status)
+			}
+		})
+	}
+}
+
 func TestEmbeddedBrowserAndStoryboardPages(t *testing.T) {
 	_, server := testHTTPServer(t)
 	for _, path := range []string{"/", "/practice", "/assets/app.js", "/assets/app.css", "/assets/pictogrep.png"} {

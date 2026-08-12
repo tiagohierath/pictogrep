@@ -15,6 +15,7 @@ import (
 	"math"
 	"math/rand"
 	"mime"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -126,8 +127,49 @@ func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		if !isLoopbackAuthority(r.Host) {
+			sendError(w, http.StatusForbidden, fmt.Errorf("Pictogrep only accepts local requests"))
+			return
+		}
+		if requestChangesState(r.Method) && !hasTrustedOrigin(r) {
+			sendError(w, http.StatusForbidden, fmt.Errorf("cross-origin requests are not allowed"))
+			return
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func requestChangesState(method string) bool {
+	return method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions
+}
+
+func hasTrustedOrigin(r *http.Request) bool {
+	if strings.EqualFold(strings.TrimSpace(r.Header.Get("Sec-Fetch-Site")), "cross-site") {
+		return false
+	}
+	origin := strings.TrimSpace(r.Header.Get("Origin"))
+	if origin == "" {
+		// Non-browser clients such as the CLI do not send browser origin headers.
+		return true
+	}
+	parsed, err := url.Parse(origin)
+	if err != nil || parsed.Scheme != "http" || parsed.User != nil || parsed.Path != "" || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	return strings.EqualFold(parsed.Host, r.Host) && isLoopbackAuthority(parsed.Host)
+}
+
+func isLoopbackAuthority(authority string) bool {
+	host := strings.TrimSpace(authority)
+	if splitHost, _, err := net.SplitHostPort(host); err == nil {
+		host = splitHost
+	}
+	host = strings.Trim(host, "[]")
+	if strings.EqualFold(strings.TrimSuffix(host, "."), "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }
 
 func sendJSON(w http.ResponseWriter, status int, value any) {
