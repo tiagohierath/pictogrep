@@ -39,11 +39,11 @@ desktop applications menu. It does not need `sudo`.
 2. Choose images or a folder.
 3. Type what you remember into the search box.
 
-The first search automatically prepares the local image-search model and shows
-useful results as soon as the first pictures are ready. It keeps improving those
-results in the background. This requires an internet connection once. Later
-searches use the cached model. Image analysis and searching happen locally;
-pictures are never uploaded.
+After pictures are added, Pictogrep quietly prepares only the new or changed
+ones for local image search. The first indexing pass downloads the search model
+once; later passes reuse it and keep existing picture vectors untouched. Search
+becomes useful as soon as the first pictures are ready. Image analysis and
+searching happen locally; pictures are never uploaded.
 
 The browser AI runtime is bundled with Pictogrep from pinned, checksum-verified
 sources. Model files are fetched from a pinned Hugging Face revision.
@@ -58,6 +58,20 @@ and reopening the app.
 
 The menu also opens the storyboard studio, where a reference can be redrawn,
 traced, annotated, and saved as a board.
+
+The **Wikimedia Commons** plugin adds an optional tab for browsing Commons
+images. It opens with a random selection and also supports text search. Enable
+or disable it from **Menu → Plugins**. Results link back to each Commons source
+page so licensing and attribution can be checked before using an image.
+
+The optional **Sidebar** plugin provides a quick panel for collections and
+storyboards. Images can be dragged from the library onto a collection to add
+them to it.
+
+The optional **Command palette** plugin opens with <kbd>Ctrl+K</kbd> (or
+<kbd>Command+K</kbd> on macOS). Its initial prototype searches local images by
+default and includes shortcuts to the library, folders, Settings, and the
+storyboard. Like every official plugin, it is disabled by default.
 
 The **Folders** view mirrors indexed source folders and their nested subfolders.
 Click any level of the hierarchy to see the pictures inside it. The folder's
@@ -92,6 +106,44 @@ Imported images are copied into `library`; folder membership is stored under
 `collections`; canvas coordinates stay under `data`; drawings are saved under
 `storyboards`.
 
+## Configuration
+
+Pictogrep also works without the Settings menu. Its user-editable configuration
+file is:
+
+```text
+~/.config/pictogrep/config.json
+```
+
+Set `PICTOGREP_CONFIG` to use a different file. The file is created on first
+run, and the Settings menu edits this same file. For example:
+
+```json
+{
+  "language": "en",
+  "browser": {
+    "thumbnailSize": "medium",
+    "showFilenames": false,
+    "homeOrder": "random"
+  },
+  "indexing": {
+    "automatic": true
+  },
+  "plugins": {
+    "wikimedia": false,
+    "calendar": false,
+    "sidebar": false,
+    "vim": false,
+    "commandPalette": false
+  }
+}
+```
+
+Pictogrep always keeps imported originals unchanged. High-quality browsing
+previews are generated in its disposable cache and can be rebuilt at any time.
+
+Run `pictogrep paths` to print the active configuration path.
+
 ## Build From Source
 
 Development requires Go 1.22 or newer. The built application does not.
@@ -117,8 +169,9 @@ Useful development commands are `pictogrep doctor`, `pictogrep paths`, and
 
 - [x] Subfolders and folder structure visualizer
 - [x] Similar images below an opened image
-- [ ] Optional plugin system for installing add-on features without expanding the core app
-- [ ] Translations for Portuguese, Japanese, and German
+- [x] Optional plugin-style sources without expanding the local image library
+- [x] Portuguese translation
+- [ ] Japanese and German translations
 
 ## License
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -18,9 +19,13 @@ func writeTestPNG(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 	picture := image.NewRGBA(image.Rect(0, 0, 32, 24))
+	var tint uint8
+	for _, value := range []byte(path) {
+		tint = tint*31 + value
+	}
 	for y := 0; y < 24; y++ {
 		for x := 0; x < 32; x++ {
-			picture.Set(x, y, color.RGBA{R: 80, G: 100, B: 120, A: 255})
+			picture.Set(x, y, color.RGBA{R: 64 + tint/3, G: 96 + tint/4, B: 112 + tint/5, A: 255})
 		}
 	}
 	if err := png.Encode(file, picture); err != nil {
@@ -116,6 +121,136 @@ func TestIndexedSourceSurvivesRestart(t *testing.T) {
 	_, sources, _ := reloaded.snapshot()
 	if len(sources) != 1 || sources[0] != source {
 		t.Fatalf("source was not restored: %#v", sources)
+	}
+}
+
+func TestExactDuplicateImportedImagesKeepOneFile(t *testing.T) {
+	app := testApplication(t)
+	first := filepath.Join(app.libraryDir, "first.png")
+	second := filepath.Join(app.libraryDir, "second.png")
+	writeTestPNG(t, first)
+	data, err := os.ReadFile(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(second, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	app.addPath(first)
+	app.addPath(second)
+	reloaded, err := newApplication()
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, _, _ := reloaded.snapshot()
+	if len(paths) != 1 {
+		t.Fatalf("exact duplicates were not reduced: %#v", paths)
+	}
+	if _, err := os.Stat(second); !os.IsNotExist(err) {
+		t.Fatalf("duplicate file still exists: %v", err)
+	}
+}
+
+func TestStorageSettingsCannotEnableOriginalReplacement(t *testing.T) {
+	app := testApplication(t)
+	if err := app.saveStorageSettings(storageSettings{OptimizeImports: true}); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := newApplication()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.storageSettings().OptimizeImports {
+		t.Fatal("retired original-replacement setting was enabled")
+	}
+	data, err := os.ReadFile(app.configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(data, []byte("optimizeImports")) {
+		t.Fatalf("retired setting remained in config: %s", data)
+	}
+}
+
+func TestIndexingAndHomeViewSettingsSurviveRestart(t *testing.T) {
+	app := testApplication(t)
+	if !app.indexingSettings().Automatic {
+		t.Fatal("automatic indexing should be enabled by default")
+	}
+	if err := app.saveIndexingSettings(indexingSettings{Automatic: false}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.saveBrowserSettings(browserSettings{ThumbnailSize: "large", ShowFilenames: true, HomeOrder: "recent"}); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := newApplication()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reloaded.indexingSettings().Automatic {
+		t.Fatal("disabled automatic indexing did not survive restart")
+	}
+	browser := reloaded.browserSettings()
+	if browser.HomeOrder != "recent" || browser.ThumbnailSize != "large" || !browser.ShowFilenames {
+		t.Fatalf("browser settings did not survive restart: %#v", browser)
+	}
+}
+
+func TestCommandPalettePluginIsDisabledByDefault(t *testing.T) {
+	app := testApplication(t)
+	if app.pluginEnabled("commandPalette") {
+		t.Fatal("command palette should be opt-in")
+	}
+	if err := app.setPluginEnabled("commandPalette", true); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, err := newApplication()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reloaded.pluginEnabled("commandPalette") {
+		t.Fatal("enabled command palette did not survive restart")
+	}
+}
+
+func TestIncrementalRefreshPreservesExistingEmbeddings(t *testing.T) {
+	app := testApplication(t)
+	source := t.TempDir()
+	first := filepath.Join(source, "first.png")
+	writeTestPNG(t, first)
+	if err := app.indexFolders([]string{source}); err != nil {
+		t.Fatal(err)
+	}
+	vector := make([]float32, defaultEmbeddingModel.Dimensions)
+	vector[0] = 1
+	if err := app.updateEmbeddings(map[string]embeddingRecord{
+		first: {Mtime: embeddingMtime(first), Vector: vector},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	second := filepath.Join(source, "second.png")
+	writeTestPNG(t, second)
+	refresh, err := app.refreshLibrary(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refresh.Added != 1 || refresh.Removed != 0 || refresh.Total != 2 {
+		t.Fatalf("unexpected incremental refresh: %#v", refresh)
+	}
+	if _, ready := app.imageEmbedding(first); !ready {
+		t.Fatal("incremental refresh discarded an existing embedding")
+	}
+	missing := app.missingEmbeddings()
+	if len(missing) != 1 || missing[0]["path"] != second {
+		t.Fatalf("incremental refresh did not queue only the new image: %#v", missing)
+	}
+}
+
+func TestCollectionNamesSupportSubfolders(t *testing.T) {
+	name, err := collectionName("Film references/Characters")
+	if err != nil || name != "film-references/characters" {
+		t.Fatalf("unexpected nested collection name: %q, %v", name, err)
 	}
 }
 

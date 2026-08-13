@@ -67,7 +67,7 @@ func run(args []string) error {
 	}
 	switch command {
 	case "paths":
-		fmt.Printf("home:        %s\nlibrary:     %s\nindex:       %s\ntags:        %s\nstoryboards: %s\n", app.home, app.libraryDir, app.dataDir, app.tagsDir, app.boardsDir)
+		fmt.Printf("home:        %s\nlibrary:     %s\nconfig:      %s\nindex:       %s\ntags:        %s\nstoryboards: %s\n", app.home, app.libraryDir, app.configPath, app.dataDir, app.tagsDir, app.boardsDir)
 		return nil
 	case "doctor":
 		return doctor(app)

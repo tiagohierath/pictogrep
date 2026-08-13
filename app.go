@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"io/fs"
 	"math"
 	"math/rand"
@@ -14,13 +15,12 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
 )
 
-var version = "0.4.2"
+var version = "0.5.0"
 
 const (
 	maxCachedQueries = 512
@@ -35,6 +35,28 @@ type libraryState struct {
 	Sources   []string `json:"sources"`
 	Images    []string `json:"images"`
 	UpdatedAt int64    `json:"updatedAt"`
+}
+
+type storageSettings struct {
+	// Deprecated. Pictogrep always imports original bytes and only optimizes its
+	// disposable browsing previews.
+	OptimizeImports bool `json:"optimizeImports,omitempty"`
+}
+
+type browserSettings struct {
+	ThumbnailSize string `json:"thumbnailSize"`
+	ShowFilenames bool   `json:"showFilenames"`
+	HomeOrder     string `json:"homeOrder"`
+}
+
+type indexingSettings struct {
+	Automatic bool `json:"automatic"`
+}
+
+type libraryRefresh struct {
+	Added   int `json:"added"`
+	Removed int `json:"removed"`
+	Total   int `json:"total"`
 }
 
 type jobState struct {
@@ -53,6 +75,7 @@ type application struct {
 	boardsDir          string
 	referenceDir       string
 	statePath          string
+	configPath         string
 	embeddingsDir      string
 	embeddingStorePath string
 	queryCacheDir      string
@@ -114,6 +137,22 @@ func expandPath(value string) string {
 	return filepath.Clean(value)
 }
 
+func defaultConfigPath() string {
+	if value := os.Getenv("PICTOGREP_CONFIG"); value != "" {
+		return expandPath(value)
+	}
+	// Keep test and portable installations self-contained when their data home
+	// is explicitly overridden.
+	if value := os.Getenv("PICTOGREP_HOME"); value != "" {
+		return filepath.Join(expandPath(value), "config.json")
+	}
+	if directory, err := os.UserConfigDir(); err == nil {
+		return filepath.Join(directory, "pictogrep", "config.json")
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".config", "pictogrep", "config.json")
+}
+
 func newApplication() (*application, error) {
 	return newApplicationWithEmbeddingModel(defaultEmbeddingModel)
 }
@@ -131,6 +170,7 @@ func newApplicationWithEmbeddingModel(model embeddingModel) (*application, error
 		boardsDir:          filepath.Join(home, "storyboards"),
 		referenceDir:       filepath.Join(home, "storyboards", "references"),
 		statePath:          filepath.Join(home, "data", "library-state.json"),
+		configPath:         defaultConfigPath(),
 		embeddingsDir:      filepath.Join(home, "data", "embeddings"),
 		embeddingStorePath: filepath.Join(home, "data", model.storeFile),
 		queryCacheDir:      filepath.Join(home, "data", "queries"),
@@ -141,7 +181,7 @@ func newApplicationWithEmbeddingModel(model embeddingModel) (*application, error
 		queries:            map[string]queryEmbeddingRecord{},
 		job:                jobState{State: "idle", Message: "Ready", UpdatedAt: time.Now().Unix()},
 	}
-	for _, directory := range []string{a.dataDir, a.embeddingsDir, a.queryCacheDir, a.canvasDir, a.thumbnailDir, a.libraryDir, a.tagsDir, a.boardsDir, a.referenceDir} {
+	for _, directory := range []string{a.dataDir, a.embeddingsDir, a.queryCacheDir, a.canvasDir, a.thumbnailDir, a.libraryDir, a.tagsDir, a.boardsDir, a.referenceDir, filepath.Dir(a.configPath)} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return nil, err
 		}
@@ -149,9 +189,253 @@ func newApplicationWithEmbeddingModel(model embeddingModel) (*application, error
 	if err := a.loadLibrary(); err != nil {
 		return nil, err
 	}
+	if _, err := os.Stat(a.configPath); os.IsNotExist(err) {
+		if err := a.saveStorageSettings(storageSettings{}); err != nil {
+			return nil, err
+		}
+	}
+	if removed := a.removeDuplicateImportedFiles(); removed > 0 {
+		_ = a.saveLibraryLocked()
+	}
 	_ = a.loadEmbeddings()
 	_ = a.loadQueryEmbeddings()
 	return a, nil
+}
+
+func (a *application) storageSettings() storageSettings {
+	// Original replacement used to be configurable. It is deliberately ignored
+	// now so even an old config file cannot enable destructive imports.
+	return storageSettings{}
+}
+
+func (a *application) language() string {
+	if language := a.configuredLanguage(); language != "" {
+		return language
+	}
+	return "en"
+}
+
+func (a *application) configuredLanguage() string {
+	data, err := os.ReadFile(a.configPath)
+	if err != nil {
+		return ""
+	}
+	var document struct {
+		Language string `json:"language"`
+	}
+	if json.Unmarshal(data, &document) != nil || (document.Language != "en" && document.Language != "pt-BR") {
+		return ""
+	}
+	return document.Language
+}
+
+func (a *application) saveLanguage(language string) error {
+	if language != "pt-BR" {
+		language = "en"
+	}
+	document := map[string]any{}
+	if data, err := os.ReadFile(a.configPath); err == nil {
+		_ = json.Unmarshal(data, &document)
+	}
+	document["language"] = language
+	data, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	tmp := a.configPath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, a.configPath)
+}
+
+func (a *application) browserSettings() browserSettings {
+	settings := browserSettings{ThumbnailSize: "medium", HomeOrder: "random"}
+	data, err := os.ReadFile(a.configPath)
+	if err != nil {
+		return settings
+	}
+	var document struct {
+		Browser browserSettings `json:"browser"`
+	}
+	if json.Unmarshal(data, &document) == nil {
+		settings = document.Browser
+	}
+	if settings.ThumbnailSize != "small" && settings.ThumbnailSize != "large" {
+		settings.ThumbnailSize = "medium"
+	}
+	if settings.HomeOrder != "recent" {
+		settings.HomeOrder = "random"
+	}
+	return settings
+}
+
+func (a *application) saveBrowserSettings(settings browserSettings) error {
+	if settings.ThumbnailSize != "small" && settings.ThumbnailSize != "large" {
+		settings.ThumbnailSize = "medium"
+	}
+	if settings.HomeOrder != "recent" {
+		settings.HomeOrder = "random"
+	}
+	document := map[string]any{}
+	if data, err := os.ReadFile(a.configPath); err == nil {
+		_ = json.Unmarshal(data, &document)
+	}
+	document["browser"] = settings
+	data, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	tmp := a.configPath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, a.configPath)
+}
+
+func (a *application) indexingSettings() indexingSettings {
+	settings := indexingSettings{Automatic: true}
+	data, err := os.ReadFile(a.configPath)
+	if err != nil {
+		return settings
+	}
+	var document struct {
+		Indexing *struct {
+			Automatic *bool `json:"automatic"`
+		} `json:"indexing"`
+	}
+	if json.Unmarshal(data, &document) == nil && document.Indexing != nil && document.Indexing.Automatic != nil {
+		settings.Automatic = *document.Indexing.Automatic
+	}
+	return settings
+}
+
+func (a *application) saveIndexingSettings(settings indexingSettings) error {
+	document := map[string]any{}
+	if data, err := os.ReadFile(a.configPath); err == nil {
+		_ = json.Unmarshal(data, &document)
+	}
+	document["indexing"] = settings
+	data, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	tmp := a.configPath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, a.configPath)
+}
+
+func (a *application) pluginEnabled(name string) bool {
+	defaultEnabled := false
+	data, err := os.ReadFile(a.configPath)
+	if err != nil {
+		return defaultEnabled
+	}
+	var document struct {
+		Plugins map[string]bool `json:"plugins"`
+	}
+	if json.Unmarshal(data, &document) != nil {
+		return defaultEnabled
+	}
+	enabled, found := document.Plugins[name]
+	if !found {
+		return defaultEnabled
+	}
+	return enabled
+}
+
+func (a *application) setPluginEnabled(name string, enabled bool) error {
+	if name != "wikimedia" && name != "calendar" && name != "sidebar" && name != "vim" && name != "commandPalette" {
+		return fmt.Errorf("unknown plugin: %s", name)
+	}
+	document := map[string]any{}
+	if data, err := os.ReadFile(a.configPath); err == nil {
+		_ = json.Unmarshal(data, &document)
+	}
+	plugins, ok := document["plugins"].(map[string]any)
+	if !ok {
+		plugins = map[string]any{}
+	}
+	plugins[name] = enabled
+	document["plugins"] = plugins
+	data, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	tmp := a.configPath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, a.configPath)
+}
+
+func (a *application) saveStorageSettings(_ storageSettings) error {
+	document := map[string]any{}
+	if data, err := os.ReadFile(a.configPath); err == nil {
+		_ = json.Unmarshal(data, &document)
+	}
+	delete(document, "storage")
+	delete(document, "optimizeImports")
+	data, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	tmp := a.configPath + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, a.configPath)
+}
+
+func fileDigest(path string) ([32]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return [32]byte{}, err
+	}
+	defer file.Close()
+	hasher := sha256.New()
+	if _, err := io.Copy(hasher, file); err != nil {
+		return [32]byte{}, err
+	}
+	var digest [32]byte
+	copy(digest[:], hasher.Sum(nil))
+	return digest, nil
+}
+
+func (a *application) removeDuplicateImportedFiles() int {
+	seen := map[[32]byte]string{}
+	kept := make([]string, 0, len(a.paths))
+	removed := 0
+	for _, path := range a.paths {
+		relative, err := filepath.Rel(a.libraryDir, path)
+		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+			kept = append(kept, path)
+			continue
+		}
+		digest, err := fileDigest(path)
+		if err != nil {
+			kept = append(kept, path)
+			continue
+		}
+		if original, exists := seen[digest]; exists {
+			if os.Remove(path) == nil {
+				removed++
+				continue
+			}
+			_ = original
+		}
+		seen[digest] = path
+		kept = append(kept, path)
+	}
+	a.paths = kept
+	return removed
 }
 
 func (a *application) loadEmbeddings() error {
@@ -470,12 +754,13 @@ func (a *application) missingEmbeddings() []map[string]any {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	items := []map[string]any{}
-	for index, path := range a.paths {
+	for _, path := range a.paths {
 		mtime := embeddingMtime(path)
 		record, found := a.embeddings[path]
 		if !found || record.Mtime != mtime || len(record.Vector) != a.embeddingModel.Dimensions {
+			id := stableImageID(path)
 			items = append(items, map[string]any{
-				"id": index, "name": filepath.Base(path), "url": "/image/" + strconv.Itoa(index), "path": path, "mtime": mtime,
+				"id": id, "name": filepath.Base(path), "url": "/image/" + id, "path": path, "mtime": mtime,
 			})
 		}
 	}
@@ -665,6 +950,28 @@ func (a *application) addPath(path string) int {
 	return len(a.paths) - 1
 }
 
+func (a *application) removePath(path string) error {
+	path = expandPath(path)
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	kept := make([]string, 0, len(a.paths))
+	for _, existing := range a.paths {
+		if existing != path {
+			kept = append(kept, existing)
+		}
+	}
+	a.paths = kept
+	_, hadEmbedding := a.embeddings[path]
+	delete(a.embeddings, path)
+	if err := a.saveLibraryLocked(); err != nil {
+		return err
+	}
+	if hadEmbedding {
+		return a.writeEmbeddingStoreLocked()
+	}
+	return nil
+}
+
 func (a *application) replaceLibrary(sources, paths []string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -692,6 +999,109 @@ func (a *application) setJob(state string, current, total int, message string) {
 	a.job = jobState{State: state, Current: current, Total: total, Message: message, UpdatedAt: time.Now().Unix()}
 }
 
+// refreshLibrary updates only file membership metadata. Existing image
+// embeddings are left alone, so a later background pass processes only paths
+// that are new or whose modification time changed.
+func (a *application) refreshLibrary(root string) (libraryRefresh, error) {
+	before, sources, _ := a.snapshot()
+	roots := []string{a.libraryDir}
+	if root != "" {
+		root = expandPath(root)
+		allowed := pathInside(root, a.libraryDir)
+		for _, source := range sources {
+			allowed = allowed || pathInside(root, source)
+		}
+		if !allowed {
+			return libraryRefresh{}, fmt.Errorf("folder is outside the indexed library")
+		}
+		roots = []string{root}
+	} else {
+		roots = uniqueStrings(append(roots, sources...))
+	}
+
+	discovered := map[string]bool{}
+	for _, scanRoot := range roots {
+		paths, err := scanImages(scanRoot)
+		if err != nil {
+			return libraryRefresh{}, err
+		}
+		for _, path := range paths {
+			discovered[expandPath(path)] = true
+		}
+	}
+	beforeSet := make(map[string]bool, len(before))
+	for _, path := range before {
+		beforeSet[path] = true
+	}
+	covered := func(path string) bool {
+		for _, scanRoot := range roots {
+			if pathInside(path, scanRoot) {
+				return true
+			}
+		}
+		return false
+	}
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	paths := make([]string, 0, len(a.paths)+len(discovered))
+	kept := map[string]bool{}
+	removedEmbedding := false
+	for _, path := range a.paths {
+		// Preserve paths outside this refresh and imports that arrived while the
+		// directory walk was in progress.
+		keep := !covered(path) || discovered[path] || !beforeSet[path]
+		if keep && !kept[path] {
+			paths = append(paths, path)
+			kept[path] = true
+			continue
+		}
+		if _, found := a.embeddings[path]; found {
+			delete(a.embeddings, path)
+			removedEmbedding = true
+		}
+	}
+	for path := range discovered {
+		if !kept[path] {
+			paths = append(paths, path)
+			kept[path] = true
+		}
+	}
+	sort.Strings(paths)
+	a.paths = paths
+	if err := a.saveLibraryLocked(); err != nil {
+		return libraryRefresh{}, err
+	}
+	if removedEmbedding {
+		if err := a.writeEmbeddingStoreLocked(); err != nil {
+			return libraryRefresh{}, err
+		}
+	}
+	result := libraryRefresh{Total: len(paths)}
+	for path := range kept {
+		if !beforeSet[path] {
+			result.Added++
+		}
+	}
+	for _, path := range before {
+		if !kept[path] {
+			result.Removed++
+		}
+	}
+	return result, nil
+}
+
+func (a *application) resetEmbeddings() (int, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	removed := len(a.embeddings)
+	a.embeddings = map[string]embeddingRecord{}
+	if err := a.writeEmbeddingStoreLocked(); err != nil {
+		return 0, err
+	}
+	return removed, nil
+}
+
 func (a *application) indexFolders(requested []string) error {
 	_, remembered, _ := a.snapshot()
 	folders := uniqueStrings(append(remembered, requested...))
@@ -713,11 +1123,31 @@ func (a *application) indexFolders(requested []string) error {
 		}
 		all = append(all, paths...)
 	}
-	all = existingUniquePaths(all)
+	all = deduplicatePaths(existingUniquePaths(all))
 	if err := a.replaceLibrary(folders, all); err != nil {
 		return err
 	}
 	return nil
+}
+
+// deduplicatePaths keeps one indexed entry for each exact file content. It does
+// not remove files outside Pictogrep's managed library directory.
+func deduplicatePaths(paths []string) []string {
+	seen := map[[32]byte]bool{}
+	result := make([]string, 0, len(paths))
+	for _, path := range paths {
+		digest, err := fileDigest(path)
+		if err != nil {
+			result = append(result, path)
+			continue
+		}
+		if seen[digest] {
+			continue
+		}
+		seen[digest] = true
+		result = append(result, path)
+	}
+	return result
 }
 
 type searchResult struct {

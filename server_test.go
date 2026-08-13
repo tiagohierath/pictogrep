@@ -81,6 +81,20 @@ func TestLocalRequestProtection(t *testing.T) {
 	}
 }
 
+func TestBrowserBackgroundLogEndpoint(t *testing.T) {
+	_, server := testHTTPServer(t)
+	response, err := http.Post(server.URL+"/api/app/log", "application/json", strings.NewReader(`{
+		"level":"warning","event":"search-index-image","message":"could not load preview","path":"/pictures/example.jpg"
+	}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusNoContent {
+		t.Fatalf("background log status=%d, want %d", response.StatusCode, http.StatusNoContent)
+	}
+}
+
 func TestEmbeddedBrowserAndStoryboardPages(t *testing.T) {
 	_, server := testHTTPServer(t)
 	for _, path := range []string{"/", "/practice", "/assets/app.js", "/assets/app.css", "/assets/pictogrep.png"} {
@@ -108,6 +122,15 @@ func TestEmbeddedAIRuntimeIsLocalAndPinned(t *testing.T) {
 		model["modelId"] != defaultEmbeddingModel.ModelID || model["revision"] != defaultEmbeddingModel.Revision ||
 		model["dimensions"] != float64(defaultEmbeddingModel.Dimensions) {
 		t.Fatalf("server published unexpected embedding model: %#v", model)
+	}
+	searchIndex := state["searchIndex"].(map[string]any)
+	if searchIndex["automatic"] != true || searchIndex["indexed"] != float64(0) || searchIndex["total"] != float64(0) {
+		t.Fatalf("server published unexpected search index state: %#v", searchIndex)
+	}
+	plugins := state["plugins"].(map[string]any)
+	commandPalette := plugins["commandPalette"].(map[string]any)
+	if commandPalette["enabled"] != false {
+		t.Fatalf("command palette should be disabled by default: %#v", commandPalette)
 	}
 	assets := []struct {
 		path        string
@@ -296,8 +319,8 @@ func TestManualFoldersWorkWithoutAI(t *testing.T) {
 	picture := filepath.Join(app.libraryDir, "reference.png")
 	writeTestPNG(t, picture)
 	app.addPath(picture)
-	payload := bytes.NewBufferString(`{"action":"add","tag":"Mood Board","imageId":0}`)
-	response, err := http.Post(server.URL+"/api/app/tags", "application/json", payload)
+	payload, _ := json.Marshal(map[string]any{"action": "add", "tag": "Mood Board", "imageId": stableImageID(picture)})
+	response, err := http.Post(server.URL+"/api/app/tags", "application/json", bytes.NewReader(payload))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -423,7 +446,7 @@ func TestFolderCanvasPositionsPersistWithoutMovingImages(t *testing.T) {
 	if response.StatusCode != http.StatusOK || len(images) != 2 || len(value["positions"].(map[string]any)) != 0 {
 		t.Fatalf("unexpected initial canvas: status=%d %#v", response.StatusCode, value)
 	}
-	firstID := int(images[0].(map[string]any)["id"].(float64))
+	firstID := images[0].(map[string]any)["id"].(string)
 	payload, _ := json.Marshal(map[string]any{
 		"source":    source,
 		"positions": []map[string]any{{"id": firstID, "x": 123.5, "y": -45.25}},
@@ -440,7 +463,7 @@ func TestFolderCanvasPositionsPersistWithoutMovingImages(t *testing.T) {
 		t.Fatal(err)
 	}
 	value = responseJSON(t, response)
-	point := value["positions"].(map[string]any)[strconv.Itoa(firstID)].(map[string]any)
+	point := value["positions"].(map[string]any)[firstID].(map[string]any)
 	if point["x"] != 123.5 || point["y"] != -45.25 {
 		t.Fatalf("canvas position did not persist: %#v", value)
 	}
@@ -466,8 +489,13 @@ func TestCanvasThumbnailIsGeneratedLocally(t *testing.T) {
 	app, server := testHTTPServer(t)
 	picture := filepath.Join(app.libraryDir, "thumbnail.png")
 	writeTestPNG(t, picture)
+	original, err := os.ReadFile(picture)
+	if err != nil {
+		t.Fatal(err)
+	}
 	app.addPath(picture)
-	response, err := http.Get(server.URL + "/thumbnail/0")
+	id := stableImageID(picture)
+	response, err := http.Get(server.URL + "/thumbnail/" + id + "?size=960")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,9 +504,83 @@ func TestCanvasThumbnailIsGeneratedLocally(t *testing.T) {
 	if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != "image/jpeg" || len(data) < 100 {
 		t.Fatalf("thumbnail failed: status=%d type=%q bytes=%d", response.StatusCode, response.Header.Get("Content-Type"), len(data))
 	}
+	response, err = http.Get(server.URL + "/thumbnail/" + id + "?size=1920")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _ = io.Copy(io.Discard, response.Body)
+	_ = response.Body.Close()
+	cache, err := filepath.Glob(filepath.Join(app.thumbnailDir, "*.jpg"))
+	if err != nil || len(cache) != 2 {
+		t.Fatalf("preview sizes did not use separate cache entries: files=%#v err=%v", cache, err)
+	}
 	paths, _, _ := app.snapshot()
 	if len(paths) != 1 || paths[0] != picture {
 		t.Fatalf("thumbnail changed the library: %#v", paths)
+	}
+	after, err := os.ReadFile(picture)
+	if err != nil || !bytes.Equal(original, after) {
+		t.Fatalf("thumbnail changed original bytes: err=%v", err)
+	}
+}
+
+func TestDeleteImageRequiresConfirmationAndExactPath(t *testing.T) {
+	app, server := testHTTPServer(t)
+	picture := filepath.Join(app.libraryDir, "delete-me.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+	id := stableImageID(picture)
+	tagPayload, _ := json.Marshal(map[string]any{"action": "add", "tag": "to-delete", "imageId": id})
+	response, err := http.Post(server.URL+"/api/app/tags", "application/json", bytes.NewReader(tagPayload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = responseJSON(t, response)
+
+	deleteRequest, _ := http.NewRequest(http.MethodDelete, server.URL+"/api/app/images/"+id, bytes.NewBufferString(`{"path":`+strconv.Quote(picture)+`}`))
+	deleteRequest.Header.Set("Content-Type", "application/json")
+	response, err = http.DefaultClient.Do(deleteRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := responseJSON(t, response); response.StatusCode != http.StatusForbidden || result["ok"] != false {
+		t.Fatalf("unconfirmed deletion was accepted: status=%d %#v", response.StatusCode, result)
+	}
+	if _, err := os.Stat(picture); err != nil {
+		t.Fatalf("unconfirmed deletion changed file: %v", err)
+	}
+
+	deleteRequest, _ = http.NewRequest(http.MethodDelete, server.URL+"/api/app/images/"+id, bytes.NewBufferString(`{"path":"/wrong/image.png"}`))
+	deleteRequest.Header.Set("Content-Type", "application/json")
+	deleteRequest.Header.Set("X-Pictogrep-Action", "delete-image")
+	response, err = http.DefaultClient.Do(deleteRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := responseJSON(t, response); response.StatusCode != http.StatusConflict || result["ok"] != false {
+		t.Fatalf("stale delete target was accepted: status=%d %#v", response.StatusCode, result)
+	}
+
+	deleteRequest, _ = http.NewRequest(http.MethodDelete, server.URL+"/api/app/images/"+id, bytes.NewBufferString(`{"path":`+strconv.Quote(picture)+`}`))
+	deleteRequest.Header.Set("Content-Type", "application/json")
+	deleteRequest.Header.Set("X-Pictogrep-Action", "delete-image")
+	response, err = http.DefaultClient.Do(deleteRequest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result := responseJSON(t, response); response.StatusCode != http.StatusOK || result["deleted"] != true {
+		t.Fatalf("confirmed deletion failed: status=%d %#v", response.StatusCode, result)
+	}
+	if _, err := os.Stat(picture); !os.IsNotExist(err) {
+		t.Fatalf("confirmed deletion left original file: %v", err)
+	}
+	paths, _, _ := app.snapshot()
+	if len(paths) != 0 {
+		t.Fatalf("confirmed deletion left library state: %#v", paths)
+	}
+	manifest, err := os.ReadFile(filepath.Join(app.tagsDir, "to-delete", "images.json"))
+	if err != nil || bytes.Contains(manifest, []byte(picture)) {
+		t.Fatalf("confirmed deletion left collection reference: %s err=%v", manifest, err)
 	}
 }
 
@@ -535,7 +637,7 @@ func TestReferencesAndBoardsRejectInvalidImageData(t *testing.T) {
 		"aspect":     "../../escape",
 		"index":      1,
 		"imageName":  "reference.png",
-		"imageId":    0,
+		"imageId":    stableImageID(picture),
 	})
 	response, err = http.Post(server.URL+"/api/save", "application/json", bytes.NewReader(invalidBoard))
 	if err != nil {
@@ -574,6 +676,9 @@ func TestNativeSemanticIndexRoundTrip(t *testing.T) {
 		t.Fatalf("expected one missing embedding: %#v", state)
 	}
 	item := missing[0].(map[string]any)
+	if item["id"] != stableImageID(picture) || item["url"] != "/image/"+stableImageID(picture) {
+		t.Fatalf("missing embedding did not use its stable image URL: %#v", item)
+	}
 	vector := make([]float32, defaultEmbeddingModel.Dimensions)
 	vector[0] = 1
 	payload, _ := json.Marshal(map[string]any{"model": defaultEmbeddingModel.Key, "items": []any{map[string]any{
@@ -601,6 +706,47 @@ func TestNativeSemanticIndexRoundTrip(t *testing.T) {
 	result := responseJSON(t, response)
 	if response.StatusCode != 200 || len(result["images"].([]any)) != 1 {
 		t.Fatalf("semantic search failed: %#v", result)
+	}
+}
+
+func TestFullReindexRequiresConfirmationAndClearsEmbeddings(t *testing.T) {
+	app, server := testHTTPServer(t)
+	picture := filepath.Join(app.libraryDir, "reference.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+	vector := make([]float32, defaultEmbeddingModel.Dimensions)
+	vector[0] = 1
+	if err := app.updateEmbeddings(map[string]embeddingRecord{
+		picture: {Mtime: embeddingMtime(picture), Vector: vector},
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	request, _ := http.NewRequest(http.MethodPost, server.URL+"/api/app/ai/reindex", nil)
+	response, err := http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value := responseJSON(t, response); response.StatusCode != http.StatusForbidden || value["ok"] != false {
+		t.Fatalf("unconfirmed full reindex was accepted: status=%d %#v", response.StatusCode, value)
+	}
+	if missing := app.missingEmbeddings(); len(missing) != 0 {
+		t.Fatalf("unconfirmed reindex changed embeddings: %#v", missing)
+	}
+
+	request, _ = http.NewRequest(http.MethodPost, server.URL+"/api/app/ai/reindex", nil)
+	request.Header.Set("X-Pictogrep-Action", "rebuild-search-index")
+	response, err = http.DefaultClient.Do(request)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := responseJSON(t, response)
+	if response.StatusCode != http.StatusOK || value["cleared"] != float64(1) || value["total"] != float64(1) {
+		t.Fatalf("full reindex failed: status=%d %#v", response.StatusCode, value)
+	}
+	missing := app.missingEmbeddings()
+	if len(missing) != 1 || missing[0]["path"] != picture {
+		t.Fatalf("full reindex did not queue the complete library: %#v", missing)
 	}
 }
 
@@ -646,7 +792,7 @@ func TestRelatedImagesUseCachedSemanticEmbeddings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	response, err := http.Get(server.URL + "/api/app/related/0?limit=2")
+	response, err := http.Get(server.URL + "/api/app/related/" + stableImageID(paths[0]) + "?limit=2")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -656,8 +802,50 @@ func TestRelatedImagesUseCachedSemanticEmbeddings(t *testing.T) {
 		t.Fatalf("related images were not returned: status=%d %#v", response.StatusCode, value)
 	}
 	first := images[0].(map[string]any)
-	if first["name"] != "closest.png" || first["id"] == float64(0) {
+	if first["name"] != "closest.png" || first["id"] == stableImageID(paths[0]) {
 		t.Fatalf("closest image was not ranked first or source was included: %#v", images)
+	}
+}
+
+func TestStableImageIDDoesNotChangeWhenIndexOrderChanges(t *testing.T) {
+	app, server := testHTTPServer(t)
+	first := filepath.Join(app.libraryDir, "first.png")
+	second := filepath.Join(app.libraryDir, "second.png")
+	writeTestPNG(t, first)
+	writeTestPNG(t, second)
+	app.addPath(first)
+	app.addPath(second)
+	id := stableImageID(first)
+
+	app.mu.Lock()
+	app.paths[0], app.paths[1] = app.paths[1], app.paths[0]
+	app.mu.Unlock()
+
+	response, err := http.Get(server.URL + "/api/app/images/" + id)
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := responseJSON(t, response)
+	image := value["image"].(map[string]any)
+	if response.StatusCode != http.StatusOK || image["name"] != "first.png" || image["id"] != id {
+		t.Fatalf("stable ID targeted the wrong image after reorder: status=%d %#v", response.StatusCode, value)
+	}
+}
+
+func TestPortugueseLocaleHasEveryEnglishKey(t *testing.T) {
+	locales := map[string]map[string]string{}
+	for _, name := range []string{"en", "pt-BR"} {
+		data, err := embeddedFiles.ReadFile("web/i18n/locales/" + name + ".json")
+		locale := map[string]string{}
+		if err != nil || json.Unmarshal(data, &locale) != nil {
+			t.Fatalf("could not read %s locale: %v", name, err)
+		}
+		locales[name] = locale
+	}
+	for key := range locales["en"] {
+		if locales["pt-BR"][key] == "" {
+			t.Errorf("Portuguese locale is missing %q", key)
+		}
 	}
 }
 

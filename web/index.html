@@ -9,52 +9,141 @@
 </head>
 <body>
   <header class="app-header">
-    <span class="header-spacer"></span>
+    <button class="sidebar-button" id="sidebarButton" aria-label="Open sidebar" data-i18n-aria-label="app.open_sidebar" aria-expanded="false" hidden>☷</button>
     <a class="wordmark" href="/">pictogrep</a>
-    <button class="menu-button" id="menuButton" aria-label="Open menu" aria-expanded="false">☰</button>
+    <button class="menu-button" id="menuButton" aria-label="Open menu" data-i18n-aria-label="app.open_menu" aria-expanded="false">☰</button>
   </header>
 
   <main class="main-content">
     <form class="search" id="searchForm">
-      <input id="searchQuery" type="search" placeholder="Search pictures" autocomplete="off" aria-label="Search pictures">
-      <button type="submit">Search</button>
+      <div class="search-input-shell" id="searchInputShell">
+        <button type="button" class="search-scope" id="searchScope" hidden aria-label="Clear search folder"></button>
+        <span class="search-draft">
+          <span id="searchDraftSizer" aria-hidden></span>
+          <input id="searchQuery" type="text" placeholder="Search pictures" data-i18n-placeholder="search.placeholder" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Search pictures" data-i18n-aria-label="search.placeholder" aria-describedby="searchInputHint">
+        </span>
+      </div>
+      <button type="submit" data-i18n="search.action">Search</button>
+      <div class="recent-searches" id="recentSearches" hidden></div>
+      <div class="search-input-help"><span id="searchInputHint">Type normally · Enter searches</span></div>
     </form>
 
     <div class="tabs" role="tablist" aria-label="Library view">
-      <button class="active" id="imagesTab" role="tab" aria-selected="true">Images <span id="imageCount"></span></button>
-      <button id="foldersTab" role="tab" aria-selected="false">Folders</button>
+      <button class="active" id="imagesTab" role="tab" aria-selected="true"><span data-i18n="tabs.local_images">Local images</span> <span id="imageCount"></span></button>
+      <button id="commonsTab" role="tab" aria-selected="false" hidden>Wikimedia Commons</button>
+      <button id="calendarTab" role="tab" aria-selected="false" data-i18n="tabs.calendar" hidden>Calendar</button>
+      <button id="foldersTab" role="tab" aria-selected="false" data-i18n="tabs.folders">Folders</button>
     </div>
 
     <section id="imagesPanel" aria-labelledby="imagesTab">
-      <div class="notice" id="notice" hidden></div>
+      <div class="result-state" id="resultState" hidden>
+        <h2 id="resultStateTitle"></h2>
+        <p id="resultStateText"></p>
+        <button type="button" id="resultStateAction" hidden></button>
+      </div>
       <div class="image-grid" id="imageGrid" aria-live="polite"></div>
       <div class="empty" id="imagesEmpty" hidden>
-        <p>No pictures yet.</p>
-        <button id="emptyAddImages">Add pictures</button>
+        <h2 data-i18n="empty.welcome">Welcome to Pictogrep</h2>
+        <p class="empty-intro" data-i18n="empty.intro">Your picture library is empty. Here’s how it works:</p>
+        <ol class="empty-tutorial">
+          <li><div><strong data-i18n="empty.choose_title">Choose a folder</strong><span data-i18n="empty.choose_text">Add the folder where your pictures live.</span></div></li>
+          <li><div><strong data-i18n="empty.search_title">Search your pictures</strong><span data-i18n="empty.search_text">Describe what you remember in the search box.</span></div></li>
+          <li><div><strong data-i18n="empty.organize_title">Organize what you find</strong><span data-i18n="empty.organize_text">Put pictures into folders and build storyboards.</span></div></li>
+        </ol>
+        <button id="emptyAddImages" data-i18n="empty.choose_action">Choose pictures or folder</button>
       </div>
     </section>
 
+    <section id="calendarPanel" aria-labelledby="calendarTab" hidden>
+      <div id="calendarGroups" aria-live="polite"></div>
+      <div class="empty" id="calendarEmpty" hidden><h2>No images for this month</h2><p>Try another month, or clear the search.</p></div>
+    </section>
+
+    <section id="commonsPanel" aria-labelledby="commonsTab" hidden>
+      <div class="plugin-toolbar"><button type="button" id="shuffleCommons">Show random</button></div>
+      <div class="image-grid" id="commonsGrid" aria-live="polite"></div>
+      <div class="empty" id="commonsEmpty"><h2>No Commons images available</h2><p>Try another random set or search for something.</p></div>
+    </section>
+
     <section id="foldersPanel" aria-labelledby="foldersTab" hidden>
+      <div class="folder-toolbar"><button type="button" id="newFolderButton" data-i18n="folders.new">+ New folder</button></div>
       <div class="folder-list" id="folderList"></div>
-      <div class="empty" id="foldersEmpty" hidden><p>No folders have been added.</p></div>
+      <div class="empty" id="foldersEmpty" hidden><p data-i18n="folders.none">No folders have been added.</p></div>
     </section>
   </main>
 
+  <aside class="plugin-sidebar" id="pluginSidebar" aria-label="Pictogrep sidebar" aria-hidden="true" hidden>
+    <div class="plugin-sidebar-header"><strong>Library sidebar</strong><button id="closeSidebar" aria-label="Close sidebar">×</button></div>
+    <label class="sidebar-search"><span>⌕</span><input id="sidebarSearch" type="search" placeholder="Search"></label>
+    <section class="sidebar-section"><h2>Collections</h2><div id="sidebarCollections" class="sidebar-list"></div></section>
+    <section class="sidebar-section"><h2>Smart</h2><div class="sidebar-list">
+      <button class="sidebar-item" data-smart="recent">◷ <span>Recently added</span></button>
+      <button class="sidebar-item" data-smart="unsorted">✦ <span>Unsorted</span></button>
+      <button class="sidebar-item" data-smart="random">↻ <span>Random 50</span></button>
+    </div></section>
+    <section class="sidebar-section"><h2>Storyboards</h2><div id="sidebarBoards" class="sidebar-list"></div></section>
+  </aside>
+  <div class="sidebar-scrim" id="sidebarScrim" hidden></div>
+
   <div class="drawer-scrim" id="drawerScrim" hidden></div>
   <aside class="drawer" id="drawer" aria-label="Pictogrep menu" aria-hidden="true">
-    <div class="drawer-header"><strong>Menu</strong><button id="closeMenu" aria-label="Close menu">×</button></div>
+    <div class="drawer-header"><strong id="drawerTitle">Menu</strong><button id="closeMenu" aria-label="Close menu">×</button></div>
 
     <nav class="drawer-actions">
-      <a href="/practice">Open storyboard</a>
-      <button id="showBoards">Saved boards <span id="boardCount"></span></button>
-      <button id="showAdd">Add pictures or folder</button>
-      <button id="showAbout">About</button>
+      <a href="/practice" data-i18n="menu.open_storyboard">Open storyboard</a>
+      <button id="showBoards"><span data-i18n="menu.saved_boards">Saved boards</span> <span id="boardCount"></span></button>
+      <button id="showAdd" data-i18n="menu.add_pictures">Add pictures or folder</button>
+      <button id="showPlugins" data-i18n="menu.plugins">Official plugins</button>
+      <button id="showSettings" data-i18n="settings.title">Settings</button>
+      <button id="showAbout" data-i18n="menu.about">About</button>
     </nav>
 
     <section class="drawer-section" id="addSection" hidden>
       <h2>Add pictures</h2>
       <label class="file-button">Choose images<input id="imageFiles" type="file" accept="image/*" multiple hidden></label>
       <label class="file-button">Choose a folder<input id="imageFolder" type="file" accept="image/*" webkitdirectory multiple hidden></label>
+    </section>
+
+    <section class="drawer-section settings" id="settingsSection" hidden>
+      <div class="settings-group">
+        <h2 data-i18n="settings.general">General</h2>
+        <label class="settings-row"><span><strong data-i18n="settings.language">Language</strong><small data-i18n="settings.language_help">Choose the interface language.</small></span><select id="languageSetting"><option value="en" data-i18n="settings.english">English</option><option value="pt-BR">Português</option></select></label>
+      </div>
+      <div class="settings-group">
+        <h2 data-i18n="settings.browser">Browser</h2>
+        <label class="settings-row"><span><strong data-i18n="settings.thumbnail_size">Thumbnail size</strong><small data-i18n="settings.thumbnail_help">Changes the number of images shown in each row.</small></span><select id="thumbnailSizeSetting"><option value="small" data-i18n="settings.small">Small</option><option value="medium" data-i18n="settings.medium">Medium</option><option value="large" data-i18n="settings.large">Large</option></select></label>
+        <label class="settings-row"><span><strong data-i18n="settings.show_filenames">Show filenames</strong><small data-i18n="settings.show_filenames_help">Displays the file name below each image.</small></span><input type="checkbox" id="showFilenamesSetting"></label>
+        <label class="settings-row"><span><strong data-i18n="settings.home_order">Home view</strong><small data-i18n="settings.home_order_help">Choose what appears when you open your library.</small></span><select id="homeOrderSetting"><option value="random" data-i18n="settings.home_random">Fresh random mix</option><option value="recent" data-i18n="settings.home_recent">Newest pictures</option></select></label>
+      </div>
+      <div class="settings-group">
+        <h2 data-i18n="settings.search_index">Search index</h2>
+        <div class="index-settings-status" id="searchIndexStatus" aria-live="polite">
+          <div><strong id="searchIndexStatusTitle">Checking search index…</strong><small id="searchIndexStatusText"></small></div>
+          <progress id="searchIndexProgress" value="0" max="1"></progress>
+        </div>
+        <label class="settings-row"><span><strong data-i18n="settings.auto_index">Index new pictures automatically</strong><small data-i18n="settings.auto_index_help">Runs quietly in the background and processes only new or changed pictures.</small></span><input type="checkbox" id="automaticIndexingSetting"></label>
+        <div class="settings-action"><span><strong data-i18n="settings.check_index">Check for new pictures</strong><small data-i18n="settings.check_index_help">Refreshes folder membership, then indexes only what is missing.</small></span><button type="button" id="checkIndexNow" data-i18n="settings.check_now">Check now</button></div>
+        <div class="settings-action"><span><strong data-i18n="settings.rebuild_index">Rebuild search index</strong><small data-i18n="settings.rebuild_index_help">Discards every search vector and analyzes the full library again. Usually unnecessary.</small></span><button type="button" id="rebuildSearchIndex" data-i18n="settings.rebuild">Rebuild…</button></div>
+      </div>
+      <div class="settings-group">
+        <h2 data-i18n="settings.data">Data & privacy</h2>
+        <div class="settings-fact"><span><strong data-i18n="settings.local_processing">Local processing</strong><small data-i18n="settings.local_processing_help">Image analysis stays on this device. Imported originals are never modified.</small></span><em data-i18n="settings.on">On</em></div>
+        <div class="settings-path"><strong data-i18n="settings.library_location">Library location</strong><code id="libraryLocation"></code></div>
+        <div class="settings-action"><span><strong data-i18n="settings.recent_searches">Recent searches</strong><small data-i18n="settings.recent_searches_help">Clear suggestions stored by this browser.</small></span><button type="button" id="clearRecentSearches" data-i18n="settings.clear">Clear</button></div>
+      </div>
+    </section>
+
+    <section class="drawer-section settings" id="pluginsSection" hidden>
+      <h2>Available plugins</h2>
+      <p class="page-intro">Optional features made for Pictogrep. Every plugin starts disabled.</p>
+      <div class="settings-list">
+        <label class="settings-row plugin-row"><span><strong>Wikimedia Commons</strong><small>Browse random Commons images or search for something specific.</small></span><input type="checkbox" id="wikimediaPluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong>Calendar view</strong><small>Browse local images grouped by date and month.</small></span><input type="checkbox" id="calendarPluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong>Sidebar</strong><small>Drag images into collections from a quick side panel.</small></span><input type="checkbox" id="sidebarPluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong>Vim Mode</strong><small>Use Vim-style keyboard navigation in the library and storyboard.</small></span><input type="checkbox" id="vimPluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong>Command palette</strong><small>Open navigation and image search with Ctrl+K or Command+K.</small></span><input type="checkbox" id="commandPalettePluginToggle"></label>
+      </div>
+      <p class="field-help">Plugins add optional sources without changing your local image library.</p>
     </section>
 
     <section class="drawer-section" id="boardsSection" hidden>
@@ -106,6 +195,8 @@
       <h2>Create folder</h2>
       <label class="field-label" for="newFolderName">Name</label>
       <input id="newFolderName" placeholder="e.g. to-draw" autocomplete="off" required>
+      <label class="field-label" for="newFolderParent">Inside folder (optional)</label>
+      <select id="newFolderParent"><option value="">Top level</option></select>
       <label class="field-label" for="newFolderPrompt">Fill from search (optional)</label>
       <input id="newFolderPrompt" placeholder="e.g. cats" autocomplete="off">
       <p class="field-help">Adds the 50 closest pictures from your search index.</p>
@@ -115,17 +206,61 @@
     </form>
   </dialog>
 
+  <dialog id="reindexDialog">
+    <form id="reindexForm">
+      <h2 data-i18n="reindex.title">Rebuild the full search index?</h2>
+      <p data-i18n="reindex.text">Pictogrep will discard the existing search vectors and analyze every picture again. Use this only to repair the index; new pictures are indexed automatically.</p>
+      <div class="dialog-actions"><button type="button" id="cancelReindex" data-i18n="app.cancel">Cancel</button><button type="submit" data-i18n="reindex.confirm">Rebuild everything</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="command-palette" id="commandPaletteDialog" aria-labelledby="commandPaletteTitle">
+    <h2 class="sr-only" id="commandPaletteTitle">Command palette</h2>
+    <label class="command-palette-search"><span aria-hidden>⌕</span><input id="commandPaletteQuery" type="text" placeholder="Search images or type a command" autocomplete="off" spellcheck="false" aria-label="Search images or type a command"></label>
+    <div class="command-palette-list" id="commandPaletteList" role="listbox" aria-label="Commands"></div>
+    <p class="command-palette-hint">↑↓ choose · Enter run · Esc close</p>
+  </dialog>
+
+  <dialog id="shortcutsDialog">
+    <h2>Keyboard shortcuts</h2>
+    <div class="shortcut-list">
+      <div><kbd>/</kbd><span>Focus search</span></div>
+      <div><kbd>Ctrl</kbd> + <kbd>V</kbd><span>Paste an image</span></div>
+      <div><kbd>↑</kbd> <kbd>↓</kbd><span>Move through images</span></div>
+      <div><kbd>Enter</kbd><span>Open the focused image</span></div>
+      <div><kbd>Esc</kbd><span>Close menus and dialogs</span></div>
+      <div><kbd>?</kbd><span>Show these shortcuts</span></div>
+    </div>
+    <p id="vimShortcutHelp" class="field-help" hidden><strong>Vim Mode:</strong> <kbd>j</kbd>/<kbd>k</kbd> move, <kbd>o</kbd> opens, <kbd>q</kbd> closes, <kbd>gg</kbd> goes to the top, <kbd>G</kbd> goes to the bottom.</p>
+    <div class="dialog-actions"><button type="button" id="closeShortcuts">Close</button></div>
+  </dialog>
+
+  <dialog class="delete-image-dialog" id="deleteImageDialog">
+    <form id="deleteImageForm">
+      <h2>Delete this image?</h2>
+      <p><strong id="deleteImageName"></strong></p>
+      <code id="deleteImagePath"></code>
+      <p class="delete-warning">This permanently deletes the original file from disk. It cannot be undone.</p>
+      <div class="dialog-actions"><button type="button" id="cancelDeleteImage">Cancel</button><button type="submit" class="confirm-delete">Delete permanently</button></div>
+    </form>
+  </dialog>
+
   <dialog class="image-viewer" id="imageViewer">
-    <button id="closeViewer" aria-label="Close image">×</button>
-    <div class="viewer-picture"><img id="viewerImage" alt=""></div>
+    <button id="closeViewer" aria-label="Close image" data-i18n-aria-label="viewer.close">×</button>
+    <div class="viewer-picture">
+      <button type="button" class="viewer-nav viewer-previous" id="viewerPrevious" aria-label="Previous image" data-i18n-aria-label="viewer.previous">‹</button>
+      <img id="viewerImage" alt="">
+      <button type="button" class="viewer-nav viewer-next" id="viewerNext" aria-label="Next image" data-i18n-aria-label="viewer.next">›</button>
+      <span class="viewer-position" id="viewerPosition"></span>
+    </div>
     <div class="viewer-details">
       <section class="viewer-tags" aria-labelledby="viewerTagsTitle">
-        <h2 id="viewerTagsTitle">Tags</h2>
+        <div class="viewer-section-heading"><h2 id="viewerTagsTitle" data-i18n="viewer.tags">Tags</h2><button type="button" id="showOriginal" class="viewer-original-button" hidden>Show original</button></div>
         <div id="viewerTagsList"></div>
       </section>
       <section class="related-images" aria-labelledby="relatedTitle">
-        <h2 id="relatedTitle">Similar images</h2>
-        <p id="relatedStatus">Finding similar pictures…</p>
+        <h2 id="relatedTitle" data-i18n="viewer.similar">Similar images</h2>
+        <p id="relatedStatus" data-i18n="viewer.finding_similar">Finding similar pictures…</p>
         <div class="related-grid" id="relatedGrid"></div>
       </section>
     </div>
@@ -142,11 +277,51 @@
 
   <div class="card-menu cursor-menu" id="imageContextMenu" hidden>
     <span class="card-menu-name" id="contextImageName"></span>
+    <button type="button" id="contextOpenImage">Open image</button>
+    <a id="contextDownloadImage" download>Save image as…</a>
     <a id="contextDraw">Draw</a>
-    <button type="button" id="contextAddFolder">Add to folder</button>
+    <button type="button" id="contextAddFolder">Add to folder / tag…</button>
+    <button type="button" class="menu-danger" id="contextDeleteImage">Delete file…</button>
   </div>
 
-  <div class="message" id="message" role="status" aria-live="polite" hidden></div>
+  <div class="card-menu cursor-menu" id="commonsContextMenu" hidden>
+    <span class="card-menu-name" id="commonsContextName"></span>
+    <a id="commonsContextSource" target="_blank" rel="noopener">Source and license</a>
+    <a id="commonsContextOriginal" target="_blank" rel="noopener">Open original</a>
+    <a id="commonsContextDownload" download>Save image as…</a>
+    <button type="button" id="commonsContextAdd">Add to Pictogrep</button>
+  </div>
+
+  <div class="card-menu cursor-menu" id="folderContextMenu" hidden>
+    <span class="card-menu-name" id="folderContextName"></span>
+    <button type="button" id="folderContextOpen" data-i18n="folder_menu.open">Open folder</button>
+    <button type="button" id="folderContextAdd" data-i18n="folder_menu.add">Add pictures here…</button>
+    <button type="button" id="folderContextCanvas" data-i18n="folder_menu.canvas">Open canvas</button>
+    <button type="button" id="folderContextNewSubfolder" data-i18n="folder_menu.new_subfolder">New subfolder…</button>
+    <button type="button" id="folderContextRefresh" data-i18n="folder_menu.refresh">Check for new pictures</button>
+    <button type="button" id="folderContextCopyPath" data-i18n="folder_menu.copy_path">Copy folder path</button>
+  </div>
+
+  <div class="drop-overlay" id="dropOverlay" aria-hidden="true" hidden>
+    <div class="drop-overlay-card">
+      <span class="drop-icon">↓</span>
+      <strong>Drop to add image</strong>
+      <span id="dropDestination">Pictogrep library</span>
+    </div>
+  </div>
+
+  <aside class="import-progress" id="importProgress" role="status" aria-live="polite" hidden>
+    <div class="import-progress-heading"><strong id="importProgressTitle">Adding image</strong><button type="button" id="closeImportProgress" aria-label="Dismiss import status" hidden>×</button></div>
+    <span class="import-progress-name" id="importProgressName"></span>
+    <progress id="importProgressBar" max="100"></progress>
+    <span class="import-progress-status" id="importProgressStatus">Preparing…</span>
+  </aside>
+
+  <div class="message" id="message" role="alert" aria-live="assertive" hidden>
+    <span id="messageText"></span>
+    <button type="button" id="closeMessage" aria-label="Dismiss notification">×</button>
+  </div>
+  <script src="/i18n/i18n.js" defer></script>
   <script src="/assets/app.js" defer></script>
 </body>
 </html>

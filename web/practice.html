@@ -10,7 +10,7 @@
     * { box-sizing: border-box; }
     html, body { height: 100%; overflow: hidden; }
     body { min-height: 100vh; margin: 0; display: flex; flex-direction: column; font: 15px/1.35 serif; background: var(--bg); color: var(--fg); }
-    header { display: flex; gap: .55rem; align-items: center; padding: .55rem .75rem; border-bottom: 1px solid var(--line); background: var(--paper); white-space: nowrap; overflow-x: auto; overflow-y: hidden; }
+    header { position: relative; z-index: 20; display: flex; gap: .55rem; align-items: center; padding: .55rem .75rem; border-bottom: 1px solid var(--line); background: var(--paper); white-space: nowrap; overflow-x: auto; overflow-y: hidden; }
     .title { flex: 0 0 auto; min-width: 0; }
     .title strong { display: inline; letter-spacing: .02em; }
     .title span { display: none; }
@@ -67,7 +67,7 @@
     .tools { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
     .status { color: var(--muted); min-height: 1.3rem; }
     .header-status { display: none; }
-    .save-state { color: var(--fg); }
+    .save-state { flex: 0 0 auto; padding: .35rem .5rem; border: 1px solid var(--line); background: var(--soft); color: var(--fg); font-size: .82rem; }
     .info { position: relative; flex: 0 0 auto; }
     .info summary { display: grid; place-items: center; width: 2rem; height: 2rem; border: 1px solid var(--line); background: var(--paper); cursor: help; list-style: none; }
     .info summary:hover { background: var(--soft); }
@@ -78,11 +78,20 @@
     .empty { padding: 2rem; text-align: center; color: var(--muted); }
     [hidden] { display: none !important; }
     @media (max-width: 850px) {
-      .search-input { width: 9rem; }
-      main { grid-template-columns: 1fr; min-height: auto; }
+      html, body { height: auto; overflow: auto; }
+      body { display: block; }
+      header { position: sticky; top: 0; flex-wrap: wrap; overflow: visible; white-space: normal; }
+      .title { width: 100%; text-align: center; }
+      .controls { flex-wrap: wrap; }
+      .controls.primary { flex-basis: 100%; }
+      .controls.secondary { flex-basis: 100%; }
+      .search-input { width: min(14rem, 100%); flex: 1; }
+      main { display: grid; grid-template-columns: 1fr; gap: 1.25rem; min-height: auto; padding: .75rem; touch-action: pan-y; }
       .pane.left-pane, .pane.right-pane { padding: 0; }
       .divider { display: none; }
-      .frame { min-height: 42vh; }
+      .pane { min-height: auto; }
+      .frame { flex: none; width: 100%; min-height: 280px; height: min(64vw, 48vh); }
+      .tools { gap: .35rem; }
     }
   </style>
 </head>
@@ -93,34 +102,35 @@
       <span>rough redraws, one reference at a time</span>
     </div>
     <div class="controls primary">
-      <input id="clipSearch" class="search-input" type="search" placeholder="Search">
+      <input id="clipSearch" class="search-input" type="search" placeholder="Search" data-i18n-placeholder="storyboard.search">
       <select id="mode">
-        <option value="recent" data-count="30">30 most recent</option>
-        <option value="recent" data-count="100">100 most recent</option>
-        <option value="all" selected>All images</option>
-        <option value="recent" data-custom="1">Custom recent</option>
+        <option value="recent" data-count="30" data-i18n="storyboard.recent_30">30 most recent</option>
+        <option value="recent" data-count="100" data-i18n="storyboard.recent_100">100 most recent</option>
+        <option value="all" data-i18n="storyboard.all_images" selected>All images</option>
+        <option value="recent" data-custom="1" data-i18n="storyboard.custom_recent">Custom recent</option>
       </select>
       <select id="collection" title="Reference tag">
-        <option value="">All tags</option>
+        <option value="" data-i18n="storyboard.all_tags">All tags</option>
       </select>
       <input id="count" type="number" min="1" value="30" hidden>
       <select id="aspect">
-        <option value="16:9">16:9</option>
-        <option value="4:3" selected>4:3</option>
+        <option value="16:9" selected>16:9</option>
+        <option value="4:3">4:3</option>
         <option value="2:1">Pan H 2:1</option>
         <option value="3:4">Pan V 3:4</option>
       </select>
-      <button id="start">Load</button>
+      <button id="start" data-i18n="storyboard.load">Load</button>
       <span class="status header-status" id="status"></span>
     </div>
     <div class="controls secondary">
-      <button id="prev">Prev</button>
-      <button id="next">Save + Next</button>
-      <button id="skip">Skip</button>
+      <span id="saveState" class="save-state" role="status" aria-live="polite" data-i18n="storyboard.not_saved">Not saved yet</span>
+      <button id="prev" data-i18n="storyboard.previous">Prev</button>
+      <button id="next" data-i18n="storyboard.save_next">Save + Next</button>
+      <button id="skip" data-i18n="storyboard.skip">Skip</button>
       <details class="info" id="infoMenu">
         <summary title="Info">i</summary>
         <div class="info-panel">
-          <div class="info-row"><strong>Keys</strong><span>1/P pen · 2/E eraser · 3/S colour lasso · 4/T trace · Q/W pen size · Ctrl+Enter save + next · Ctrl+Z undo</span></div>
+          <div class="info-row"><strong>Keys</strong><span>←/→ previous/next · Ctrl+S save · Ctrl+Enter save + next · Ctrl+Z undo · 1/P pen · 2/E eraser · 3/S shade · 4/T trace · ? shortcuts</span></div>
           <div class="info-row"><strong>Status</strong><span id="infoStatus">Loading</span></div>
           <div class="info-row"><strong>Saving</strong><span id="infoSavePath"></span></div>
         </div>
@@ -131,12 +141,12 @@
   <main>
     <section class="pane left-pane">
       <div class="label">
-        <strong>Reference</strong>
+        <strong data-i18n="storyboard.reference">Reference</strong>
         <span class="label-actions">
           <span id="refName"></span>
           <button id="refSmaller" title="Make reference image smaller">-</button>
           <button id="refBigger" title="Make reference image bigger">+</button>
-          <button id="refMirror" title="Mirror reference horizontally">Mirror</button>
+          <button id="refMirror" title="Mirror reference horizontally" data-i18n="storyboard.mirror">Mirror</button>
         </span>
       </div>
       <div class="frame">
@@ -148,8 +158,8 @@
     <div id="divider" class="divider" title="Drag to resize"><button id="viewReset" title="Reset view">=</button></div>
     <section class="pane right-pane">
       <div class="label">
-        <span class="label-title"><strong>Board</strong><button id="trace" title="Show reference under the board">Trace</button></span>
-        <span class="label-actions"><span id="saveState" class="save-state">Not saved yet</span><button id="boardSmaller" title="Make drawing board smaller">-</button><button id="boardBigger" title="Make drawing board bigger">+</button></span>
+        <span class="label-title"><strong data-i18n="storyboard.board">Board</strong><button id="trace" title="Show reference under the board" data-i18n="storyboard.trace">Trace</button></span>
+        <span class="label-actions"><button id="boardSmaller" title="Make drawing board smaller">-</button><button id="boardBigger" title="Make drawing board bigger">+</button></span>
       </div>
       <div id="boardFrame" class="frame board-frame">
         <div id="boardRefs" class="board-refs"></div>
@@ -163,9 +173,9 @@
         </div>
       </div>
       <div class="tools">
-        <button id="pen" class="active">Pen</button>
-        <button id="eraser">Eraser</button>
-        <button id="shade" title="Draw a closed shape for a colored-pencil grain">Colour lasso</button>
+        <button id="pen" class="active" data-i18n="storyboard.pen">Pen</button>
+        <button id="eraser" data-i18n="storyboard.eraser">Eraser</button>
+        <button id="shade" title="Draw a closed shape for a colored-pencil grain" data-i18n="storyboard.colour_lasso">Colour lasso</button>
         <select id="shadeColour" title="Shade colour">
           <option value="#698ca3" selected>Muted blue</option>
           <option value="#000000">Grey</option>
@@ -174,17 +184,18 @@
           <option value="#719983">Muted green</option>
           <option value="#947ca3">Muted lilac</option>
         </select>
-        <label>Size <input id="brush" type="range" min="1" max="22" value="4"> <span id="brushValue">4</span></label>
-        <button id="undo">Undo</button>
-        <button id="clear">Clear</button>
-        <button id="save">Save now</button>
-        <button id="addRefs" title="Add up to five movable reference images">Add refs</button>
+        <label><span data-i18n="storyboard.size">Size</span> <input id="brush" type="range" min="1" max="22" value="4"> <span id="brushValue">4</span></label>
+        <button id="undo" data-i18n="storyboard.undo">Undo</button>
+        <button id="clear" data-i18n="storyboard.clear">Clear</button>
+        <button id="save" data-i18n="storyboard.save_now">Save now</button>
+        <button id="addRefs" title="Add up to five movable reference images" data-i18n="storyboard.add_refs">Add refs</button>
         <input id="refFiles" type="file" accept="image/*" multiple hidden>
       </div>
-      <div class="status">The pen supports tablet pressure. Drawings autosave while the board is idle.</div>
+      <div class="status" data-i18n="storyboard.autosave_help">The pen supports tablet pressure. Drawings autosave while the board is idle.</div>
     </section>
   </main>
 
+  <script src="/i18n/i18n.js"></script>
   <script>
     const img = document.getElementById('reference');
     const empty = document.getElementById('empty');
@@ -255,10 +266,21 @@
     let resizing = false;
     let strokeChanged = false;
     let strokeUndoCaptured = false;
+    let vimModeEnabled = false;
+    const t = (key, values) => window.PictogrepI18n.t(key, values);
+    fetch('/api/app/state').then(response => response.json()).then(async state => {
+      vimModeEnabled = Boolean(state.plugins?.vim?.enabled);
+      await window.PictogrepI18n.init(state.language);
+      if (vimModeEnabled) status('Vim Mode enabled: h/l navigate · j shade · k trace · u undo · q return');
+    }).catch(() => {});
 
     function status(text) {
       statusEl.textContent = text;
       infoStatus.textContent = text || '';
+    }
+
+    function setSaveState(key, values) {
+      saveState.textContent = t(key, values);
     }
 
     function cancelScheduledSave() {
@@ -417,7 +439,7 @@
       img.classList.toggle('mirrored', refMirrored);
       traceRef.classList.toggle('mirrored', refMirrored);
       refMirror.classList.toggle('active', refMirrored);
-      refMirror.textContent = refMirrored ? 'Mirrored' : 'Mirror';
+      refMirror.textContent = t(refMirrored ? 'storyboard.mirrored' : 'storyboard.mirror');
       refMirror.title = refMirrored ? 'Unmirror reference' : 'Mirror reference horizontally';
     }
 
@@ -460,7 +482,7 @@
       dirty = false;
       drawingPresent = false;
       changeRevision++;
-      saveState.textContent = 'Not saved yet';
+      setSaveState('storyboard.not_saved');
     }
 
     function fitCanvasStack() {
@@ -1269,7 +1291,7 @@
 
     function applyTrace() {
       traceBtn.classList.toggle('active', trace);
-      traceBtn.textContent = trace ? 'Trace on' : 'Trace';
+      traceBtn.textContent = t(trace ? 'storyboard.trace_on' : 'storyboard.trace');
       traceBtn.title = trace ? 'Hide tracing reference' : 'Show reference under the board';
       traceRef.hidden = !trace || !images.length;
       if (trace && img.src) {
@@ -1548,7 +1570,7 @@
       dirty = true;
       drawingPresent = true;
       changeRevision++;
-      saveState.textContent = 'Unsaved changes';
+      setSaveState('storyboard.unsaved');
     }
 
     function canStartStroke(e) {
@@ -1690,11 +1712,12 @@
       }
       if (!boardHasDrawing()) {
         dirty = false;
-        saveState.textContent = 'Empty drawing not saved';
+        setSaveState('storyboard.empty_not_saved');
         if (showStatus) status('Draw something before saving, or use Skip.');
         return false;
       }
       saving = true;
+      setSaveState('storyboard.saving');
       const savingRevision = changeRevision;
       const item = images[index];
       try {
@@ -1715,12 +1738,14 @@
         const data = await res.json();
         if (!res.ok || !data.ok) {
           const message = data.error || 'unknown error';
-          saveState.textContent = 'Save failed';
+          setSaveState('storyboard.save_failed');
           status('Save failed: ' + message);
           throw new Error(message);
         }
-        if (changeRevision === savingRevision) dirty = false;
-        saveState.textContent = 'Saved ' + data.file;
+        if (changeRevision === savingRevision) {
+          dirty = false;
+          setSaveState('storyboard.saved', {file: data.file});
+        } else setSaveState('storyboard.unsaved');
         if (showStatus) status('Saved ' + data.file);
         return true;
       } finally {
@@ -1743,7 +1768,7 @@
       }
       if (index >= images.length - 1) {
         status('Finished ' + images.length + ' images.');
-        saveState.textContent = save ? 'Saved final image' : 'Final image skipped';
+        setSaveState(save ? 'storyboard.saved_final' : 'storyboard.skipped_final');
         return;
       }
       index = Math.min(images.length - 1, index + 1);
@@ -1760,7 +1785,7 @@
       applyTool();
       dirty = true;
       changeRevision++;
-      saveState.textContent = 'Unsaved changes';
+      setSaveState('storyboard.unsaved');
       scheduleSave();
     }
 
@@ -1771,7 +1796,7 @@
       drawingPresent = false;
       dirty = true;
       changeRevision++;
-      saveState.textContent = 'Unsaved changes';
+      setSaveState('storyboard.unsaved');
       scheduleSave();
     }
 
@@ -1864,11 +1889,37 @@
       if (!res.ok) return;
       const data = await res.json();
       const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
-      collection.innerHTML = '<option value="">All tags</option>' + data.collections.map(item =>
+      collection.innerHTML = '<option value="">' + t('storyboard.all_tags') + '</option>' + data.collections.map(item =>
         '<option value="' + escapeHTML(item.name) + '">' + escapeHTML(item.name) + ' (' + item.count + ')</option>'
       ).join('');
     }
     document.addEventListener('keydown', e => {
+      if (e.key === '?' && !e.target.matches('input, select, textarea')) {
+        e.preventDefault();
+        document.getElementById('infoMenu').open = true;
+        return;
+      }
+      if (e.key === 'Escape') {
+        document.querySelectorAll('details[open]').forEach(item => { item.open = false; });
+        return;
+      }
+      if (!e.ctrlKey && !e.metaKey && vimModeEnabled && !e.target.matches('input, select, textarea')) {
+        if (e.key === 'h') { e.preventDefault(); document.getElementById('prev').click(); return; }
+        if (e.key === 'l') { e.preventDefault(); document.getElementById('next').click(); return; }
+        if (e.key === 'j') { e.preventDefault(); document.getElementById('shade').click(); return; }
+        if (e.key === 'k') { e.preventDefault(); document.getElementById('trace').click(); return; }
+        if (e.key === 'u') { e.preventDefault(); undo(); return; }
+        if (e.key === 'q') { e.preventDefault(); window.location.href = '/'; return; }
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        saveCurrent(false);
+        return;
+      }
+      if (!e.ctrlKey && !e.metaKey && !e.altKey && !e.target.matches('input, select, textarea')) {
+        if (e.key === 'ArrowLeft') { e.preventDefault(); document.getElementById('prev').click(); return; }
+        if (e.key === 'ArrowRight') { e.preventDefault(); document.getElementById('next').click(); return; }
+      }
       if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
         e.preventDefault();
         next(true);
