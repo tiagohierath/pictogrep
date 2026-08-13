@@ -10,7 +10,7 @@
 <body>
   <header class="app-header">
     <button class="sidebar-button" id="sidebarButton" aria-label="Open sidebar" data-i18n-aria-label="app.open_sidebar" aria-expanded="false" hidden>☷</button>
-    <a class="wordmark" href="/">pictogrep</a>
+    <span class="wordmark" id="wordmark">pictogrep</span>
     <button class="menu-button" id="menuButton" aria-label="Open menu" data-i18n-aria-label="app.open_menu" aria-expanded="false">☰</button>
   </header>
 
@@ -93,6 +93,7 @@
       <a href="/practice" data-i18n="menu.open_storyboard">Open storyboard</a>
       <button id="showBoards"><span data-i18n="menu.saved_boards">Saved boards</span> <span id="boardCount"></span></button>
       <button id="showAdd" data-i18n="menu.add_pictures">Add pictures or folder</button>
+      <button id="showPinterest" hidden>Import from Pinterest</button>
       <button id="showPlugins" data-i18n="menu.plugins">Official plugins</button>
       <button id="showSettings" data-i18n="settings.title">Settings</button>
       <button id="showAbout" data-i18n="menu.about">About</button>
@@ -102,6 +103,34 @@
       <h2>Add pictures</h2>
       <label class="file-button">Choose images<input id="imageFiles" type="file" accept="image/*" multiple hidden></label>
       <label class="file-button">Choose a folder<input id="imageFolder" type="file" accept="image/*" webkitdirectory multiple hidden></label>
+    </section>
+
+    <section class="drawer-section pinterest-import" id="pinterestSection" hidden>
+      <header class="pinterest-heading">
+        <h2>Import from Pinterest</h2>
+        <p>Paste a public board link and Pictogrep will download all its images.</p>
+      </header>
+      <div class="pinterest-readiness unavailable" id="pinterestReadiness" role="status" hidden>
+        <span class="pinterest-readiness-dot" aria-hidden="true"></span>
+        <span><strong id="pinterestReadinessTitle">Pinterest downloader is missing</strong><small id="pinterestReadinessHelp">Reinstall Pictogrep, or install gallery-dl, before importing.</small></span>
+      </div>
+      <form id="pinterestImportForm">
+        <label class="pinterest-url"><span>Board link</span><input id="pinterestBoardURL" name="url" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://www.pinterest.com/user/board/" required><small>Public boards work without signing in.</small></label>
+        <fieldset class="pinterest-options">
+          <legend>Save images</legend>
+          <label class="pinterest-choice"><input type="radio" name="pinterestMode" value="board" checked><span><strong>In a board folder</strong><small>Recommended</small></span></label>
+          <label class="pinterest-choice"><input type="radio" name="pinterestMode" value="original"><span><strong>Directly in my library</strong><small>Keep downloaded filenames</small></span></label>
+        </fieldset>
+        <label class="pinterest-skip"><input id="pinterestSkipExisting" type="checkbox" checked><span><strong>Skip images already in my library</strong><small>Exact duplicates are kept only once.</small></span></label>
+        <div class="pinterest-actions"><button type="submit" id="pinterestImportButton">Download all</button><button type="button" id="pinterestCancelImport" hidden>Cancel</button></div>
+        <div class="pinterest-working" id="pinterestWorking" role="status" aria-live="polite" hidden>
+          <span class="pinterest-spinner" aria-hidden="true"></span><span><strong>Downloading board…</strong><small>Large boards can take a few minutes.</small></span>
+        </div>
+        <section class="pinterest-result" id="pinterestImportResult" role="status" aria-live="polite" hidden>
+          <span class="pinterest-result-icon" id="pinterestResultIcon" aria-hidden="true">✓</span>
+          <div><strong id="pinterestResultTitle"></strong><p id="pinterestResultDetails"></p><div class="pinterest-result-actions"><button type="button" id="pinterestOpenFolder" hidden>View folder</button><button type="button" id="pinterestImportAnother">Import another</button></div><small class="pinterest-return-help">Use it again anytime from Menu → Import from Pinterest.</small></div>
+        </section>
+      </form>
     </section>
 
     <section class="drawer-section settings" id="settingsSection" hidden>
@@ -135,15 +164,16 @@
 
     <section class="drawer-section settings" id="pluginsSection" hidden>
       <h2>Available plugins</h2>
-      <p class="page-intro">Optional features made for Pictogrep. Every plugin starts disabled.</p>
+      <p class="page-intro">Extra features made and maintained for Pictogrep. You are always in control of which ones stay on.</p>
       <div class="settings-list">
         <label class="settings-row plugin-row"><span><strong>Wikimedia Commons</strong><small>Browse random Commons images or search for something specific.</small></span><input type="checkbox" id="wikimediaPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong>Calendar view</strong><small>Browse local images grouped by date and month.</small></span><input type="checkbox" id="calendarPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong>Sidebar</strong><small>Drag images into collections from a quick side panel.</small></span><input type="checkbox" id="sidebarPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong>Vim Mode</strong><small>Use Vim-style keyboard navigation in the library and storyboard.</small></span><input type="checkbox" id="vimPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong>Command palette</strong><small>Open navigation and image search with Ctrl+K or Command+K.</small></span><input type="checkbox" id="commandPalettePluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong>Import from Pinterest</strong><small>Enabled by default. Copy a public board into your library with the included downloader.</small></span><input type="checkbox" id="pinterestPluginToggle"></label>
       </div>
-      <p class="field-help">Plugins add optional sources without changing your local image library.</p>
+      <p class="field-help">Plugins add optional tools and image sources. Import plugins copy only the images you choose.</p>
     </section>
 
     <section class="drawer-section" id="boardsSection" hidden>

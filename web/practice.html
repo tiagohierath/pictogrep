@@ -249,8 +249,7 @@
     let undoStack = [];
     let saveTimer = null;
     let saveIdleHandle = null;
-    let saving = false;
-    let saveAgain = false;
+    let activeSavePromise = null;
     let drawingPresent = false;
     let changeRevision = 0;
     let boardReferences = [];
@@ -1706,9 +1705,12 @@
     async function saveCurrent(showStatus = true) {
       if (!images.length) return false;
       cancelScheduledSave();
-      if (saving) {
-        saveAgain = true;
-        return true;
+      // Navigation must wait for the actual save, not merely notice that an
+      // autosave is already running. If the drawing changed during that save,
+      // persist the newer revision before allowing the caller to continue.
+      while (activeSavePromise) {
+        await activeSavePromise;
+        cancelScheduledSave();
       }
       if (!boardHasDrawing()) {
         dirty = false;
@@ -1716,11 +1718,10 @@
         if (showStatus) status('Draw something before saving, or use Skip.');
         return false;
       }
-      saving = true;
       setSaveState('storyboard.saving');
       const savingRevision = changeRevision;
       const item = images[index];
-      try {
+      const pending = (async () => {
         const payload = {
           index: index + 1,
           imageId: item.id,
@@ -1748,13 +1749,15 @@
         } else setSaveState('storyboard.unsaved');
         if (showStatus) status('Saved ' + data.file);
         return true;
+      })();
+      activeSavePromise = pending;
+      let saved;
+      try {
+        saved = await pending;
       } finally {
-        saving = false;
-        if (saveAgain) {
-          saveAgain = false;
-          if (dirty) scheduleSave();
-        }
+        if (activeSavePromise === pending) activeSavePromise = null;
       }
+      return dirty ? saveCurrent(showStatus) : saved;
     }
 
     async function next(save) {
@@ -1817,6 +1820,17 @@
     }
 
     document.getElementById('start').onclick = loadImages;
+    document.querySelector('.title a').addEventListener('click', async e => {
+      if (!dirty && !activeSavePromise) return;
+      e.preventDefault();
+      const href = e.currentTarget.href;
+      try {
+        await saveCurrent(false);
+        window.location.href = href;
+      } catch (_) {
+        // saveCurrent already leaves the drawing in place and shows the error.
+      }
+    });
     clipSearch.addEventListener('keydown', e => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -1965,6 +1979,11 @@
         undo();
       }
     }, true);
+    window.addEventListener('beforeunload', e => {
+      if (!dirty && !activeSavePromise) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
 
     restorePaneSplit();
     setReferenceScale(refScale);

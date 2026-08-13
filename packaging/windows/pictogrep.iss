@@ -25,6 +25,7 @@ UninstallDisplayIcon={app}\pictogrep.ico
 
 [Files]
 Source: "..\..\dist\pictogrep.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\..\dist\gallery-dl.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\..\assets\pictogrep.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]

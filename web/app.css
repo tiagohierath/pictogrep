@@ -32,9 +32,10 @@ button, a, summary, label { cursor: pointer; }
   left: 50%;
   transform: translateX(-50%);
   color: #171717;
-  text-decoration: none;
   font-size: 23px;
   letter-spacing: -.5px;
+  cursor: default;
+  user-select: none;
 }
 
 .menu-button, .drawer-header button {
@@ -173,8 +174,8 @@ body.show-filenames .image-filename { display: block; }
 .drawer-header { display: flex; align-items: center; justify-content: space-between; height: 72px; padding: 0 22px; border-bottom: 1px solid #ddd; }
 .drawer.page { width: 100vw; max-width: none; border-left: 0; background: #f4f4f4; }
 .drawer.page .drawer-header { position: sticky; z-index: 2; top: 0; background: #fff; }
-.drawer.page .drawer-actions, .drawer.page > .drawer-section:not(#settingsSection):not(#pluginsSection) { display: none; }
-.drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]) { width: min(760px, calc(100% - 32px)); margin: 32px auto; padding: 30px 34px; border: 1px solid #d8d8d8; border-radius: 6px; background: #fff; }
+.drawer.page .drawer-actions, .drawer.page > .drawer-section:not(#settingsSection):not(#pluginsSection):not(#pinterestSection) { display: none; }
+.drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #pinterestSection:not([hidden]) { width: min(760px, calc(100% - 32px)); margin: 32px auto; padding: 30px 34px; border: 1px solid #d8d8d8; border-radius: 6px; background: #fff; }
 .drawer-actions { display: block; border-bottom: 1px solid #ccc; }
 .drawer-actions a, .drawer-actions button { display: flex; justify-content: space-between; padding: 14px 22px; border: 0; border-bottom: 1px solid #eee; background: #fff; color: #171717; text-align: left; text-decoration: none; font-size: 14px; }
 .drawer-actions a:hover, .drawer-actions button:hover { background: #f5f5f5; }
@@ -248,6 +249,55 @@ body.show-filenames .image-filename { display: block; }
 .settings-list { border-top: 1px solid #ddd; border-bottom: 1px solid #ddd; }
 .page-intro { margin: -4px 0 20px !important; }
 .plugin-row input[type="checkbox"] { flex: none; width: 18px; height: 18px; }
+.pinterest-import { --pinterest: #bd081c; --pinterest-soft: #fff5f6; }
+.pinterest-heading { margin-bottom: 18px; }
+.pinterest-heading h2 { margin: 0 0 5px; font-size: 20px; }
+.pinterest-heading p { margin: 0; color: #5d5d5d; font-size: 12px; line-height: 1.5; }
+.pinterest-readiness { display: flex; gap: 11px; align-items: center; margin: 0 0 22px; padding: 11px 13px; border: 1px solid #cfe1d1; border-radius: 6px; background: #f7fbf7; color: #285c30; }
+.pinterest-readiness.unavailable { border-color: #e2caca; background: #fff8f8; color: #8a1f1f; }
+.pinterest-readiness-dot { width: 9px; height: 9px; flex: none; border-radius: 50%; background: #3d974c; box-shadow: 0 0 0 3px rgba(61,151,76,.13); }
+.pinterest-readiness.unavailable .pinterest-readiness-dot { background: #b33a47; box-shadow: 0 0 0 3px rgba(179,58,71,.12); }
+.pinterest-readiness strong, .pinterest-readiness small { display: block; }
+.pinterest-readiness strong { font-size: 11px; }
+.pinterest-readiness small { margin-top: 2px; color: inherit; opacity: .8; font-size: 10px; }
+.pinterest-import form { display: grid; gap: 20px; }
+.pinterest-url { display: grid; gap: 7px; font-size: 12px; font-weight: 600; }
+.pinterest-url input { width: 100%; padding: 12px 13px; border: 1px solid #aaa; border-radius: 5px; outline: 0; font: inherit; font-weight: 400; }
+.pinterest-url input:focus { border-color: var(--pinterest); box-shadow: 0 0 0 3px rgba(189,8,28,.1); }
+.pinterest-url input[aria-invalid="true"] { border-color: var(--pinterest); background: var(--pinterest-soft); }
+.pinterest-url small { color: #717171; font-size: 10px; font-weight: 400; line-height: 1.4; }
+.pinterest-options { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.pinterest-options legend { margin-bottom: 9px; font-size: 12px; font-weight: 600; }
+.pinterest-choice { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; align-items: start; padding: 12px 13px; border: 1px solid #d7d7d7; border-radius: 6px; background: #fff; cursor: pointer; }
+.pinterest-choice:has(input:checked) { border-color: var(--pinterest); background: var(--pinterest-soft); box-shadow: 0 0 0 1px var(--pinterest); }
+.pinterest-choice:hover { border-color: #aaa; }
+.pinterest-choice input, .pinterest-skip input { width: 16px; height: 16px; flex: none; margin: 1px 0 0; accent-color: var(--pinterest); }
+.pinterest-choice strong, .pinterest-choice small, .pinterest-skip strong, .pinterest-skip small { display: block; }
+.pinterest-choice strong, .pinterest-skip strong { font-size: 11px; font-weight: 600; }
+.pinterest-choice small, .pinterest-skip small { margin-top: 3px; color: #6c6c6c; font-size: 10px; line-height: 1.35; }
+.pinterest-skip { display: grid; grid-template-columns: 18px minmax(0, 1fr); gap: 10px; align-items: start; padding: 2px 1px; cursor: pointer; }
+.pinterest-actions { display: flex; gap: 9px; align-items: center; }
+.pinterest-actions button, .pinterest-result-actions button { min-height: 38px; padding: 8px 15px; border: 1px solid #999; border-radius: 5px; background: #fff; color: #222; font: inherit; font-size: 11px; }
+.pinterest-actions button[type="submit"] { min-width: 125px; border-color: var(--pinterest); background: var(--pinterest); color: #fff; font-weight: 600; }
+.pinterest-actions button:hover, .pinterest-result-actions button:hover { filter: brightness(.96); }
+.pinterest-actions button:disabled { opacity: .55; cursor: wait; }
+.pinterest-working { display: flex; gap: 12px; align-items: center; margin-top: -6px; padding: 13px 14px; border: 1px solid #e0d2d3; border-radius: 6px; background: #fffafa; color: #5b3034; }
+.pinterest-working strong, .pinterest-working small { display: block; }
+.pinterest-working strong { font-size: 11px; }
+.pinterest-working small { margin-top: 3px; color: #755f61; font-size: 10px; line-height: 1.4; }
+.pinterest-spinner { display: grid; width: 22px; height: 22px; flex: none; place-items: center; border-radius: 50%; background: #f1d9dc; color: var(--pinterest); font-weight: 700; }
+.pinterest-spinner::before { content: "↓"; }
+.pinterest-result { display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 12px; margin: -4px 0 0; padding: 15px; border: 1px solid #bcd6c0; border-radius: 7px; background: #f7fbf7; color: #284f2d; font-size: 11px; line-height: 1.45; }
+.pinterest-result[hidden] { display: none; }
+.pinterest-result-icon { display: grid; width: 32px; height: 32px; place-items: center; border-radius: 50%; background: #3d8848; color: #fff; font-size: 16px; }
+.pinterest-result strong { display: block; font-size: 12px; }
+.pinterest-result p { margin: 4px 0 11px; color: inherit; }
+.pinterest-result-actions { display: flex; flex-wrap: wrap; gap: 7px; }
+.pinterest-result-actions button { min-height: 32px; padding: 6px 10px; border-color: #83a989; color: #244b2a; }
+.pinterest-return-help { display: block; margin-top: 11px; color: #617864; font-size: 9px; line-height: 1.45; }
+.pinterest-result.error { border-color: #d6a6ab; background: #fff8f8; color: #8a1f1f; }
+.pinterest-result.error .pinterest-result-icon { background: #b33a47; }
+.pinterest-result.error .pinterest-result-actions button { border-color: #c99a9f; color: #7e202a; }
 .commons-image-card { position: relative; margin: 0 0 18px; break-inside: avoid; }
 .commons-image-card img { display: block; width: 100%; height: auto; border-radius: 6px; background: #eee; }
 .commons-image-card figcaption { padding: 7px 2px 0; color: #555; font-size: 11px; line-height: 1.35; }
@@ -395,7 +445,7 @@ kbd { padding: 2px 6px; border: 1px solid #bbb; border-bottom-width: 2px; border
 @media (max-width: 650px) {
   .app-header { height: 60px; padding: 0 12px; }
   .plugin-sidebar { top: 60px; }
-  .drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]) { width: calc(100% - 20px); margin: 10px auto; padding: 22px 16px; }
+  .drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #pinterestSection:not([hidden]) { width: calc(100% - 20px); margin: 10px auto; padding: 22px 16px; }
   .main-content { width: calc(100% - 24px); padding-top: 90px; }
   .search { margin-bottom: 30px; }
   .image-grid { columns: 150px; column-gap: 10px; }

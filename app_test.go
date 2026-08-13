@@ -2,7 +2,9 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
 	"encoding/json"
+	"hash/crc32"
 	"image"
 	"image/color"
 	"image/png"
@@ -32,6 +34,23 @@ func writeTestPNG(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func writeTestPNGDimensions(t *testing.T, path string, width, height uint32) {
+	t.Helper()
+	writeTestPNG(t, path)
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Keep the valid encoded test image but replace its IHDR dimensions and CRC.
+	// DecodeConfig reads this metadata without allocating the declared pixels.
+	binary.BigEndian.PutUint32(data[16:20], width)
+	binary.BigEndian.PutUint32(data[20:24], height)
+	binary.BigEndian.PutUint32(data[29:33], crc32.ChecksumIEEE(data[12:29]))
+	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -122,6 +141,64 @@ func TestIndexedSourceSurvivesRestart(t *testing.T) {
 	if len(sources) != 1 || sources[0] != source {
 		t.Fatalf("source was not restored: %#v", sources)
 	}
+}
+
+func TestIndexFoldersPreservesManagedLibraryImports(t *testing.T) {
+	app := testApplication(t)
+	managed := filepath.Join(app.libraryDir, "managed-import.png")
+	writeTestPNG(t, managed)
+	app.addPath(managed)
+	untrackedManaged := filepath.Join(app.libraryDir, "not-yet-cataloged.png")
+	writeTestPNG(t, untrackedManaged)
+
+	source := t.TempDir()
+	external := filepath.Join(source, "external.png")
+	writeTestPNG(t, external)
+	if err := app.indexFolders([]string{source}); err != nil {
+		t.Fatal(err)
+	}
+	paths, sources, _ := app.snapshot()
+	if len(paths) != 3 || !containsPath(paths, managed) || !containsPath(paths, untrackedManaged) || !containsPath(paths, external) {
+		t.Fatalf("external refresh orphaned managed imports: %#v", paths)
+	}
+	if len(sources) != 1 || sources[0] != source {
+		t.Fatalf("unexpected remembered sources: %#v", sources)
+	}
+
+	reloaded, err := newApplication()
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, _, _ = reloaded.snapshot()
+	if len(paths) != 3 || !containsPath(paths, managed) || !containsPath(paths, untrackedManaged) || !containsPath(paths, external) {
+		t.Fatalf("combined managed and external catalog did not survive restart: %#v", paths)
+	}
+}
+
+func TestIndexFoldersRejectsUnsafeDecodedDimensions(t *testing.T) {
+	app := testApplication(t)
+	source := t.TempDir()
+	safe := filepath.Join(source, "safe.png")
+	unsafe := filepath.Join(source, "unsafe.png")
+	writeTestPNG(t, safe)
+	writeTestPNGDimensions(t, unsafe, maxDecodedImageDimension+1, 1)
+
+	if err := app.indexFolders([]string{source}); err != nil {
+		t.Fatal(err)
+	}
+	paths, _, _ := app.snapshot()
+	if len(paths) != 1 || paths[0] != safe {
+		t.Fatalf("unsafe decoded dimensions entered the index: %#v", paths)
+	}
+}
+
+func containsPath(paths []string, target string) bool {
+	for _, path := range paths {
+		if path == target {
+			return true
+		}
+	}
+	return false
 }
 
 func TestExactDuplicateImportedImagesKeepOneFile(t *testing.T) {

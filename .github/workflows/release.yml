@@ -18,8 +18,10 @@ jobs:
             archive_arch: arm64
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.5"
           cache: false
@@ -32,7 +34,18 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           go build -trimpath -ldflags="-s -w -X main.version=${VERSION}" -o dist/pictogrep .
           cp dist/pictogrep pictogrep-linux-${{ matrix.archive_arch }}
-          tar -C dist -czf pictogrep-linux-${{ matrix.archive_arch }}.tar.gz pictogrep
+          if [ "$GOARCH" = amd64 ]; then
+            . scripts/gallery-dl-version.sh
+            curl --fail --location --proto '=https' --tlsv1.2 \
+              "https://codeberg.org/mikf/gallery-dl/releases/download/v${GALLERY_DL_VERSION}/gallery-dl.bin" \
+              -o dist/gallery-dl
+            chmod 755 dist/gallery-dl
+            dist/gallery-dl --version | grep -F "$GALLERY_DL_VERSION"
+            tar -C dist -czf pictogrep-linux-${{ matrix.archive_arch }}.tar.gz pictogrep gallery-dl
+          else
+            tar -C dist -czf pictogrep-linux-${{ matrix.archive_arch }}.tar.gz pictogrep
+          fi
+          sha256sum pictogrep-linux-${{ matrix.archive_arch }}.tar.gz > pictogrep-linux-${{ matrix.archive_arch }}.tar.gz.sha256
       - name: Install ARM64 emulator
         if: matrix.goarch == 'arm64'
         run: |
@@ -42,11 +55,13 @@ jobs:
         env:
           GOARCH: ${{ matrix.goarch }}
         run: |
-          test "$(tar -tzf pictogrep-linux-${{ matrix.archive_arch }}.tar.gz | wc -l)" -eq 1
+          if [ "$GOARCH" = amd64 ]; then EXPECTED_FILES=2; else EXPECTED_FILES=1; fi
+          test "$(tar -tzf pictogrep-linux-${{ matrix.archive_arch }}.tar.gz | wc -l)" -eq "$EXPECTED_FILES"
           mkdir unpacked
           tar -xzf pictogrep-linux-${{ matrix.archive_arch }}.tar.gz -C unpacked
           if [ "$GOARCH" = arm64 ]; then RUNNER=qemu-aarch64-static; else RUNNER=; fi
           $RUNNER unpacked/pictogrep version | grep "${GITHUB_REF_NAME#v}"
+          if [ "$GOARCH" = amd64 ]; then unpacked/gallery-dl --version; fi
           TEST_ROOT="$(mktemp -d)"
           XDG_DATA_HOME="$TEST_ROOT/share" $RUNNER unpacked/pictogrep install-desktop
           test -s "$TEST_ROOT/share/applications/pictogrep.desktop"
@@ -60,20 +75,20 @@ jobs:
           curl -fsS http://127.0.0.1:8765/api/app/state | grep '"aiAvailable":true'
           kill "$APP_PID"
           wait "$APP_PID" || true
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: |
             pictogrep-linux-${{ matrix.archive_arch }}
             pictogrep-linux-${{ matrix.archive_arch }}.tar.gz
+            pictogrep-linux-${{ matrix.archive_arch }}.tar.gz.sha256
 
   windows:
     runs-on: windows-latest
-    env:
-      WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
-      WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.26.5"
           cache: false
@@ -83,30 +98,52 @@ jobs:
           New-Item -ItemType Directory -Force dist
           $version = "${{ github.ref_name }}".TrimStart("v")
           go build -trimpath -ldflags="-s -w -H windowsgui -X main.version=$version" -o dist/pictogrep.exe .
+      - name: Bundle Pinterest importer
+        shell: pwsh
+        run: |
+          $line = Get-Content scripts/gallery-dl-version.sh | Where-Object { $_ -match '^GALLERY_DL_VERSION=' }
+          $galleryVersion = ($line -split '=', 2)[1]
+          Invoke-WebRequest "https://codeberg.org/mikf/gallery-dl/releases/download/v$galleryVersion/gallery-dl.exe" -OutFile dist/gallery-dl.exe
+          $gallery = Get-Item dist/gallery-dl.exe
+          if ($gallery.Length -lt 1MB -or $gallery.Length -gt 250MB) { throw "gallery-dl download is invalid" }
       - name: Sign executable
-        if: env.WINDOWS_SIGNING_CERTIFICATE != ''
+        env:
+          WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
         shell: pwsh
         run: |
           $certificate = Join-Path $env:RUNNER_TEMP "pictogrep-signing.pfx"
-          [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE))
-          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
-          & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $certificate /p $env:WINDOWS_SIGNING_PASSWORD dist\pictogrep.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          try {
+            [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE))
+            $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
+            & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $certificate /p $env:WINDOWS_SIGNING_PASSWORD dist\pictogrep.exe
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item $certificate -Force -ErrorAction SilentlyContinue
+          }
       - name: Build installer
         shell: pwsh
         run: |
-          choco install innosetup --no-progress -y
           $env:PICTOGREP_VERSION = "${{ github.ref_name }}".TrimStart("v")
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" packaging\windows\pictogrep.iss
+          $iscc = "C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path $iscc)) { throw "Pinned runner image is missing Inno Setup 6" }
+          & $iscc packaging\windows\pictogrep.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Sign installer
-        if: env.WINDOWS_SIGNING_CERTIFICATE != ''
+        env:
+          WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
         shell: pwsh
         run: |
           $certificate = Join-Path $env:RUNNER_TEMP "pictogrep-signing.pfx"
-          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
-          & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $certificate /p $env:WINDOWS_SIGNING_PASSWORD dist\pictogrep-windows-x86_64-setup.exe
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Remove-Item $certificate -Force
+          try {
+            [IO.File]::WriteAllBytes($certificate, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERTIFICATE))
+            $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin\*\x64\signtool.exe" | Sort-Object FullName | Select-Object -Last 1
+            & $signtool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /f $certificate /p $env:WINDOWS_SIGNING_PASSWORD dist\pictogrep-windows-x86_64-setup.exe
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          } finally {
+            Remove-Item $certificate -Force -ErrorAction SilentlyContinue
+          }
       - name: Smoke test clean install and launch
         shell: pwsh
         run: |
@@ -128,6 +165,6 @@ jobs:
           } finally {
             Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
           }
-      - uses: softprops/action-gh-release@v3
+      - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: dist/pictogrep-windows-x86_64-setup.exe

@@ -2,6 +2,9 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -24,8 +27,9 @@ var updateHTTPClient = &http.Client{Timeout: 30 * time.Second}
 var releasesAPI = "https://api.github.com/repos/tiagohierath/pictogrep/releases/latest"
 
 type releaseAsset struct {
-	Name string `json:"name"`
-	URL  string `json:"browser_download_url"`
+	Name   string `json:"name"`
+	URL    string `json:"browser_download_url"`
+	Digest string `json:"digest"`
 }
 
 type githubRelease struct {
@@ -43,6 +47,7 @@ type updateState struct {
 	Hint           string `json:"hint,omitempty"`
 	URL            string `json:"url,omitempty"`
 	AssetURL       string `json:"-"`
+	AssetSHA256    string `json:"-"`
 }
 
 type installationChannel struct {
@@ -103,6 +108,13 @@ func checkForUpdate() (updateState, error) {
 	}
 	for _, asset := range release.Assets {
 		if asset.Name == assetName {
+			if state.Action == "replace" {
+				digest, valid := releaseAssetSHA256(asset.Digest)
+				if !valid {
+					break
+				}
+				state.AssetSHA256 = digest
+			}
 			state.AssetURL = asset.URL
 			if state.Action == "download" {
 				state.URL = asset.URL
@@ -116,6 +128,30 @@ func checkForUpdate() (updateState, error) {
 		state.Hint = "Download the newest standalone release from GitHub Releases."
 	}
 	return state, nil
+}
+
+func releaseAssetSHA256(value string) (string, bool) {
+	algorithm, digest, found := strings.Cut(strings.TrimSpace(value), ":")
+	if !found || !strings.EqualFold(algorithm, "sha256") || len(digest) != sha256.Size*2 {
+		return "", false
+	}
+	decoded, err := hex.DecodeString(digest)
+	if err != nil || len(decoded) != sha256.Size {
+		return "", false
+	}
+	return strings.ToLower(digest), true
+}
+
+func verifyUpdateDigest(binary []byte, expected string) error {
+	expectedBytes, err := hex.DecodeString(expected)
+	if err != nil || len(expectedBytes) != sha256.Size {
+		return fmt.Errorf("the release does not provide a valid SHA-256 digest")
+	}
+	actual := sha256.Sum256(binary)
+	if subtle.ConstantTimeCompare(actual[:], expectedBytes) != 1 {
+		return fmt.Errorf("the downloaded Pictogrep executable failed SHA-256 verification")
+	}
+	return nil
 }
 
 func currentInstallationChannel() installationChannel {
@@ -240,7 +276,7 @@ func installedByScript() bool {
 }
 
 func installUpdate(state updateState) error {
-	if runtime.GOOS != "linux" || state.Action != "replace" || state.AssetURL == "" || !installedByScript() {
+	if runtime.GOOS != "linux" || state.Action != "replace" || state.AssetURL == "" || state.AssetSHA256 == "" || !installedByScript() {
 		return fmt.Errorf("this installation must be updated from the releases page")
 	}
 	response, err := updateHTTPClient.Get(state.AssetURL)
@@ -257,6 +293,9 @@ func installUpdate(state updateState) error {
 	}
 	if len(binary) == 0 || len(binary) > maxUpdateSize {
 		return fmt.Errorf("the downloaded Pictogrep executable is invalid")
+	}
+	if err := verifyUpdateDigest(binary, state.AssetSHA256); err != nil {
+		return err
 	}
 	executable, err := os.Executable()
 	if err != nil {

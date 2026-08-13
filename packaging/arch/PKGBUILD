@@ -7,6 +7,7 @@ pkgdesc="Find local pictures using natural-language descriptions"
 arch=('x86_64')
 url="https://navylily.tv/pictogrep"
 license=('MIT')
+depends=('gallery-dl')
 makedepends=('go')
 _source_url="https://github.com/tiagohierath/pictogrep"
 source=(

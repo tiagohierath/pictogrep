@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"path/filepath"
 	"strconv"
 	"testing"
 )
@@ -36,13 +37,19 @@ func testServerPort(t *testing.T, rawURL string) int {
 }
 
 func TestRunningURLOnlyReusesPictogrep(t *testing.T) {
-	_, pictogrep := testHTTPServer(t)
+	app, pictogrep := testHTTPServer(t)
 	port := testServerPort(t, pictogrep.URL)
-	if result := runningURL(port, "app"); result != pictogrep.URL+"/" {
+	if result := runningURL(port, "app", app.home, version); result != pictogrep.URL+"/" {
 		t.Fatalf("did not recognize Pictogrep server: %q", result)
 	}
-	if result := runningURL(port, "practice"); result != pictogrep.URL+"/practice" {
+	if result := runningURL(port, "practice", app.home, version); result != pictogrep.URL+"/practice" {
 		t.Fatalf("did not recognize storyboard server: %q", result)
+	}
+	if result := runningURL(port, "app", filepath.Join(t.TempDir(), "other-home"), version); result != "" {
+		t.Fatalf("reused a server for another data home: %q", result)
+	}
+	if result := runningURL(port, "app", app.home, version+"-other"); result != "" {
+		t.Fatalf("reused a server running another version: %q", result)
 	}
 
 	other := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -50,7 +57,7 @@ func TestRunningURLOnlyReusesPictogrep(t *testing.T) {
 		_, _ = w.Write([]byte("another local app"))
 	}))
 	defer other.Close()
-	if result := runningURL(testServerPort(t, other.URL), "app"); result != "" {
+	if result := runningURL(testServerPort(t, other.URL), "app", app.home, version); result != "" {
 		t.Fatalf("mistook another local app for Pictogrep: %q", result)
 	}
 }

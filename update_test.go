@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -81,5 +83,33 @@ func TestInstallUpdateRequiresExplicitConfirmation(t *testing.T) {
 	(&server{}).installAppUpdate(response, request)
 	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), `"ok":false`) {
 		t.Fatalf("unconfirmed update was accepted: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+func TestReleaseAssetSHA256Validation(t *testing.T) {
+	digest := sha256.Sum256([]byte("pictogrep release"))
+	want := fmt.Sprintf("%x", digest)
+	if got, ok := releaseAssetSHA256("sha256:" + want); !ok || got != want {
+		t.Fatalf("valid GitHub digest = %q, %t; want %q, true", got, ok, want)
+	}
+	for _, invalid := range []string{"", want, "sha512:" + want, "sha256:not-hex", "sha256:" + want[:62]} {
+		if got, ok := releaseAssetSHA256(invalid); ok {
+			t.Errorf("invalid digest %q accepted as %q", invalid, got)
+		}
+	}
+}
+
+func TestVerifyUpdateDigestRejectsChangedBinary(t *testing.T) {
+	binary := []byte("authentic Pictogrep binary")
+	digest := sha256.Sum256(binary)
+	expected := fmt.Sprintf("%x", digest)
+	if err := verifyUpdateDigest(binary, expected); err != nil {
+		t.Fatalf("matching digest was rejected: %v", err)
+	}
+	if err := verifyUpdateDigest([]byte("changed binary"), expected); err == nil {
+		t.Fatal("changed update binary passed digest verification")
+	}
+	if err := verifyUpdateDigest(binary, "not-a-digest"); err == nil {
+		t.Fatal("invalid expected digest was accepted")
 	}
 }

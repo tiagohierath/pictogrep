@@ -29,12 +29,17 @@ import (
 	"time"
 )
 
-const maxUploadBytes = 100 << 20
+const (
+	maxUploadBytes           = 100 << 20
+	maxDecodedImagePixels    = 25_000_000
+	maxDecodedImageDimension = 16_384
+)
 
 type server struct {
 	app           *application
 	practice      []byte
 	remoteFetcher remoteImageFetcher
+	galleryDL     galleryDLRunner
 }
 
 type imageRecord struct {
@@ -54,7 +59,10 @@ func newServer(app *application) (*server, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &server{app: app, practice: practice, remoteFetcher: downloadRemoteImage}, nil
+	return &server{
+		app: app, practice: practice, remoteFetcher: downloadRemoteImage,
+		galleryDL: runGalleryDL,
+	}, nil
 }
 
 func (s *server) routes() http.Handler {
@@ -70,6 +78,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/app/plugins", s.savePlugin)
 	mux.HandleFunc("GET /api/app/plugins/wikimedia/search", s.wikimediaSearch)
 	mux.HandleFunc("GET /api/app/plugins/calendar", s.calendarView)
+	mux.HandleFunc("POST /api/app/plugins/pinterest/import", s.importPinterestBoard)
 	mux.HandleFunc("POST /api/app/settings/storage", s.saveStorageSettings)
 	mux.HandleFunc("POST /api/app/settings/language", s.saveStorageSettings)
 	mux.HandleFunc("POST /api/app/settings/browser", s.saveBrowserSettings)
@@ -173,6 +182,8 @@ func (s *server) installAppUpdate(w http.ResponseWriter, r *http.Request) {
 
 func securityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
+		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
 		if !isLoopbackAuthority(r.Host) {
@@ -257,6 +268,8 @@ func (s *server) licenses(w http.ResponseWriter, r *http.Request) {
 		{name: "third_party/transformers.js/LICENSE", label: "Transformers.js — Apache-2.0"},
 		{name: "third_party/onnxruntime/LICENSE", label: "ONNX Runtime — MIT"},
 		{name: "third_party/onnxruntime/ThirdPartyNotices.txt", label: "ONNX Runtime third-party notices"},
+		{name: "third_party/gallery-dl/NOTICE.md", label: "gallery-dl notice"},
+		{name: "third_party/gallery-dl/LICENSE", label: "gallery-dl — GPL-2.0-only"},
 	}
 	var output bytes.Buffer
 	for _, file := range files {
@@ -373,6 +386,7 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 	if len(paths) > 0 {
 		index = map[string]any{"count": len(paths), "sources": sources, "due": false, "maintenance_due": false, "duplicates": 0}
 	}
+	_, galleryDLError := galleryDLBinary()
 	sendJSON(w, 200, map[string]any{
 		"ok": true, "version": version, "model": s.app.embeddingModel.ModelID, "pretrained": s.app.embeddingModel.Revision,
 		"semanticModel": s.app.embeddingModel.Key, "embeddingModel": s.app.embeddingModel,
@@ -396,6 +410,10 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 			"calendar":  map[string]any{"enabled": s.app.pluginEnabled("calendar"), "name": "Calendar view", "description": "Browse local images grouped by when they were added."},
 			"sidebar":   map[string]any{"enabled": s.app.pluginEnabled("sidebar"), "name": "Sidebar", "description": "Drag images into collections from a quick side panel."},
 			"vim":       map[string]any{"enabled": s.app.pluginEnabled("vim"), "name": "Vim Mode", "description": "Use Vim-style keyboard navigation in the library and storyboard."},
+			"pinterest": map[string]any{
+				"enabled": s.app.pluginEnabled("pinterest"), "available": galleryDLError == nil,
+				"name": "Import from Pinterest", "description": "Import every image from a public Pinterest board.",
+			},
 			"commandPalette": map[string]any{
 				"enabled": s.app.pluginEnabled("commandPalette"), "name": "Command palette",
 				"description": "Open navigation and image search with Ctrl+K or Command+K.",
@@ -1206,8 +1224,8 @@ func validImageFile(path string) bool {
 		return false
 	}
 	defer file.Close()
-	if _, format, err := image.DecodeConfig(file); err == nil {
-		return imageFormatMatches(strings.ToLower(filepath.Ext(path)), format)
+	if config, format, err := image.DecodeConfig(file); err == nil {
+		return imageFormatMatches(strings.ToLower(filepath.Ext(path)), format) && safeImageDimensions(config.Width, config.Height)
 	}
 	if strings.ToLower(filepath.Ext(path)) != ".webp" {
 		return false
@@ -1215,10 +1233,21 @@ func validImageFile(path string) bool {
 	if _, err := file.Seek(0, io.SeekStart); err != nil {
 		return false
 	}
-	header := make([]byte, 20)
+	header := make([]byte, 30)
 	_, err = io.ReadFull(file, header)
 	info, statErr := file.Stat()
-	return err == nil && statErr == nil && validWebPHeader(header, info.Size())
+	if err != nil || statErr != nil || !validWebPHeader(header, info.Size()) {
+		return false
+	}
+	width, height, ok := webPDimensions(header)
+	return ok && safeImageDimensions(width, height)
+}
+
+func safeImageDimensions(width, height int) bool {
+	if width < 1 || height < 1 || width > maxDecodedImageDimension || height > maxDecodedImageDimension {
+		return false
+	}
+	return int64(width) <= int64(maxDecodedImagePixels)/int64(height)
 }
 
 func imageFormatMatches(extension, format string) bool {
@@ -1242,6 +1271,38 @@ func validWebPHeader(header []byte, size int64) bool {
 	chunkSize := int64(binary.LittleEndian.Uint32(header[16:20]))
 	chunk := string(header[12:16])
 	return declaredSize == size && chunkSize <= size-20 && (chunk == "VP8 " || chunk == "VP8L" || chunk == "VP8X")
+}
+
+func webPDimensions(header []byte) (int, int, bool) {
+	if len(header) < 25 {
+		return 0, 0, false
+	}
+	chunkSize := binary.LittleEndian.Uint32(header[16:20])
+	switch string(header[12:16]) {
+	case "VP8X":
+		if len(header) < 30 || chunkSize < 10 {
+			return 0, 0, false
+		}
+		width := 1 + int(header[24]) + int(header[25])<<8 + int(header[26])<<16
+		height := 1 + int(header[27]) + int(header[28])<<8 + int(header[29])<<16
+		return width, height, true
+	case "VP8L":
+		if chunkSize < 5 || header[20] != 0x2f {
+			return 0, 0, false
+		}
+		width := 1 + int(header[21]) + int(header[22]&0x3f)<<8
+		height := 1 + int(header[22]>>6) + int(header[23])<<2 + int(header[24]&0x0f)<<10
+		return width, height, true
+	case "VP8 ":
+		if len(header) < 30 || chunkSize < 10 || header[20]&1 != 0 || string(header[23:26]) != "\x9d\x01\x2a" {
+			return 0, 0, false
+		}
+		width := int(binary.LittleEndian.Uint16(header[26:28]) & 0x3fff)
+		height := int(binary.LittleEndian.Uint16(header[28:30]) & 0x3fff)
+		return width, height, true
+	default:
+		return 0, 0, false
+	}
 }
 
 func collectionName(value string) (string, error) {
@@ -1526,6 +1587,22 @@ func (s *server) thumbnail(w http.ResponseWriter, r *http.Request) {
 	file, err := os.Open(path)
 	if err != nil {
 		http.NotFound(w, r)
+		return
+	}
+	config, format, configErr := image.DecodeConfig(file)
+	if configErr != nil || !imageFormatMatches(strings.ToLower(filepath.Ext(path)), format) {
+		_ = file.Close()
+		s.image(w, r)
+		return
+	}
+	if !safeImageDimensions(config.Width, config.Height) {
+		_ = file.Close()
+		http.Error(w, "image dimensions are too large for a safe preview", http.StatusUnprocessableEntity)
+		return
+	}
+	if _, err := file.Seek(0, io.SeekStart); err != nil {
+		_ = file.Close()
+		s.image(w, r)
 		return
 	}
 	source, _, decodeErr := image.Decode(file)
@@ -1814,10 +1891,14 @@ func (s *server) addReference(w http.ResponseWriter, r *http.Request) {
 }
 
 func validImageData(raw []byte, extension string) bool {
-	if _, format, err := image.DecodeConfig(bytes.NewReader(raw)); err == nil {
-		return imageFormatMatches(extension, format)
+	if config, format, err := image.DecodeConfig(bytes.NewReader(raw)); err == nil {
+		return imageFormatMatches(extension, format) && safeImageDimensions(config.Width, config.Height)
 	}
-	return extension == ".webp" && validWebPHeader(raw, int64(len(raw)))
+	if extension != ".webp" || !validWebPHeader(raw, int64(len(raw))) {
+		return false
+	}
+	width, height, ok := webPDimensions(raw)
+	return ok && safeImageDimensions(width, height)
 }
 
 func (s *server) deleteReference(w http.ResponseWriter, r *http.Request) {
@@ -1869,16 +1950,47 @@ func (s *server) saveBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	aspect := strings.ReplaceAll(request.Aspect, ":", "x")
-	filename := fmt.Sprintf("%04d_%s_%s.png", request.Index, aspect, cleanStem(request.ImageName))
+	// The stable image ID prevents drawings for same-named images in different
+	// folders (or different search result sets) from silently replacing one
+	// another. imagePathByID above guarantees this is a complete SHA-256 ID.
+	filename := fmt.Sprintf("%04d_%s_%s_%s.png", request.Index, aspect, cleanStem(filepath.Base(path)), request.ImageID)
 	target := filepath.Join(s.app.boardsDir, filename)
-	if err := os.WriteFile(target, raw, 0o644); err != nil {
+	if err := writeFileAtomically(target, raw, 0o644); err != nil {
 		sendError(w, 400, err)
 		return
 	}
 	metadata := map[string]any{"file": filename, "source": path, "aspect": request.Aspect, "tags": s.tagsForImage(path), "query": strings.TrimSpace(request.Query)}
 	data, _ := json.MarshalIndent(metadata, "", "  ")
-	_ = os.WriteFile(strings.TrimSuffix(target, ".png")+".json", append(data, '\n'), 0o644)
+	if err := writeFileAtomically(strings.TrimSuffix(target, ".png")+".json", append(data, '\n'), 0o644); err != nil {
+		sendError(w, 500, fmt.Errorf("drawing was saved, but its metadata could not be saved"))
+		return
+	}
 	sendJSON(w, 200, map[string]any{"ok": true, "file": filename})
+}
+
+func writeFileAtomically(target string, data []byte, mode fs.FileMode) error {
+	file, err := os.CreateTemp(filepath.Dir(target), "."+filepath.Base(target)+"-*.tmp")
+	if err != nil {
+		return err
+	}
+	temporary := file.Name()
+	defer os.Remove(temporary)
+	if err := file.Chmod(mode); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err := file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporary, target)
 }
 
 func decodeJSON(r *http.Request, target any, limit int64) error {

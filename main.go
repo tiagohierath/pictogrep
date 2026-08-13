@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"net"
@@ -61,6 +62,17 @@ func run(args []string) error {
 	case "uninstall-desktop":
 		return uninstallDesktopShortcut()
 	}
+	home := defaultHome()
+	lock, err := acquireInstanceLock(home)
+	if err != nil {
+		if errors.Is(err, errInstanceLocked) {
+			if reused, reuseErr := reuseExistingServer(command, commandArgs, home); reused || reuseErr != nil {
+				return reuseErr
+			}
+		}
+		return err
+	}
+	defer lock.Close()
 	app, err := newApplication()
 	if err != nil {
 		return err
@@ -114,6 +126,50 @@ func run(args []string) error {
 	}
 }
 
+type serveOptions struct {
+	port   int
+	noOpen bool
+	page   string
+}
+
+func parseServeOptions(args []string) (serveOptions, error) {
+	flags := flag.NewFlagSet("pictogrep web", flag.ContinueOnError)
+	port := flags.Int("port", defaultPort, "local port")
+	noOpen := flags.Bool("no-open", false, "do not open a browser")
+	page := flags.String("page", "app", "initial page")
+	if err := flags.Parse(args); err != nil {
+		return serveOptions{}, err
+	}
+	return serveOptions{port: *port, noOpen: *noOpen, page: *page}, nil
+}
+
+func reuseExistingServer(command string, args []string, home string) (bool, error) {
+	switch command {
+	case "storyboard", "story", "board", "sb":
+		args = append([]string{"--page", "practice"}, args...)
+	case "web", "app", "serve":
+	default:
+		return false, nil
+	}
+	options, err := parseServeOptions(args)
+	if err != nil {
+		return true, err
+	}
+	instance := probeRunningInstance(options.port)
+	if instance.matches(home, version) {
+		url := instance.pageURL(options.page)
+		fmt.Println("Pictogrep is already running:", url)
+		if !options.noOpen {
+			_ = openBrowser(url)
+		}
+		return true, nil
+	}
+	if instance.found && sameDataHome(instance.home, home) {
+		return true, fmt.Errorf("Pictogrep %s is still using this library; close it before starting Pictogrep %s", instance.version, version)
+	}
+	return true, fmt.Errorf("another Pictogrep process is using this library; close it before starting a new one")
+}
+
 func splitCommand(args []string) (string, []string) {
 	if len(args) == 0 {
 		return "web", nil
@@ -139,41 +195,43 @@ func doctor(app *application) error {
 }
 
 func serve(app *application, args []string) error {
-	flags := flag.NewFlagSet("pictogrep web", flag.ContinueOnError)
-	port := flags.Int("port", defaultPort, "local port")
-	noOpen := flags.Bool("no-open", false, "do not open a browser")
-	page := flags.String("page", "app", "initial page")
-	if err := flags.Parse(args); err != nil {
+	options, err := parseServeOptions(args)
+	if err != nil {
 		return err
 	}
 	handler, err := newServer(app)
 	if err != nil {
 		return err
 	}
-	listener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(*port))
-	if err != nil && *port == defaultPort {
-		if existingURL := runningURL(*port, *page); existingURL != "" {
+	listener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(options.port))
+	if err != nil && options.port == defaultPort {
+		instance := probeRunningInstance(options.port)
+		if instance.matches(app.home, version) {
+			existingURL := instance.pageURL(options.page)
 			fmt.Println("Pictogrep is already running:", existingURL)
-			if !*noOpen {
+			if !options.noOpen {
 				_ = openBrowser(existingURL)
 			}
 			return nil
 		}
+		if instance.found && sameDataHome(instance.home, app.home) {
+			return fmt.Errorf("Pictogrep %s is still using this library; close it before starting Pictogrep %s", instance.version, version)
+		}
 		listener, err = net.Listen("tcp", "127.0.0.1:0")
 	}
 	if err != nil {
-		return fmt.Errorf("could not listen on port %d: %w", *port, err)
+		return fmt.Errorf("could not listen on port %d: %w", options.port, err)
 	}
 	actualPort := listener.Addr().(*net.TCPAddr).Port
 	path := "/"
-	if *page == "practice" {
+	if options.page == "practice" {
 		path = "/practice"
 	}
 	url := fmt.Sprintf("http://127.0.0.1:%d%s", actualPort, path)
 	paths, _, _ := app.snapshot()
 	fmt.Println("Pictogrep:", url)
 	fmt.Printf("%d images available. Press Ctrl+C to stop.\n", len(paths))
-	if !*noOpen {
+	if !options.noOpen {
 		go func() {
 			time.Sleep(120 * time.Millisecond)
 			if err := openBrowser(url); err != nil {
@@ -197,12 +255,19 @@ func serve(app *application, args []string) error {
 	return err
 }
 
-func runningURL(port int, page string) string {
-	client := http.Client{Timeout: 350 * time.Millisecond}
+type runningInstance struct {
+	found   bool
+	port    int
+	version string
+	home    string
+}
+
+func probeRunningInstance(port int) runningInstance {
+	client := http.Client{Timeout: 3 * time.Second}
 	url := fmt.Sprintf("http://127.0.0.1:%d/api/app/state", port)
 	response, err := client.Get(url)
 	if err != nil {
-		return ""
+		return runningInstance{}
 	}
 	defer response.Body.Close()
 	var state struct {
@@ -211,12 +276,28 @@ func runningURL(port int, page string) string {
 		Paths   map[string]string `json:"paths"`
 	}
 	if response.StatusCode != 200 || json.NewDecoder(response.Body).Decode(&state) != nil || !state.OK || state.Version == "" || state.Paths["home"] == "" {
+		return runningInstance{}
+	}
+	return runningInstance{found: true, port: port, version: state.Version, home: state.Paths["home"]}
+}
+
+func (instance runningInstance) matches(home, expectedVersion string) bool {
+	return instance.found && instance.version == expectedVersion && sameDataHome(instance.home, home)
+}
+
+func (instance runningInstance) pageURL(page string) string {
+	if page == "practice" {
+		return fmt.Sprintf("http://127.0.0.1:%d/practice", instance.port)
+	}
+	return fmt.Sprintf("http://127.0.0.1:%d/", instance.port)
+}
+
+func runningURL(port int, page, home, expectedVersion string) string {
+	instance := probeRunningInstance(port)
+	if !instance.matches(home, expectedVersion) {
 		return ""
 	}
-	if page == "practice" {
-		return fmt.Sprintf("http://127.0.0.1:%d/practice", port)
-	}
-	return fmt.Sprintf("http://127.0.0.1:%d/", port)
+	return instance.pageURL(page)
 }
 
 func browserCommand(url string) *exec.Cmd {

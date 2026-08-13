@@ -23,16 +23,21 @@
         in {
           default = pkgs.buildGoModule {
             pname = "pictogrep";
-            version = "0.5.0";
+            version = "0.6.0";
             src = self;
             vendorHash = null;
             subPackages = [ "." ];
             ldflags = [ "-s" "-w" ];
+            nativeBuildInputs = [ pkgs.makeWrapper ];
             postInstall = ''
               mkdir -p $out/share/applications
               cp ${desktopItem}/share/applications/pictogrep.desktop $out/share/applications/
               mkdir -p $out/share/icons/hicolor/512x512/apps
               cp assets/pictogrep.png $out/share/icons/hicolor/512x512/apps/pictogrep.png
+            '';
+            postFixup = ''
+              wrapProgram $out/bin/pictogrep \
+                --prefix PATH : ${pkgs.lib.makeBinPath [ pkgs.gallery-dl ]}
             '';
             meta = {
               description = "Local image search and storyboarding application";

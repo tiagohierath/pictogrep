@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var version = "0.5.0"
+var version = "0.6.0"
 
 const (
 	maxCachedQueries = 512
@@ -331,7 +331,9 @@ func (a *application) saveIndexingSettings(settings indexingSettings) error {
 }
 
 func (a *application) pluginEnabled(name string) bool {
-	defaultEnabled := false
+	// Pinterest import ships with release installations and is ready on first
+	// launch, while remaining an ordinary plugin that users can turn off.
+	defaultEnabled := name == "pinterest"
 	data, err := os.ReadFile(a.configPath)
 	if err != nil {
 		return defaultEnabled
@@ -350,7 +352,7 @@ func (a *application) pluginEnabled(name string) bool {
 }
 
 func (a *application) setPluginEnabled(name string, enabled bool) error {
-	if name != "wikimedia" && name != "calendar" && name != "sidebar" && name != "vim" && name != "commandPalette" {
+	if name != "wikimedia" && name != "calendar" && name != "sidebar" && name != "vim" && name != "commandPalette" && name != "pinterest" {
 		return fmt.Errorf("unknown plugin: %s", name)
 	}
 	document := map[string]any{}
@@ -839,7 +841,7 @@ func (a *application) loadLibrary() error {
 			_ = json.Unmarshal(data, &state.Images)
 		}
 	}
-	state.Images = existingUniquePaths(state.Images)
+	state.Images = safeImagePaths(existingUniquePaths(state.Images))
 	a.paths = state.Images
 	a.sources = existingUniqueDirectories(state.Sources)
 	if len(a.paths) == 0 {
@@ -879,6 +881,16 @@ func existingUniquePaths(paths []string) []string {
 	return result
 }
 
+func safeImagePaths(paths []string) []string {
+	result := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if validImageFile(path) {
+			result = append(result, path)
+		}
+	}
+	return result
+}
+
 func existingUniqueDirectories(paths []string) []string {
 	seen := map[string]bool{}
 	result := make([]string, 0, len(paths))
@@ -902,7 +914,7 @@ func scanImages(root string) ([]string, error) {
 		return nil, err
 	}
 	if !info.IsDir() {
-		if imageExtensions[strings.ToLower(filepath.Ext(root))] {
+		if imageExtensions[strings.ToLower(filepath.Ext(root))] && validImageFile(root) {
 			return []string{root}, nil
 		}
 		return nil, nil
@@ -921,7 +933,7 @@ func scanImages(root string) ([]string, error) {
 			}
 			return nil
 		}
-		if imageExtensions[strings.ToLower(filepath.Ext(path))] {
+		if imageExtensions[strings.ToLower(filepath.Ext(path))] && validImageFile(path) {
 			paths = append(paths, path)
 		}
 		return nil
@@ -1108,8 +1120,13 @@ func (a *application) indexFolders(requested []string) error {
 	if len(folders) == 0 {
 		return errors.New("add an image folder first")
 	}
+	// Managed imports are always part of the library, even when this operation
+	// refreshes one or more external source folders. Otherwise replacing the
+	// catalog below would silently orphan every image imported into libraryDir.
+	scanFolders := append([]string{a.libraryDir}, folders...)
+	scanFolders = uniqueStrings(scanFolders)
 	all := []string{}
-	for _, folder := range folders {
+	for _, folder := range scanFolders {
 		info, err := os.Stat(folder)
 		if err != nil {
 			return fmt.Errorf("folder does not exist: %s", folder)

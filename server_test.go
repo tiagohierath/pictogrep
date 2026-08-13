@@ -81,6 +81,23 @@ func TestLocalRequestProtection(t *testing.T) {
 	}
 }
 
+func TestBrowserPagesCannotBeFramed(t *testing.T) {
+	app := testApplication(t)
+	server, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8765/", nil)
+	response := httptest.NewRecorder()
+	server.routes().ServeHTTP(response, request)
+	if response.Header().Get("X-Frame-Options") != "DENY" {
+		t.Fatalf("X-Frame-Options=%q, want DENY", response.Header().Get("X-Frame-Options"))
+	}
+	if policy := response.Header().Get("Content-Security-Policy"); !strings.Contains(policy, "frame-ancestors 'none'") {
+		t.Fatalf("Content-Security-Policy=%q, want frame-ancestors protection", policy)
+	}
+}
+
 func TestBrowserBackgroundLogEndpoint(t *testing.T) {
 	_, server := testHTTPServer(t)
 	response, err := http.Post(server.URL+"/api/app/log", "application/json", strings.NewReader(`{
@@ -291,6 +308,31 @@ func TestUploadValidatesDataBeforeChangingLibrary(t *testing.T) {
 	entries, _ := os.ReadDir(app.libraryDir)
 	if len(paths) != 0 || len(entries) != 0 {
 		t.Fatalf("rejected uploads changed the library: paths=%#v entries=%d", paths, len(entries))
+	}
+}
+
+func TestUploadRejectsUnsafeDecodedDimensions(t *testing.T) {
+	app := testApplication(t)
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	picture := filepath.Join(t.TempDir(), "oversized.png")
+	writeTestPNGDimensions(t, picture, maxDecodedImageDimension+1, 1)
+	data, err := os.ReadFile(picture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/app/upload?name=oversized.png", bytes.NewReader(data))
+	response := httptest.NewRecorder()
+	handler.appUpload(response, request)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("unsafe upload was accepted: status=%d body=%s", response.Code, response.Body.String())
+	}
+	paths, _, _ := app.snapshot()
+	entries, _ := os.ReadDir(app.libraryDir)
+	if len(paths) != 0 || len(entries) != 0 {
+		t.Fatalf("unsafe upload changed the library: paths=%#v entries=%d", paths, len(entries))
 	}
 }
 
@@ -524,6 +566,41 @@ func TestCanvasThumbnailIsGeneratedLocally(t *testing.T) {
 	}
 }
 
+func TestThumbnailRejectsImageThatChangedToUnsafeDimensions(t *testing.T) {
+	app := testApplication(t)
+	picture := filepath.Join(app.libraryDir, "changed-after-index.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+	writeTestPNGDimensions(t, picture, maxDecodedImageDimension+1, 1)
+
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1/thumbnail/"+stableImageID(picture), nil)
+	response := httptest.NewRecorder()
+	handler.routes().ServeHTTP(response, request)
+	if response.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("unsafe thumbnail was decoded: status=%d body=%s", response.Code, response.Body.String())
+	}
+	cache, err := filepath.Glob(filepath.Join(app.thumbnailDir, "*.jpg"))
+	if err != nil || len(cache) != 0 {
+		t.Fatalf("unsafe thumbnail populated the cache: files=%#v err=%v", cache, err)
+	}
+}
+
+func TestSafeImageDimensionsCapsPixelsAndEachDimension(t *testing.T) {
+	if !safeImageDimensions(5000, 5000) {
+		t.Fatal("image at the decoded-pixel limit was rejected")
+	}
+	if safeImageDimensions(5001, 5000) {
+		t.Fatal("image over the decoded-pixel limit was accepted")
+	}
+	if safeImageDimensions(maxDecodedImageDimension+1, 1) {
+		t.Fatal("image over the per-dimension limit was accepted")
+	}
+}
+
 func TestDeleteImageRequiresConfirmationAndExactPath(t *testing.T) {
 	app, server := testHTTPServer(t)
 	picture := filepath.Join(app.libraryDir, "delete-me.png")
@@ -657,6 +734,130 @@ func TestReferencesAndBoardsRejectInvalidImageData(t *testing.T) {
 	}
 	if len(references) != 0 || boardFiles != 0 {
 		t.Fatalf("rejected image data changed files: references=%d boards=%d", len(references), boardFiles)
+	}
+}
+
+func TestStoryboardSavesUseStableImageIdentity(t *testing.T) {
+	app := testApplication(t)
+	server, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := server.routes()
+	firstDirectory := t.TempDir()
+	secondDirectory := t.TempDir()
+	first := filepath.Join(firstDirectory, "reference.png")
+	second := filepath.Join(secondDirectory, "reference.png")
+	writeTestPNG(t, first)
+	writeTestPNG(t, second)
+	app.addPath(first)
+	app.addPath(second)
+
+	drawing, err := os.ReadFile(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	dataURL := "data:image/png;base64," + base64.StdEncoding.EncodeToString(drawing)
+	savedFiles := map[string]string{}
+	for _, source := range []string{first, second} {
+		payload, _ := json.Marshal(map[string]any{
+			"dataUrl": dataURL, "hasDrawing": true, "aspect": "16:9", "index": 1,
+			"imageName": filepath.Base(source), "imageId": stableImageID(source),
+		})
+		request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8765/api/save", bytes.NewReader(payload))
+		request.Header.Set("Content-Type", "application/json")
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, request)
+		var value map[string]any
+		if err := json.NewDecoder(response.Body).Decode(&value); err != nil {
+			t.Fatal(err)
+		}
+		if response.Code != http.StatusOK || value["ok"] != true {
+			t.Fatalf("storyboard save failed: status=%d %#v", response.Code, value)
+		}
+		filename := value["file"].(string)
+		if !strings.Contains(filename, stableImageID(source)) {
+			t.Fatalf("storyboard filename %q does not contain stable image ID", filename)
+		}
+		if _, duplicate := savedFiles[filename]; duplicate {
+			t.Fatalf("same-named images used the same storyboard filename %q", filename)
+		}
+		savedFiles[filename] = source
+	}
+
+	for filename, source := range savedFiles {
+		board, err := os.ReadFile(filepath.Join(app.boardsDir, filename))
+		if err != nil || !bytes.Equal(board, drawing) {
+			t.Fatalf("saved storyboard %q is missing or corrupt: err=%v", filename, err)
+		}
+		metadataPath := filepath.Join(app.boardsDir, strings.TrimSuffix(filename, ".png")+".json")
+		metadataData, err := os.ReadFile(metadataPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var metadata map[string]any
+		if err := json.Unmarshal(metadataData, &metadata); err != nil || metadata["source"] != source {
+			t.Fatalf("storyboard metadata %q does not identify %q: %#v err=%v", metadataPath, source, metadata, err)
+		}
+	}
+
+	// Saving the same board again replaces its contents through a temporary file
+	// while keeping the stable identity-based filename.
+	replacement, err := os.ReadFile(second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Equal(drawing, replacement) {
+		t.Fatal("storyboard replacement fixture unexpectedly matches the original")
+	}
+	payload, _ := json.Marshal(map[string]any{
+		"dataUrl":    "data:image/png;base64," + base64.StdEncoding.EncodeToString(replacement),
+		"hasDrawing": true, "aspect": "16:9", "index": 1,
+		"imageName": filepath.Base(first), "imageId": stableImageID(first),
+	})
+	request := httptest.NewRequest(http.MethodPost, "http://127.0.0.1:8765/api/save", bytes.NewReader(payload))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, request)
+	var value map[string]any
+	if err := json.NewDecoder(response.Body).Decode(&value); err != nil {
+		t.Fatal(err)
+	}
+	if response.Code != http.StatusOK || value["ok"] != true {
+		t.Fatalf("storyboard replacement failed: status=%d %#v", response.Code, value)
+	}
+	filename, ok := value["file"].(string)
+	if !ok || filename == "" {
+		t.Fatalf("storyboard replacement returned no filename: %#v", value)
+	}
+	board, err := os.ReadFile(filepath.Join(app.boardsDir, filename))
+	if err != nil || !bytes.Equal(board, replacement) {
+		t.Fatalf("atomic storyboard replacement failed: status=%d file=%q err=%v", response.Code, filename, err)
+	}
+	temporaryFiles, err := filepath.Glob(filepath.Join(app.boardsDir, ".*.tmp"))
+	if err != nil || len(temporaryFiles) != 0 {
+		t.Fatalf("storyboard save left temporary files behind: files=%#v err=%v", temporaryFiles, err)
+	}
+}
+
+func TestStoryboardNavigationWaitsForActiveSave(t *testing.T) {
+	source, err := embeddedFiles.ReadFile("web/practice.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	html := string(source)
+	for _, expected := range []string{
+		"while (activeSavePromise)",
+		"await activeSavePromise",
+		"return dirty ? saveCurrent(showStatus) : saved",
+		"window.addEventListener('beforeunload'",
+	} {
+		if !strings.Contains(html, expected) {
+			t.Fatalf("storyboard save serialization is missing %q", expected)
+		}
+	}
+	if strings.Contains(html, "if (saving) {\n        saveAgain = true;\n        return true;") {
+		t.Fatal("storyboard still reports success before an active save finishes")
 	}
 }
 

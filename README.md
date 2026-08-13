@@ -73,6 +73,18 @@ The optional **Command palette** plugin opens with <kbd>Ctrl+K</kbd> (or
 default and includes shortcuts to the library, folders, Settings, and the
 storyboard. Like every official plugin, it is disabled by default.
 
+The **Import from Pinterest** official plugin copies every downloadable image
+from a public Pinterest board into the local library. It can add images directly
+or organize them into a board folder, and exact duplicates can be skipped. It is
+enabled by default: open **Menu → Import from Pinterest**, paste a public board
+link, and choose **Download all**. You can turn it off or back on from
+**Menu → Official plugins**.
+
+Release installations for Windows and Linux x86-64 include the pinned
+[`gallery-dl`](https://github.com/mikf/gallery-dl) helper. Arch and Nix packages
+provide it as a package dependency. Source builds and Linux ARM64 standalone
+archives use `gallery-dl` from `PATH` when available.
+
 The **Folders** view mirrors indexed source folders and their nested subfolders.
 Click any level of the hierarchy to see the pictures inside it. The folder's
 **Canvas** action opens a free 2D workspace where pictures can be dragged into
@@ -134,7 +146,8 @@ run, and the Settings menu edits this same file. For example:
     "calendar": false,
     "sidebar": false,
     "vim": false,
-    "commandPalette": false
+    "commandPalette": false,
+    "pinterest": true
   }
 }
 ```

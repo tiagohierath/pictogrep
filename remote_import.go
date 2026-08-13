@@ -78,6 +78,14 @@ func (s *server) importImageURL(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) saveImportedImage(reader io.Reader, requestedName, folder, source string) (map[string]any, int, error) {
+	return s.saveImportedImageWithOptions(reader, requestedName, folder, source, true, false, nil)
+}
+
+// saveImportedImageWithOptions lets batch importers choose whether an exact
+// duplicate should be linked to the destination collection and whether a
+// duplicate outside a collection is a successful no-op. Ordinary one-image
+// imports retain their existing conflict behavior through saveImportedImage.
+func (s *server) saveImportedImageWithOptions(reader io.Reader, requestedName, folder, source string, linkDuplicate, duplicateOK bool, digestIndex map[[32]byte]string) (map[string]any, int, error) {
 	name, err := safeImageName(requestedName)
 	if err != nil {
 		return nil, http.StatusBadRequest, err
@@ -104,12 +112,14 @@ func (s *server) saveImportedImage(reader io.Reader, requestedName, folder, sour
 		_ = os.Remove(target)
 		return nil, http.StatusBadRequest, fmt.Errorf("dropped file is not a valid image")
 	}
-	if existing, duplicate, err := s.app.duplicatePath(target); err != nil {
+	existing, duplicate, digest, err := s.importDuplicate(target, digestIndex)
+	if err != nil {
 		_ = os.Remove(target)
 		return nil, http.StatusBadRequest, err
-	} else if duplicate {
+	}
+	if duplicate {
 		_ = os.Remove(target)
-		if folder != "" {
+		if folder != "" && linkDuplicate {
 			linked, linkErr := s.linkTag(folder, existing)
 			if linkErr != nil {
 				return nil, http.StatusBadRequest, linkErr
@@ -117,6 +127,12 @@ func (s *server) saveImportedImage(reader io.Reader, requestedName, folder, sour
 			return map[string]any{
 				"ok": true, "name": filepath.Base(existing), "path": existing,
 				"folder": folder, "source": "", "duplicate": true, "linked": linked,
+			}, http.StatusOK, nil
+		}
+		if duplicateOK {
+			return map[string]any{
+				"ok": true, "name": filepath.Base(existing), "path": existing,
+				"folder": folder, "source": "", "duplicate": true, "linked": false,
 			}, http.StatusOK, nil
 		}
 		return nil, http.StatusConflict, fmt.Errorf("exact duplicate: Pictogrep kept the existing picture")
@@ -128,10 +144,42 @@ func (s *server) saveImportedImage(reader io.Reader, requestedName, folder, sour
 		}
 	}
 	s.app.addPath(target)
+	if digestIndex != nil {
+		digestIndex[digest] = target
+	}
 	return map[string]any{
 		"ok": true, "name": filepath.Base(target), "path": target,
 		"folder": folder, "source": source,
 	}, http.StatusOK, nil
+}
+
+// importDuplicate uses a batch digest index when one is available. A Pinterest
+// board can contain thousands of images, so rereading every library file for
+// every item would otherwise turn one import into quadratic disk I/O.
+func (s *server) importDuplicate(candidate string, digestIndex map[[32]byte]string) (string, bool, [32]byte, error) {
+	if digestIndex == nil {
+		existing, duplicate, err := s.app.duplicatePath(candidate)
+		return existing, duplicate, [32]byte{}, err
+	}
+	digest, err := fileDigest(candidate)
+	if err != nil {
+		return "", false, digest, err
+	}
+	existing, duplicate := digestIndex[digest]
+	return existing, duplicate, digest, nil
+}
+
+func (a *application) importDigestIndex() map[[32]byte]string {
+	paths, _, _ := a.snapshot()
+	index := make(map[[32]byte]string, len(paths))
+	for _, path := range paths {
+		if digest, err := fileDigest(path); err == nil {
+			if _, exists := index[digest]; !exists {
+				index[digest] = path
+			}
+		}
+	}
+	return index
 }
 
 func (s *server) importDestination(folder, source string) (directory, cleanFolder, cleanSource string, err error) {
