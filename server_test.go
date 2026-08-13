@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -1046,6 +1047,43 @@ func TestPortugueseLocaleHasEveryEnglishKey(t *testing.T) {
 	for key := range locales["en"] {
 		if locales["pt-BR"][key] == "" {
 			t.Errorf("Portuguese locale is missing %q", key)
+		}
+	}
+	for key := range locales["pt-BR"] {
+		if locales["en"][key] == "" {
+			t.Errorf("English locale is missing %q", key)
+		}
+	}
+	if got := locales["pt-BR"]["pinterest.title"]; got != "Importar do Pinterest" {
+		t.Errorf("Pinterest title was not translated: %q", got)
+	}
+}
+
+func TestBrowserLocalizationKeysExist(t *testing.T) {
+	data, err := embeddedFiles.ReadFile("web/i18n/locales/en.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	locale := map[string]string{}
+	if err := json.Unmarshal(data, &locale); err != nil {
+		t.Fatal(err)
+	}
+	patterns := []*regexp.Regexp{
+		regexp.MustCompile(`data-i18n(?:-[a-z-]+)?="([a-z0-9_.-]+)"`),
+		regexp.MustCompile(`\bt\(["']([a-z0-9_.-]+)["']`),
+	}
+	for _, name := range []string{"web/index.html", "web/practice.html", "web/app.js"} {
+		source, err := embeddedFiles.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, pattern := range patterns {
+			for _, match := range pattern.FindAllSubmatch(source, -1) {
+				key := string(match[1])
+				if locale[key] == "" {
+					t.Errorf("%s uses missing localization key %q", name, key)
+				}
+			}
 		}
 	}
 }

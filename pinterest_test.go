@@ -301,7 +301,7 @@ func TestPinterestUIContainsRequestedOptionalImportForm(t *testing.T) {
 	for _, required := range []string{
 		`id="pinterestPluginToggle"`, `id="pinterestSection"`,
 		`Import from Pinterest`, `Board link`, `value="original"`, `value="board" checked`,
-		`id="pinterestSkipExisting" type="checkbox" checked`, `id="pinterestImportButton">Download all`,
+		`id="pinterestSkipExisting" type="checkbox" checked`, `id="pinterestImportButton" data-i18n="pinterest.download_all">Download all`,
 		`Use it again anytime from Menu → Import from Pinterest`,
 	} {
 		if !bytes.Contains(index, []byte(required)) {
@@ -310,7 +310,7 @@ func TestPinterestUIContainsRequestedOptionalImportForm(t *testing.T) {
 	}
 	for _, required := range []string{
 		"togglePinterestPlugin", "importPinterestBoard", "/api/app/plugins/pinterest/import",
-		"pinterestImportController", "openImportedPinterestFolder", "Import from Pinterest to do this again anytime",
+		"pinterestImportController", "openImportedPinterestFolder", `t("pinterest.imported_notice"`,
 	} {
 		if !bytes.Contains(script, []byte(required)) {
 			t.Errorf("Pinterest UI behavior is missing %q", required)

@@ -98,8 +98,8 @@
 <body>
   <header>
     <div class="title">
-      <strong><a href="/" style="color:inherit;text-decoration:none" title="Back to Pictogrep">PICTOGREP</a> / STORYBOARD</strong>
-      <span>rough redraws, one reference at a time</span>
+      <strong><a href="/" style="color:inherit;text-decoration:none" title="Back to Pictogrep" data-i18n-title="storyboard.back">PICTOGREP</a> / <b data-i18n="storyboard.title">STORYBOARD</b></strong>
+      <span data-i18n="storyboard.tagline">rough redraws, one reference at a time</span>
     </div>
     <div class="controls primary">
       <input id="clipSearch" class="search-input" type="search" placeholder="Search" data-i18n-placeholder="storyboard.search">
@@ -109,15 +109,15 @@
         <option value="all" data-i18n="storyboard.all_images" selected>All images</option>
         <option value="recent" data-custom="1" data-i18n="storyboard.custom_recent">Custom recent</option>
       </select>
-      <select id="collection" title="Reference tag">
+      <select id="collection" title="Reference tag" data-i18n-title="storyboard.reference_folder">
         <option value="" data-i18n="storyboard.all_tags">All tags</option>
       </select>
       <input id="count" type="number" min="1" value="30" hidden>
       <select id="aspect">
         <option value="16:9" selected>16:9</option>
         <option value="4:3">4:3</option>
-        <option value="2:1">Pan H 2:1</option>
-        <option value="3:4">Pan V 3:4</option>
+        <option value="2:1" data-i18n="storyboard.pan_h">Pan H 2:1</option>
+        <option value="3:4" data-i18n="storyboard.pan_v">Pan V 3:4</option>
       </select>
       <button id="start" data-i18n="storyboard.load">Load</button>
       <span class="status header-status" id="status"></span>
@@ -128,11 +128,11 @@
       <button id="next" data-i18n="storyboard.save_next">Save + Next</button>
       <button id="skip" data-i18n="storyboard.skip">Skip</button>
       <details class="info" id="infoMenu">
-        <summary title="Info">i</summary>
+        <summary title="Info" data-i18n-title="storyboard.info">i</summary>
         <div class="info-panel">
-          <div class="info-row"><strong>Keys</strong><span>←/→ previous/next · Ctrl+S save · Ctrl+Enter save + next · Ctrl+Z undo · 1/P pen · 2/E eraser · 3/S shade · 4/T trace · ? shortcuts</span></div>
-          <div class="info-row"><strong>Status</strong><span id="infoStatus">Loading</span></div>
-          <div class="info-row"><strong>Saving</strong><span id="infoSavePath"></span></div>
+          <div class="info-row"><strong data-i18n="storyboard.keys">Keys</strong><span data-i18n="storyboard.keys_help">←/→ previous/next · Ctrl+S save · Ctrl+Enter save + next · Ctrl+Z undo · 1/P pen · 2/E eraser · 3/S shade · 4/T trace · ? shortcuts</span></div>
+          <div class="info-row"><strong data-i18n="storyboard.status">Status</strong><span id="infoStatus" data-i18n="storyboard.loading">Loading</span></div>
+          <div class="info-row"><strong data-i18n="storyboard.saving_label">Saving</strong><span id="infoSavePath"></span></div>
         </div>
       </details>
     </div>
@@ -144,22 +144,22 @@
         <strong data-i18n="storyboard.reference">Reference</strong>
         <span class="label-actions">
           <span id="refName"></span>
-          <button id="refSmaller" title="Make reference image smaller">-</button>
-          <button id="refBigger" title="Make reference image bigger">+</button>
-          <button id="refMirror" title="Mirror reference horizontally" data-i18n="storyboard.mirror">Mirror</button>
+          <button id="refSmaller" title="Make reference image smaller" data-i18n-title="storyboard.ref_smaller">-</button>
+          <button id="refBigger" title="Make reference image bigger" data-i18n-title="storyboard.ref_bigger">+</button>
+          <button id="refMirror" title="Mirror reference horizontally" data-i18n-title="storyboard.mirror_help" data-i18n="storyboard.mirror">Mirror</button>
         </span>
       </div>
       <div class="frame">
         <img id="reference" alt="">
-        <div id="empty" class="empty" hidden>No images found. Run pictogrep index /path/to/images or pass a folder to storyboard.</div>
+        <div id="empty" class="empty" data-i18n="storyboard.no_images" hidden>No images found. Run pictogrep index /path/to/images or pass a folder to storyboard.</div>
       </div>
       <div class="bar"><progress id="progress" value="0" max="1"></progress><span id="counter">0/0</span></div>
     </section>
-    <div id="divider" class="divider" title="Drag to resize"><button id="viewReset" title="Reset view">=</button></div>
+    <div id="divider" class="divider" title="Drag to resize" data-i18n-title="storyboard.resize"><button id="viewReset" title="Reset view" data-i18n-title="storyboard.reset_view">=</button></div>
     <section class="pane right-pane">
       <div class="label">
-        <span class="label-title"><strong data-i18n="storyboard.board">Board</strong><button id="trace" title="Show reference under the board" data-i18n="storyboard.trace">Trace</button></span>
-        <span class="label-actions"><button id="boardSmaller" title="Make drawing board smaller">-</button><button id="boardBigger" title="Make drawing board bigger">+</button></span>
+        <span class="label-title"><strong data-i18n="storyboard.board">Board</strong><button id="trace" title="Show reference under the board" data-i18n-title="storyboard.trace_show" data-i18n="storyboard.trace">Trace</button></span>
+        <span class="label-actions"><button id="boardSmaller" title="Make drawing board smaller" data-i18n-title="storyboard.board_smaller">-</button><button id="boardBigger" title="Make drawing board bigger" data-i18n-title="storyboard.board_bigger">+</button></span>
       </div>
       <div id="boardFrame" class="frame board-frame">
         <div id="boardRefs" class="board-refs"></div>
@@ -175,20 +175,20 @@
       <div class="tools">
         <button id="pen" class="active" data-i18n="storyboard.pen">Pen</button>
         <button id="eraser" data-i18n="storyboard.eraser">Eraser</button>
-        <button id="shade" title="Draw a closed shape for a colored-pencil grain" data-i18n="storyboard.colour_lasso">Colour lasso</button>
-        <select id="shadeColour" title="Shade colour">
-          <option value="#698ca3" selected>Muted blue</option>
-          <option value="#000000">Grey</option>
-          <option value="#aa7182">Muted pink</option>
-          <option value="#b39654">Muted yellow</option>
-          <option value="#719983">Muted green</option>
-          <option value="#947ca3">Muted lilac</option>
+        <button id="shade" title="Draw a closed shape for a colored-pencil grain" data-i18n-title="storyboard.colour_lasso_help" data-i18n="storyboard.colour_lasso">Colour lasso</button>
+        <select id="shadeColour" title="Shade colour" data-i18n-title="storyboard.shade_colour">
+          <option value="#698ca3" data-i18n="storyboard.muted_blue" selected>Muted blue</option>
+          <option value="#000000" data-i18n="storyboard.grey">Grey</option>
+          <option value="#aa7182" data-i18n="storyboard.muted_pink">Muted pink</option>
+          <option value="#b39654" data-i18n="storyboard.muted_yellow">Muted yellow</option>
+          <option value="#719983" data-i18n="storyboard.muted_green">Muted green</option>
+          <option value="#947ca3" data-i18n="storyboard.muted_lilac">Muted lilac</option>
         </select>
         <label><span data-i18n="storyboard.size">Size</span> <input id="brush" type="range" min="1" max="22" value="4"> <span id="brushValue">4</span></label>
         <button id="undo" data-i18n="storyboard.undo">Undo</button>
         <button id="clear" data-i18n="storyboard.clear">Clear</button>
         <button id="save" data-i18n="storyboard.save_now">Save now</button>
-        <button id="addRefs" title="Add up to five movable reference images" data-i18n="storyboard.add_refs">Add refs</button>
+        <button id="addRefs" title="Add up to five movable reference images" data-i18n-title="storyboard.add_refs_help" data-i18n="storyboard.add_refs">Add refs</button>
         <input id="refFiles" type="file" accept="image/*" multiple hidden>
       </div>
       <div class="status" data-i18n="storyboard.autosave_help">The pen supports tablet pressure. Drawings autosave while the board is idle.</div>
@@ -270,7 +270,7 @@
     fetch('/api/app/state').then(response => response.json()).then(async state => {
       vimModeEnabled = Boolean(state.plugins?.vim?.enabled);
       await window.PictogrepI18n.init(state.language);
-      if (vimModeEnabled) status('Vim Mode enabled: h/l navigate · j shade · k trace · u undo · q return');
+      if (vimModeEnabled) status(t('storyboard.vim_enabled'));
     }).catch(() => {});
 
     function status(text) {
@@ -316,7 +316,7 @@
         const remove = document.createElement('button');
         remove.type = 'button';
         remove.textContent = '×';
-        remove.title = 'Remove reference from board';
+        remove.title = t('storyboard.remove_reference');
         const handle = document.createElement('span');
         handle.className = 'ref-resize';
         card.append(image, remove, handle);
@@ -370,7 +370,7 @@
         handle.addEventListener('pointerdown', e => begin(e, true));
       }
       addRefs.disabled = boardReferences.length >= 5;
-      addRefs.title = boardReferences.length >= 5 ? 'Five-reference limit reached' : 'Add up to five movable reference images';
+      addRefs.title = t(boardReferences.length >= 5 ? 'storyboard.reference_limit' : 'storyboard.add_refs_help');
     }
 
     async function loadBoardReferences() {
@@ -417,21 +417,21 @@
       refScale = Math.max(0.45, Math.min(2.4, nextScale));
       img.style.setProperty('--ref-size', Math.round(refScale * 100) + '%');
       localStorage.setItem('pictogrepStoryRefScale', refScale.toFixed(2));
-      if (showStatus) status('Reference image ' + Math.round(refScale * 100) + '%');
+      if (showStatus) status(t('storyboard.reference_scale', {percent: Math.round(refScale * 100)}));
     }
 
     function resetView() {
       setPaneSplitPercent(50);
       setReferenceScale(1, false);
       setBoardScale(1, false);
-      status('View reset');
+      status(t('storyboard.view_reset'));
     }
 
     function setBoardScale(nextScale, showStatus = true) {
       boardScale = Math.max(0.45, Math.min(2.4, nextScale));
       localStorage.setItem('pictogrepStoryBoardScale', boardScale.toFixed(2));
       fitCanvasStack();
-      if (showStatus) status('Drawing board ' + Math.round(boardScale * 100) + '%');
+      if (showStatus) status(t('storyboard.board_scale', {percent: Math.round(boardScale * 100)}));
     }
 
     function applyReferenceMirror() {
@@ -439,14 +439,14 @@
       traceRef.classList.toggle('mirrored', refMirrored);
       refMirror.classList.toggle('active', refMirrored);
       refMirror.textContent = t(refMirrored ? 'storyboard.mirrored' : 'storyboard.mirror');
-      refMirror.title = refMirrored ? 'Unmirror reference' : 'Mirror reference horizontally';
+      refMirror.title = t(refMirrored ? 'storyboard.unmirror' : 'storyboard.mirror_help');
     }
 
     function toggleReferenceMirror() {
       refMirrored = !refMirrored;
       localStorage.setItem('pictogrepStoryRefMirror', refMirrored ? '1' : '0');
       applyReferenceMirror();
-      status(refMirrored ? 'Reference mirrored' : 'Reference normal');
+      status(t(refMirrored ? 'storyboard.reference_mirrored' : 'storyboard.reference_normal'));
     }
 
     function canvasSize() {
@@ -1291,7 +1291,7 @@
     function applyTrace() {
       traceBtn.classList.toggle('active', trace);
       traceBtn.textContent = t(trace ? 'storyboard.trace_on' : 'storyboard.trace');
-      traceBtn.title = trace ? 'Hide tracing reference' : 'Show reference under the board';
+      traceBtn.title = t(trace ? 'storyboard.trace_hide' : 'storyboard.trace_show');
       traceRef.hidden = !trace || !images.length;
       if (trace && img.src) {
         traceRef.src = img.src;
@@ -1302,7 +1302,7 @@
       trace = !trace;
       localStorage.setItem('pictogrepStoryTrace', trace ? '1' : '0');
       applyTrace();
-      status(trace ? 'Trace on' : 'Trace off');
+      status(t(trace ? 'storyboard.trace_on' : 'storyboard.trace_off'));
     }
 
     function applyTool() {
@@ -1317,7 +1317,7 @@
     function setTool(nextTool) {
       tool = nextTool;
       applyTool();
-      status(tool === 'eraser' ? 'Eraser' : tool === 'shade' ? 'Colour pencil lasso — draw a closed shape' : 'Pen');
+      status(t(tool === 'eraser' ? 'storyboard.eraser' : tool === 'shade' ? 'storyboard.lasso_status' : 'storyboard.pen'));
     }
 
     function showImage() {
@@ -1352,17 +1352,17 @@
       if (document.activeElement === clipSearch) clipSearch.blur();
       const q = clipSearch.value.trim();
       if (q) {
-        status('Searching...');
+        status(t('storyboard.searching'));
         const res = await fetch('/api/search?q=' + encodeURIComponent(q) + '&tag=' + encodeURIComponent(collection.value));
         const data = await res.json();
         if (!res.ok) {
-          status(data.error || 'Search failed');
+          status(data.error || t('storyboard.search_failed'));
           return;
         }
         images = data.images;
         index = 0;
         infoSavePath.textContent = data.out || '';
-        status(data.selected + ' CLIP matches for: ' + q);
+        status(t('storyboard.matches', {count: data.selected, query: q}));
         showImage();
         return;
       }
@@ -1380,7 +1380,7 @@
       images = data.images;
       index = 0;
       infoSavePath.textContent = data.out || '';
-      status(data.total + ' available, ' + images.length + ' selected');
+      status(t('storyboard.available', {total: data.total, selected: images.length}));
       showImage();
     }
 
@@ -1715,7 +1715,7 @@
       if (!boardHasDrawing()) {
         dirty = false;
         setSaveState('storyboard.empty_not_saved');
-        if (showStatus) status('Draw something before saving, or use Skip.');
+        if (showStatus) status(t('storyboard.draw_before_save'));
         return false;
       }
       setSaveState('storyboard.saving');
@@ -1740,14 +1740,14 @@
         if (!res.ok || !data.ok) {
           const message = data.error || 'unknown error';
           setSaveState('storyboard.save_failed');
-          status('Save failed: ' + message);
+          status(t('storyboard.save_failed_detail', {error: message}));
           throw new Error(message);
         }
         if (changeRevision === savingRevision) {
           dirty = false;
           setSaveState('storyboard.saved', {file: data.file});
         } else setSaveState('storyboard.unsaved');
-        if (showStatus) status('Saved ' + data.file);
+        if (showStatus) status(t('storyboard.saved', {file: data.file}));
         return true;
       })();
       activeSavePromise = pending;
@@ -1765,12 +1765,12 @@
       if (save) {
         const saved = await saveCurrent(false);
         if (!saved) {
-          status('Empty drawing not saved. Use Skip to move on.');
+          status(t('storyboard.empty_skip'));
           return;
         }
       }
       if (index >= images.length - 1) {
-        status('Finished ' + images.length + ' images.');
+        status(t('storyboard.finished', {count: images.length}));
         setSaveState(save ? 'storyboard.saved_final' : 'storyboard.skipped_final');
         return;
       }
@@ -1846,7 +1846,7 @@
     document.getElementById('prev').onclick = async () => {
       if (dirty) await saveCurrent(false);
       if (index <= 0) {
-        status('Already at the first image.');
+        status(t('storyboard.first_image'));
         return;
       }
       index = Math.max(0, index - 1);
@@ -1864,11 +1864,11 @@
       const available = Math.max(0, 5 - boardReferences.length);
       const files = Array.from(refFiles.files || []).slice(0, available);
       if (!files.length) {
-        status(available ? 'Choose an image to add.' : 'Five-reference limit reached.');
+        status(t(available ? 'storyboard.choose_reference' : 'storyboard.reference_limit'));
         refFiles.value = '';
         return;
       }
-      status('Adding reference images...');
+      status(t('storyboard.adding_references'));
       for (const file of files) {
         const dataUrl = await new Promise((resolve, reject) => {
           const reader = new FileReader();
@@ -1883,13 +1883,13 @@
         });
         const data = await res.json();
         if (!res.ok) {
-          status(data.error || 'Could not add reference image.');
+          status(data.error || t('storyboard.add_reference_failed'));
           break;
         }
       }
       refFiles.value = '';
       await loadBoardReferences();
-      status(boardReferences.length + ' board reference' + (boardReferences.length === 1 ? '' : 's'));
+      status(t(boardReferences.length === 1 ? 'storyboard.reference_count_one' : 'storyboard.reference_count', {count: boardReferences.length}));
     };
     aspect.onchange = async () => {
       if (dirty) await saveCurrent(false);
@@ -1971,7 +1971,7 @@
         const delta = e.key.toLowerCase() === 'q' ? -1 : 1;
         brush.value = String(Math.max(Number(brush.min), Math.min(Number(brush.max), Number(brush.value) + delta)));
         applyTool();
-        status('Pen size ' + brush.value);
+        status(t('storyboard.pen_size', {size: brush.value}));
         return;
       }
       if (e.key.toLowerCase() === 'z') {

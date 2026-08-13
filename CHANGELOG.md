@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Completed Brazilian Portuguese localization across Pinterest import and the remaining browser, plugin, dialog, update, import, canvas, and storyboard interfaces.
+
 ## 0.6.1 - 2026-08-13
 
 - Allowed Windows release builds to publish unsigned artifacts when code-signing credentials are not configured.

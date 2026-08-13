@@ -157,9 +157,9 @@ function getAIWorker() {
       if (message.kind === "image" && quietImageIndexing) return;
       const detail = message.detail || {};
       if (detail.status === "progress" && Number.isFinite(detail.progress)) {
-        showMessage(`Preparing search… ${Math.round(detail.progress)}%`, false, true);
+        showMessage(t("ai.preparing_percent", {progress: Math.round(detail.progress)}), false, true);
       } else if (detail.status === "initiate") {
-        showMessage("Preparing search for the first time…", false, true);
+        showMessage(t("ai.preparing_first"), false, true);
       }
       return;
     }
@@ -500,7 +500,7 @@ async function semanticSearch(query) {
     if (!semanticWarmupPromise) {
       const first = state.missing.slice(0, 8);
       semanticWarmupPromise = (async () => {
-        showMessage("Downloading AI search… This happens only once.", false, true);
+        showMessage(t("ai.downloading"), false, true);
         for (let index = 0; index < first.length; index++) {
           try {
             await saveSemanticEmbedding(first[index]);
@@ -517,7 +517,7 @@ async function semanticSearch(query) {
         continueSemanticIndex(updated.missing, updated.indexed, updated.total);
         await refreshSemanticResults();
       }).catch(error => {
-        showMessage(`AI search could not start. Check your internet connection and try again. ${error.message}`, true, true);
+        showMessage(t("ai.start_failed", {error: error.message}), true, true);
       }).finally(() => {
         semanticWarmupPromise = null;
       });
@@ -1171,7 +1171,7 @@ function sidebarCollectionRow(tag) {
         body: JSON.stringify({action: "add", tag: tag.name, imageId}),
       });
       await refreshState();
-      showMessage(`Added image to ${tag.name}.`);
+      showMessage(t("sidebar.added_to", {name: tag.name}));
     } catch (error) { showMessage(error.message, true); }
   };
   return row;
@@ -1183,7 +1183,7 @@ async function renderSidebar() {
   if (!appState?.tags?.length) {
     const empty = document.createElement("div");
     empty.className = "sidebar-empty";
-    empty.textContent = "No collections yet. Drag images here after creating one.";
+    empty.textContent = t("sidebar.no_collections");
     collections.append(empty);
   }
   const boards = $("#sidebarBoards");
@@ -1201,7 +1201,7 @@ async function renderSidebar() {
   if (!boards.children.length) {
     const empty = document.createElement("div");
     empty.className = "sidebar-empty";
-    empty.textContent = "No storyboards yet.";
+    empty.textContent = t("sidebar.no_storyboards");
     boards.append(empty);
   }
 }
@@ -1233,7 +1233,7 @@ function renderCommonsImages(images) {
     source.textContent = item.title;
     const sourceLabel = document.createElement("span");
     sourceLabel.className = "commons-source";
-    sourceLabel.textContent = "View source and license on Wikimedia Commons";
+    sourceLabel.textContent = t("commons.view_source");
     caption.append(source, sourceLabel);
     card.append(image, caption);
     card.oncontextmenu = event => openCommonsContextMenu(event, item);
@@ -1312,7 +1312,7 @@ async function loadCalendar() {
       const heading = document.createElement("h2");
       heading.textContent = group.label + " ";
       const count = document.createElement("span");
-      count.textContent = `(${group.count} ${group.count === 1 ? "image" : "images"})`;
+      count.textContent = `(${t(group.count === 1 ? "calendar.count_one" : "calendar.count", {count: group.count})})`;
       heading.append(count);
       const grid = document.createElement("div");
       grid.className = "image-grid";
@@ -1434,9 +1434,9 @@ function openFolderContextMenu(event, folder) {
     closeCardMenus();
     try {
       await navigator.clipboard.writeText(folder.value);
-      showMessage("Folder path copied.");
+      showMessage(t("folders.path_copied"));
     } catch (_) {
-      window.prompt("Copy folder path", folder.value);
+      window.prompt(t("folders.copy_path_prompt"), folder.value);
     }
   };
   menu.hidden = false;
@@ -1577,7 +1577,7 @@ function canvasSavePayload() {
 
 function scheduleCanvasSave() {
   clearTimeout(canvasSaveTimer);
-  $("#canvasStatus").textContent = "Saving…";
+  $("#canvasStatus").textContent = t("canvas.saving");
   const payload = canvasSavePayload();
   canvasSaveTimer = setTimeout(() => saveCanvas(payload), 350);
 }
@@ -1589,7 +1589,7 @@ async function saveCanvas(payload = canvasSavePayload()) {
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify(payload),
     });
-    $("#canvasStatus").textContent = "Saved";
+    $("#canvasStatus").textContent = t("canvas.saved");
   } catch (error) {
     $("#canvasStatus").textContent = error.message;
   }
@@ -1601,7 +1601,7 @@ async function openFolderCanvas() {
   canvasImages = [];
   canvasPositions = new Map();
   $("#canvasWorld").replaceChildren();
-  $("#canvasStatus").textContent = "Loading…";
+  $("#canvasStatus").textContent = t("canvas.loading");
   dialog.showModal();
   try {
     const data = await request(`/api/app/canvas?${canvasQuery()}`);
@@ -1612,7 +1612,7 @@ async function openFolderCanvas() {
     canvasPan = {x: viewport.clientWidth / 2, y: viewport.clientHeight / 2};
     renderCanvas();
     applyCanvasTransform();
-    $("#canvasStatus").textContent = `${canvasImages.length} ${canvasImages.length === 1 ? "picture" : "pictures"}`;
+    $("#canvasStatus").textContent = t(canvasImages.length === 1 ? "canvas.count_one" : "canvas.count", {count: canvasImages.length});
   } catch (error) {
     $("#canvasStatus").textContent = error.message;
   }
@@ -1810,7 +1810,7 @@ function activeImportDestination(target = null) {
   }
   if (!$("#imagesPanel").hidden && currentTag) return {folder: currentTag, source: "", label: currentFolderName || currentTag};
   if (!$("#imagesPanel").hidden && currentSource) return {folder: "", source: currentSource, label: currentFolderName || currentSource};
-  return {folder: "", source: "", label: "Pictogrep library"};
+  return {folder: "", source: "", label: t("import.library")};
 }
 
 function uploadURL(name, destination) {
@@ -1828,7 +1828,7 @@ function uploadFileWithProgress(file, name, destination, onProgress) {
     xhr.upload.onprogress = event => {
       if (event.lengthComputable) onProgress(event.loaded / event.total);
     };
-    xhr.onerror = () => reject(new Error("The image upload was interrupted."));
+    xhr.onerror = () => reject(new Error(t("import.interrupted")));
     xhr.onload = () => {
       let data;
       try { data = JSON.parse(xhr.responseText); }
@@ -1850,12 +1850,12 @@ function beginImportProgress(total, destination) {
   panel.hidden = false;
   panel.className = "import-progress";
   $("#closeImportProgress").hidden = true;
-  $("#importProgressTitle").textContent = total === 1 ? "Adding image" : `Adding ${total} images`;
+  $("#importProgressTitle").textContent = t(total === 1 ? "import.adding_one" : "import.adding_many", {count: total});
   $("#importProgressName").textContent = destination.label;
   const bar = $("#importProgressBar");
   bar.max = 100;
   bar.value = 0;
-  $("#importProgressStatus").textContent = "Preparing…";
+  $("#importProgressStatus").textContent = t("import.preparing");
 }
 
 function updateImportProgress(index, total, name, fraction, status, indeterminate = false) {
@@ -1872,17 +1872,17 @@ function finishImportProgress(saved, duplicates, failed, total, destination, las
   bar.value = 100;
   $("#closeImportProgress").hidden = false;
   const details = [];
-  if (saved) details.push(`${saved} added`);
-  if (duplicates) details.push(`${duplicates} exact ${duplicates === 1 ? "duplicate" : "duplicates"} kept once`);
-  if (failed) details.push(`${failed} failed`);
+  if (saved) details.push(t("import.added", {count: saved}));
+  if (duplicates) details.push(t(duplicates === 1 ? "import.duplicate_one" : "import.duplicates", {count: duplicates}));
+  if (failed) details.push(t("import.failed", {count: failed}));
   $("#importProgressName").textContent = destination.label;
-  $("#importProgressStatus").textContent = `${details.join(" · ") || "Nothing was added"}${failed && lastError ? ` — ${lastError}` : ""}`;
+  $("#importProgressStatus").textContent = `${details.join(" · ") || t("import.nothing_added")}${failed && lastError ? ` — ${lastError}` : ""}`;
   if (failed) {
     panel.classList.add("error");
-    $("#importProgressTitle").textContent = saved ? "Some images were not added" : "Could not add image";
+    $("#importProgressTitle").textContent = t(saved ? "import.partial" : "import.could_not_add");
   } else {
     panel.classList.add("success");
-    $("#importProgressTitle").textContent = duplicates === total ? "Already in Pictogrep" : total === 1 ? "Image added" : "Images added";
+    $("#importProgressTitle").textContent = t(duplicates === total ? "import.already_present" : total === 1 ? "import.added_one_title" : "import.added_many_title");
   }
   importProgressTimer = setTimeout(() => { panel.hidden = true; }, 10000);
 }
@@ -1897,7 +1897,7 @@ async function refreshAfterImport(showLibrary) {
 
 async function uploadFiles(files, options = {}) {
   const images = Array.from(files).filter(isSupportedImage);
-  if (!images.length) return showMessage("Choose at least one JPG, PNG, WebP, or GIF image.", true);
+  if (!images.length) return showMessage(t("import.choose_supported"), true);
   const destination = options.destination || activeImportDestination();
   const showLibrary = options.showLibrary ?? !$("#imagesPanel").hidden;
   if (options.openMenu !== false) openMenu();
@@ -1910,10 +1910,10 @@ async function uploadFiles(files, options = {}) {
   for (let index = 0; index < images.length; index++) {
     const original = images[index];
     const upload = preparedUpload(original);
-    updateImportProgress(index, images.length, original.name || upload.name, 0, `Uploading ${index + 1} of ${images.length}…`);
+    updateImportProgress(index, images.length, original.name || upload.name, 0, t("import.uploading", {current: index + 1, total: images.length}));
     try {
       const result = await uploadFileWithProgress(upload.file, upload.name, destination, fraction => {
-        updateImportProgress(index, images.length, original.name || upload.name, fraction, `Uploading ${index + 1} of ${images.length}…`);
+        updateImportProgress(index, images.length, original.name || upload.name, fraction, t("import.uploading", {current: index + 1, total: images.length}));
       });
       if (result.duplicate) duplicates++;
       else saved++;
@@ -1930,16 +1930,16 @@ async function uploadFiles(files, options = {}) {
 function droppedURLName(rawURL) {
   try {
     const parsed = new URL(rawURL);
-    const name = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || "dropped-image");
+    const name = decodeURIComponent(parsed.pathname.split("/").filter(Boolean).pop() || t("import.dropped_image"));
     return name.length > 80 ? `${name.slice(0, 77)}…` : name;
-  } catch (_) { return "Dropped image"; }
+  } catch (_) { return t("import.dropped_image"); }
 }
 
 function dataURLFile(rawURL) {
   return fetch(rawURL).then(async response => {
     const blob = await response.blob();
     const extension = {"image/jpeg": ".jpg", "image/png": ".png", "image/gif": ".gif", "image/webp": ".webp"}[blob.type];
-    if (!extension) throw new Error("This dropped image format is not supported.");
+    if (!extension) throw new Error(t("import.unsupported_drop_format"));
     return new File([blob], `dropped-image${extension}`, {type: blob.type});
   });
 }
@@ -1958,16 +1958,16 @@ async function importDroppedURLs(urls, destination) {
     try {
       if (rawURL.startsWith("data:image/")) {
         const file = await dataURLFile(rawURL);
-        updateImportProgress(index, urls.length, name, 0, `Adding ${index + 1} of ${urls.length}…`);
+        updateImportProgress(index, urls.length, name, 0, t("import.adding_progress", {current: index + 1, total: urls.length}));
         const upload = preparedUpload(file);
         const result = await uploadFileWithProgress(upload.file, upload.name, destination, fraction => {
-          updateImportProgress(index, urls.length, name, fraction, `Adding ${index + 1} of ${urls.length}…`);
+          updateImportProgress(index, urls.length, name, fraction, t("import.adding_progress", {current: index + 1, total: urls.length}));
         });
         if (result.duplicate) duplicates++;
         else saved++;
         changed ||= !result.duplicate || Boolean(result.linked);
       } else {
-        updateImportProgress(index, urls.length, name, 0, "Downloading, validating, and checking duplicates…", true);
+        updateImportProgress(index, urls.length, name, 0, t("import.downloading_checking"), true);
         const result = await request("/api/app/import-url", {
           method: "POST",
           headers: {"Content-Type": "application/json"},
@@ -1977,7 +1977,7 @@ async function importDroppedURLs(urls, destination) {
         else saved++;
         changed ||= !result.duplicate || Boolean(result.linked);
       }
-      updateImportProgress(index, urls.length, name, 1, "Saved and added to the library.");
+      updateImportProgress(index, urls.length, name, 1, t("import.saved"));
     } catch (error) {
       if (error.status === 409) duplicates++;
       else { failed++; lastError = error.message; }
@@ -2040,7 +2040,7 @@ function extractDroppedURLs(dataTransfer) {
 }
 
 function showDropOverlay(destination) {
-  $("#dropDestination").textContent = `Add to ${destination.label}`;
+  $("#dropDestination").textContent = t("import.add_to", {name: destination.label});
   $("#dropOverlay").hidden = false;
   $("#dropOverlay").setAttribute("aria-hidden", "false");
 }
@@ -2108,7 +2108,7 @@ async function createFolder(event) {
     for (let index = 0; index < files.length; index++) {
       const original = files[index];
       const upload = preparedUpload(original);
-      showMessage(`Adding ${index + 1} of ${files.length}: ${original.name}`, false, true);
+      showMessage(t("folder_dialog.adding", {current: index + 1, total: files.length, name: original.name}), false, true);
       try {
         await request(`/api/app/upload?name=${encodeURIComponent(upload.name)}&folder=${encodeURIComponent(name)}`, {
           method: "POST",
@@ -2124,7 +2124,7 @@ async function createFolder(event) {
     let indexed = 0;
     let total = 0;
     if (prompt) {
-      showMessage(`Finding 50 pictures for “${prompt}”…`, false, true);
+      showMessage(t("folder_dialog.finding", {query: prompt}), false, true);
       const vector = await semanticVector(prompt);
       const result = await request("/api/app/tags", {
         method: "POST",
@@ -2143,12 +2143,12 @@ async function createFolder(event) {
     await loadImages();
     await loadFolders();
     if (saved) scheduleSemanticIndex(250);
-    if (prompt && indexed === 0) showMessage(`Created ${name}, but search indexing has not reached any pictures yet. Try filling it again shortly.`, true, true);
-    else if (prompt && indexed < total) showMessage(`Created ${name} with ${filled + saved} pictures from ${indexed} indexed; search is still improving in the background.`);
-    else if (prompt) showMessage(`Created ${name} with ${filled + saved} pictures for “${prompt}”.`);
-    else if (skipped) showMessage(`Created ${name} with ${saved} pictures; skipped ${skipped} unreadable files.`);
-    else if (saved) showMessage(`Created ${name} with ${saved} ${saved === 1 ? "picture" : "pictures"}.`);
-    else showMessage(`Created folder: ${name}`);
+    if (prompt && indexed === 0) showMessage(t("folder_dialog.created_waiting", {name}), true, true);
+    else if (prompt && indexed < total) showMessage(t("folder_dialog.created_indexing", {name, count: filled + saved, indexed}));
+    else if (prompt) showMessage(t("folder_dialog.created_search", {name, count: filled + saved, query: prompt}));
+    else if (skipped) showMessage(t("folder_dialog.created_skipped", {name, count: saved, skipped}));
+    else if (saved) showMessage(t(saved === 1 ? "folder_dialog.created_one" : "folder_dialog.created_many", {name, count: saved}));
+    else showMessage(t("folder_dialog.created", {name}));
   } catch (error) {
     showMessage(error.message, true, true);
   }
@@ -2165,10 +2165,10 @@ function openDeleteImageDialog(item) {
   closeCardMenus();
   pendingDeleteItem = item;
   $("#deleteImageName").textContent = item.name;
-  $("#deleteImagePath").textContent = item.path || "Original image file";
+  $("#deleteImagePath").textContent = item.path || t("delete.original_file");
   const confirmButton = $("#deleteImageForm .confirm-delete");
   confirmButton.disabled = false;
-  confirmButton.textContent = "Delete permanently";
+  confirmButton.textContent = t("delete.confirm");
   $("#deleteImageDialog").showModal();
 }
 
@@ -2178,7 +2178,7 @@ async function deleteConfirmedImage(event) {
   if (!item) return;
   const confirmButton = $("#deleteImageForm .confirm-delete");
   confirmButton.disabled = true;
-  confirmButton.textContent = "Deleting…";
+  confirmButton.textContent = t("delete.deleting");
   try {
     await request(`/api/app/images/${encodeURIComponent(item.id)}`, {
       method: "DELETE",
@@ -2192,11 +2192,11 @@ async function deleteConfirmedImage(event) {
     await refreshState();
     await loadImages();
     await loadFolders();
-    showMessage(`Deleted ${item.name}.`);
+    showMessage(t("delete.deleted", {name: item.name}));
   } catch (error) {
     showMessage(error.message, true, true);
     confirmButton.disabled = false;
-    confirmButton.textContent = "Delete permanently";
+    confirmButton.textContent = t("delete.confirm");
   }
 }
 
@@ -2218,7 +2218,7 @@ async function saveTag(event) {
     }
     semanticResults.clear();
     $("#tagDialog").close();
-    showMessage(`Added tag: ${tag}`);
+    showMessage(t("tag_dialog.added", {name: tag}));
     await refreshState();
     await loadImages();
     await loadFolders();
@@ -2265,7 +2265,7 @@ function showAbout() {
 	$("#pluginsSection").hidden = true;
   $("#boardsSection").hidden = true;
   $("#aboutSection").hidden = false;
-  $("#currentVersion").textContent = appState?.version ? `v${appState.version}` : "Unknown";
+  $("#currentVersion").textContent = appState?.version ? `v${appState.version}` : t("about.unknown");
   $("#updateMethod").textContent = appState?.updateMethod || "GitHub Releases";
   openMenu();
 }
@@ -2352,7 +2352,7 @@ async function toggleVimPlugin() {
     });
     appState.plugins.vim = {enabled};
     renderState();
-    showMessage(enabled ? "Vim Mode enabled. Reload open pages to apply it." : "Vim Mode disabled.");
+    showMessage(t(enabled ? "plugins.vim_enabled" : "plugins.vim_disabled"));
   } catch (error) {
     $("#vimPluginToggle").checked = !enabled;
     showMessage(error.message, true);
@@ -2386,9 +2386,7 @@ async function togglePinterestPlugin() {
     });
     appState.plugins.pinterest = {...appState.plugins.pinterest, enabled};
     renderState();
-    showMessage(enabled
-      ? "Pinterest import is on. Open Menu → Import from Pinterest whenever you need it."
-      : "Pinterest import is off. You can turn it on again from Official plugins.");
+    showMessage(t(enabled ? "pinterest.enabled" : "pinterest.disabled"));
   } catch (error) {
     $("#pinterestPluginToggle").checked = !enabled;
     showMessage(error.message, true);
@@ -2402,7 +2400,7 @@ function showPinterestImport() {
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = false;
-  openMenu("Import");
+  openMenu(t("pinterest.drawer_title"));
   if (!pinterestImportController) $("#pinterestBoardURL").focus();
 }
 
@@ -2420,8 +2418,8 @@ async function importPinterestBoard(event) {
   if (!parsedURL || !/(^|\.)pinterest\.[a-z.]+$/i.test(parsedURL.hostname) || parsedURL.pathname.split("/").filter(Boolean).length < 2) {
     boardInput.setAttribute("aria-invalid", "true");
     $("#pinterestResultIcon").textContent = "!";
-    $("#pinterestResultTitle").textContent = "That does not look like a Pinterest board";
-    $("#pinterestResultDetails").textContent = "Open a public board in Pinterest, copy its full address, and paste it here.";
+    $("#pinterestResultTitle").textContent = t("pinterest.invalid_title");
+    $("#pinterestResultDetails").textContent = t("pinterest.invalid_help");
     $("#pinterestOpenFolder").hidden = true;
     $("#pinterestImportAnother").hidden = true;
     resultBox.classList.add("error");
@@ -2432,7 +2430,7 @@ async function importPinterestBoard(event) {
   boardInput.removeAttribute("aria-invalid");
   pinterestImportController = new AbortController();
   button.disabled = true;
-  button.textContent = "Downloading…";
+  button.textContent = t("pinterest.downloading");
   $("#pinterestCancelImport").hidden = false;
   $("#pinterestWorking").hidden = false;
   $("#pinterestImportForm").querySelectorAll("input").forEach(input => { input.disabled = true; });
@@ -2450,24 +2448,24 @@ async function importPinterestBoard(event) {
       }),
     });
     if (result.imported || result.linked) await refreshAfterImport(true);
-    const details = [`${result.imported} added`];
-    if (result.skipped) details.push(`${result.skipped} already in library`);
-    if (result.linked) details.push(`${result.linked} existing added to folder`);
-    if (result.failed) details.push(`${result.failed} failed`);
+    const details = [t("pinterest.result_added", {count: result.imported})];
+    if (result.skipped) details.push(t("pinterest.result_skipped", {count: result.skipped}));
+    if (result.linked) details.push(t("pinterest.result_linked", {count: result.linked}));
+    if (result.failed) details.push(t("pinterest.result_failed", {count: result.failed}));
     lastPinterestFolder = result.folder || "";
     $("#pinterestResultIcon").textContent = result.failed ? "!" : "✓";
-    $("#pinterestResultTitle").textContent = result.failed ? `Imported ${result.board} with some issues` : `${result.board} is now in Pictogrep`;
+    $("#pinterestResultTitle").textContent = t(result.failed ? "pinterest.result_partial" : "pinterest.result_success", {board: result.board});
     $("#pinterestResultDetails").textContent = details.join(" · ");
     $("#pinterestOpenFolder").hidden = !lastPinterestFolder;
     $("#pinterestImportAnother").hidden = false;
     resultBox.classList.toggle("error", Boolean(result.failed));
     resultBox.hidden = false;
-    showMessage(`${result.board} imported. Use Menu → Import from Pinterest to do this again anytime.`);
+    showMessage(t("pinterest.imported_notice", {board: result.board}));
   } catch (error) {
     const cancelled = error.name === "AbortError";
     $("#pinterestResultIcon").textContent = cancelled ? "×" : "!";
-    $("#pinterestResultTitle").textContent = cancelled ? "Import cancelled" : "Could not import this board";
-    $("#pinterestResultDetails").textContent = cancelled ? "Nothing else will be downloaded." : error.message;
+    $("#pinterestResultTitle").textContent = t(cancelled ? "pinterest.cancelled" : "pinterest.failed_title");
+    $("#pinterestResultDetails").textContent = cancelled ? t("pinterest.cancelled_help") : error.message;
     $("#pinterestOpenFolder").hidden = true;
     $("#pinterestImportAnother").hidden = false;
     resultBox.classList.add("error");
@@ -2478,7 +2476,7 @@ async function importPinterestBoard(event) {
     $("#pinterestCancelImport").hidden = true;
     $("#pinterestImportForm").querySelectorAll("input").forEach(input => { input.disabled = false; });
     button.disabled = appState.plugins?.pinterest?.available === false;
-    button.textContent = "Download all";
+    button.textContent = t("pinterest.download_all");
   }
 }
 
@@ -2515,16 +2513,16 @@ function searchFromCommandPalette(query) {
 
 function commandPaletteChoices(query) {
   const commands = [
-    {icon: "⌕", title: "Focus image search", detail: "Continue in the main search", run: () => searchFromCommandPalette("")},
-    {icon: "▦", title: "Open local images", detail: "Return to the full library", run: () => { $("#commandPaletteDialog").close(); showLocalImages(); }},
-    {icon: "□", title: "Open folders", detail: "Browse sources and collections", run: () => { $("#commandPaletteDialog").close(); switchTab("folders"); loadFolders(); }},
-    {icon: "⚙", title: "Open Settings", detail: "Indexing, browser, and data options", run: () => { $("#commandPaletteDialog").close(); showSettings(); }},
-    {icon: "✎", title: "Open storyboard", detail: "Draw from your references", run: () => { location.href = "/practice"; }},
+    {icon: "⌕", title: t("command.focus_search"), detail: t("command.focus_search_help"), run: () => searchFromCommandPalette("")},
+    {icon: "▦", title: t("command.open_images"), detail: t("command.open_images_help"), run: () => { $("#commandPaletteDialog").close(); showLocalImages(); }},
+    {icon: "□", title: t("command.open_folders"), detail: t("command.open_folders_help"), run: () => { $("#commandPaletteDialog").close(); switchTab("folders"); loadFolders(); }},
+    {icon: "⚙", title: t("command.open_settings"), detail: t("command.open_settings_help"), run: () => { $("#commandPaletteDialog").close(); showSettings(); }},
+    {icon: "✎", title: t("command.open_storyboard"), detail: t("command.open_storyboard_help"), run: () => { location.href = "/practice"; }},
   ];
   if (!query) return commands;
   const normalized = query.toLowerCase();
   return [
-    {icon: "⌕", title: `Search images for “${query}”`, detail: "Default action", run: () => searchFromCommandPalette(query)},
+    {icon: "⌕", title: t("command.search_for", {query}), detail: t("command.default_action"), run: () => searchFromCommandPalette(query)},
     ...commands.filter(command => `${command.title} ${command.detail}`.toLowerCase().includes(normalized)),
   ];
 }
@@ -2674,7 +2672,7 @@ function clearRecentSearchHistory() {
   localStorage.removeItem(recentSearchesKey);
   renderRecentSearches();
   const button = $("#clearRecentSearches");
-  button.textContent = "Cleared";
+  button.textContent = t("settings.cleared");
   setTimeout(() => { button.textContent = t("settings.clear"); }, 1400);
 }
 
@@ -2682,38 +2680,38 @@ async function checkForUpdates() {
   const button = $("#checkForUpdates");
   const status = $("#updateStatus");
   button.disabled = true;
-  button.textContent = "Checking…";
+  button.textContent = t("update.checking");
   status.className = "";
-  status.textContent = "Checking GitHub Releases…";
+  status.textContent = t("update.checking_releases");
   $("#installUpdate").hidden = true;
   $("#downloadUpdate").hidden = true;
   try {
     const update = await request("/api/app/update");
     if (!update.available) {
       status.className = "success";
-      status.textContent = "Pictogrep is up to date ✓";
-      button.textContent = "Check again";
+      status.textContent = t("update.current");
+      button.textContent = t("update.check_again");
       return;
     }
-    status.textContent = `Pictogrep v${update.latestVersion} is available. ${update.hint || ""}`.trim();
+    status.textContent = `${t("update.available", {version: update.latestVersion})} ${update.hint || ""}`.trim();
     button.hidden = true;
     if (update.action === "replace") {
       const install = $("#installUpdate");
       install.hidden = false;
       install.className = "primary";
-      install.textContent = `Update to v${update.latestVersion}`;
+      install.textContent = t("update.to_version", {version: update.latestVersion});
     } else {
       const download = $("#downloadUpdate");
       download.hidden = false;
       download.href = update.url;
-      if (update.action === "download") download.textContent = "Download installer";
-      else if (update.action === "managed") download.textContent = "View release notes";
-      else download.textContent = "View newest release";
+      if (update.action === "download") download.textContent = t("update.download_installer");
+      else if (update.action === "managed") download.textContent = t("update.release_notes");
+      else download.textContent = t("update.view_latest");
     }
   } catch (error) {
     status.className = "error";
     status.textContent = error.message;
-    button.textContent = "Try again";
+    button.textContent = t("state.try_again");
   } finally {
     button.disabled = false;
   }
@@ -2723,9 +2721,9 @@ async function installAvailableUpdate() {
   const button = $("#installUpdate");
   const status = $("#updateStatus");
   button.disabled = true;
-  button.textContent = "Updating…";
+  button.textContent = t("update.updating");
   status.className = "";
-  status.textContent = "Downloading and installing the update… Keep Pictogrep open.";
+  status.textContent = t("update.installing");
   try {
     const result = await request("/api/app/update", {
       method: "POST",
@@ -2733,17 +2731,17 @@ async function installAvailableUpdate() {
     });
     if (!result.updated) {
       status.className = "success";
-      status.textContent = "Pictogrep is already up to date ✓";
+      status.textContent = t("update.already_current");
     } else {
       status.className = "success";
-      status.textContent = `Pictogrep v${result.version} is installed. Restart the app to use it.`;
+      status.textContent = t("update.installed", {version: result.version});
     }
     button.hidden = true;
   } catch (error) {
     status.className = "error";
     status.textContent = error.message;
     button.disabled = false;
-    button.textContent = "Try update again";
+    button.textContent = t("update.try_again");
   }
 }
 
@@ -2861,7 +2859,7 @@ document.addEventListener("drop", event => {
   const destination = activeImportDestination(event.target);
   const handled = queueTransferImport(event.dataTransfer, destination);
   hideDropOverlay();
-  if (!handled) showMessage("That drop did not contain a supported image or image URL.", true);
+  if (!handled) showMessage(t("import.unsupported_drop"), true);
 });
 document.addEventListener("dragend", hideDropOverlay);
 window.addEventListener("blur", () => {
