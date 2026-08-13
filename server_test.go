@@ -213,7 +213,7 @@ func TestBrowserSmoke(t *testing.T) {
 		t.Fatalf("browser smoke test failed: %v", err)
 	}
 	html := string(output)
-	for _, expected := range []string{`id="searchQuery"`, `id="imagesEmpty"`, "No pictures yet.", "navylily.tv/pictogrep"} {
+	for _, expected := range []string{`id="searchQuery"`, `id="imagesEmpty"`, "Welcome to Pictogrep", "navylily.tv/pictogrep"} {
 		if !strings.Contains(html, expected) {
 			t.Fatalf("rendered app is missing %q", expected)
 		}
