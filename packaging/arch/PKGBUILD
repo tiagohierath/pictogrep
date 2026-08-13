@@ -1,7 +1,7 @@
 # Maintainer: Tiago Hierath <tiagohierath@gmail.com>
 
 pkgname=pictogrep
-pkgver=0.4.2
+pkgver=0.5.0
 pkgrel=1
 pkgdesc="Find local pictures using natural-language descriptions"
 arch=('x86_64')
@@ -14,7 +14,7 @@ source=(
   'pictogrep.desktop'
 )
 sha256sums=(
-  'fa0b16db7f12ca13947825c7b5877574766e0b610946702cc3ec812d5a75f15a'
+  '3df6b9a0101ddf170507174609410aa04547f9d37cfc723d22967c0ec79d6a7e'
   'df9a4705e0dbee6be4a9b05233c6058e5bbf3a34722062e0863f34af370bdf9d'
 )
 
