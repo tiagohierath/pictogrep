@@ -106,7 +106,19 @@ jobs:
           Invoke-WebRequest "https://codeberg.org/mikf/gallery-dl/releases/download/v$galleryVersion/gallery-dl.exe" -OutFile dist/gallery-dl.exe
           $gallery = Get-Item dist/gallery-dl.exe
           if ($gallery.Length -lt 1MB -or $gallery.Length -gt 250MB) { throw "gallery-dl download is invalid" }
+      - name: Detect signing credentials
+        id: signing
+        env:
+          WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
+          WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
+        shell: pwsh
+        run: |
+          $available = -not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_CERTIFICATE) -and
+            -not [string]::IsNullOrWhiteSpace($env:WINDOWS_SIGNING_PASSWORD)
+          "available=$($available.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          if (-not $available) { Write-Warning "Windows signing credentials are not configured; publishing unsigned artifacts." }
       - name: Sign executable
+        if: steps.signing.outputs.available == 'true'
         env:
           WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
           WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}
@@ -130,6 +142,7 @@ jobs:
           & $iscc packaging\windows\pictogrep.iss
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Sign installer
+        if: steps.signing.outputs.available == 'true'
         env:
           WINDOWS_SIGNING_CERTIFICATE: ${{ secrets.WINDOWS_SIGNING_CERTIFICATE }}
           WINDOWS_SIGNING_PASSWORD: ${{ secrets.WINDOWS_SIGNING_PASSWORD }}

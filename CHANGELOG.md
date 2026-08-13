@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.6.1 - 2026-08-13
+
+- Allowed Windows release builds to publish unsigned artifacts when code-signing credentials are not configured.
+
 ## 0.6.0 - 2026-08-13
 
 - Added the official “Import from Pinterest” plugin for downloading a public board into the library or an automatically named folder. It is enabled by default, remains toggleable, uses bounded downloads and linear duplicate detection, and includes a guided, cancellable import flow.
