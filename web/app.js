@@ -33,7 +33,8 @@ let semanticWarmupPromise = null;
 let textWarmupPromise = null;
 let quietTextWarmup = false;
 let foregroundTextRequests = 0;
-let pinterestImportController = null;
+let pinterestRunning = false;
+let pinterestWatching = false;
 let lastPinterestFolder = "";
 let queryPrimeTimer = null;
 let currentViewerItem = null;
@@ -1703,7 +1704,7 @@ function renderState() {
   if (!pinterestEnabled) $("#pinterestSection").hidden = true;
   const pinterestAvailable = appState.plugins?.pinterest?.available !== false;
   $("#pinterestReadiness").hidden = pinterestAvailable;
-  $("#pinterestImportButton").disabled = !pinterestAvailable || Boolean(pinterestImportController);
+  $("#pinterestImportButton").disabled = !pinterestAvailable || pinterestRunning;
 
   const options = $("#tagOptions");
   options.replaceChildren(...appState.tags.map(tag => {
@@ -2401,13 +2402,12 @@ function showPinterestImport() {
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = false;
   openMenu(t("pinterest.drawer_title"));
-  if (!pinterestImportController) $("#pinterestBoardURL").focus();
+  if (!pinterestRunning) $("#pinterestBoardURL").focus();
 }
 
 async function importPinterestBoard(event) {
   event.preventDefault();
-  if (pinterestImportController) return;
-  const button = $("#pinterestImportButton");
+  if (pinterestRunning) return;
   const resultBox = $("#pinterestImportResult");
   const rawURL = $("#pinterestBoardURL").value.trim();
   const mode = document.querySelector('input[name="pinterestMode"]:checked')?.value || "board";
@@ -2428,56 +2428,141 @@ async function importPinterestBoard(event) {
     return;
   }
   boardInput.removeAttribute("aria-invalid");
-  pinterestImportController = new AbortController();
-  button.disabled = true;
-  button.textContent = t("pinterest.downloading");
-  $("#pinterestCancelImport").hidden = false;
-  $("#pinterestWorking").hidden = false;
-  $("#pinterestImportForm").querySelectorAll("input").forEach(input => { input.disabled = true; });
   resultBox.hidden = true;
   resultBox.classList.remove("error");
+  showPinterestWorking();
   try {
-    const result = await request("/api/app/plugins/pinterest/import", {
+    await request("/api/app/plugins/pinterest/import", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
-      signal: pinterestImportController.signal,
       body: JSON.stringify({
         url: rawURL,
         mode,
         skipExisting: $("#pinterestSkipExisting").checked,
       }),
     });
-    if (result.imported || result.linked) await refreshAfterImport(true);
-    const details = [t("pinterest.result_added", {count: result.imported})];
+  } catch (error) {
+    showPinterestFailure(error.status === 409 ? t("pinterest.already_running") : error.message);
+    return;
+  }
+  watchPinterestImport();
+}
+
+function showPinterestWorking(status) {
+  pinterestRunning = true;
+  const title = $("#pinterestWorkingTitle");
+  if (status && status.phase === "importing" && status.total) {
+    title.textContent = t("pinterest.progress_importing", {count: status.done, total: status.total});
+  } else if (status && status.done) {
+    title.textContent = t("pinterest.progress_downloading", {count: status.done});
+  } else {
+    title.textContent = t("pinterest.downloading_board");
+  }
+  $("#pinterestWorkingHelp").textContent = t("pinterest.keeps_running");
+  $("#pinterestImportButton").disabled = true;
+  $("#pinterestImportButton").textContent = t("pinterest.downloading");
+  $("#pinterestCancelImport").hidden = false;
+  $("#pinterestWorking").hidden = false;
+  $("#pinterestImportForm").querySelectorAll("input").forEach(input => { input.disabled = true; });
+}
+
+function clearPinterestWorking() {
+  pinterestRunning = false;
+  $("#pinterestWorking").hidden = true;
+  $("#pinterestCancelImport").hidden = true;
+  $("#pinterestImportForm").querySelectorAll("input").forEach(input => { input.disabled = false; });
+  $("#pinterestImportButton").disabled = appState.plugins?.pinterest?.available === false;
+  $("#pinterestImportButton").textContent = t("pinterest.download_all");
+}
+
+function showPinterestFailure(message) {
+  clearPinterestWorking();
+  $("#pinterestResultIcon").textContent = "!";
+  $("#pinterestResultTitle").textContent = t("pinterest.failed_title");
+  $("#pinterestResultDetails").textContent = message;
+  $("#pinterestOpenFolder").hidden = true;
+  $("#pinterestImportAnother").hidden = false;
+  $("#pinterestImportResult").classList.add("error");
+  $("#pinterestImportResult").hidden = false;
+}
+
+// Stopping keeps whatever already downloaded, so the result still reports it.
+async function showPinterestStopped(result) {
+  clearPinterestWorking();
+  if (result && (result.imported || result.linked)) await refreshAfterImport(true);
+  const kept = Boolean(result && (result.imported || result.linked || result.skipped));
+  const details = [];
+  if (kept) {
+    details.push(t("pinterest.result_added", {count: result.imported || 0}));
     if (result.skipped) details.push(t("pinterest.result_skipped", {count: result.skipped}));
     if (result.linked) details.push(t("pinterest.result_linked", {count: result.linked}));
-    if (result.failed) details.push(t("pinterest.result_failed", {count: result.failed}));
-    lastPinterestFolder = result.folder || "";
-    $("#pinterestResultIcon").textContent = result.failed ? "!" : "✓";
-    $("#pinterestResultTitle").textContent = t(result.failed ? "pinterest.result_partial" : "pinterest.result_success", {board: result.board});
-    $("#pinterestResultDetails").textContent = details.join(" · ");
-    $("#pinterestOpenFolder").hidden = !lastPinterestFolder;
-    $("#pinterestImportAnother").hidden = false;
-    resultBox.classList.toggle("error", Boolean(result.failed));
-    resultBox.hidden = false;
-    showMessage(t("pinterest.imported_notice", {board: result.board}));
-  } catch (error) {
-    const cancelled = error.name === "AbortError";
-    $("#pinterestResultIcon").textContent = cancelled ? "×" : "!";
-    $("#pinterestResultTitle").textContent = t(cancelled ? "pinterest.cancelled" : "pinterest.failed_title");
-    $("#pinterestResultDetails").textContent = cancelled ? t("pinterest.cancelled_help") : error.message;
-    $("#pinterestOpenFolder").hidden = true;
-    $("#pinterestImportAnother").hidden = false;
-    resultBox.classList.add("error");
-    resultBox.hidden = false;
-  } finally {
-    pinterestImportController = null;
-    $("#pinterestWorking").hidden = true;
-    $("#pinterestCancelImport").hidden = true;
-    $("#pinterestImportForm").querySelectorAll("input").forEach(input => { input.disabled = false; });
-    button.disabled = appState.plugins?.pinterest?.available === false;
-    button.textContent = t("pinterest.download_all");
   }
+  lastPinterestFolder = (result && result.folder) || "";
+  $("#pinterestResultIcon").textContent = "\u00d7";
+  $("#pinterestResultTitle").textContent = t("pinterest.cancelled");
+  $("#pinterestResultDetails").textContent = kept
+    ? t("pinterest.cancelled_kept") + " " + details.join(" \u00b7 ")
+    : t("pinterest.cancelled_empty");
+  $("#pinterestOpenFolder").hidden = !lastPinterestFolder;
+  $("#pinterestImportAnother").hidden = false;
+  $("#pinterestImportResult").classList.add("error");
+  $("#pinterestImportResult").hidden = false;
+}
+
+async function showPinterestResult(result) {
+  clearPinterestWorking();
+  if (result.imported || result.linked) await refreshAfterImport(true);
+  const details = [t("pinterest.result_added", {count: result.imported})];
+  if (result.skipped) details.push(t("pinterest.result_skipped", {count: result.skipped}));
+  if (result.linked) details.push(t("pinterest.result_linked", {count: result.linked}));
+  if (result.failed) details.push(t("pinterest.result_failed", {count: result.failed}));
+  lastPinterestFolder = result.folder || "";
+  $("#pinterestResultIcon").textContent = result.failed ? "!" : "\u2713";
+  $("#pinterestResultTitle").textContent = t(result.failed ? "pinterest.result_partial" : "pinterest.result_success", {board: result.board});
+  $("#pinterestResultDetails").textContent = details.join(" \u00b7 ");
+  $("#pinterestOpenFolder").hidden = !lastPinterestFolder;
+  $("#pinterestImportAnother").hidden = false;
+  $("#pinterestImportResult").classList.toggle("error", Boolean(result.failed));
+  $("#pinterestImportResult").hidden = false;
+  showMessage(t("pinterest.imported_notice", {board: result.board}));
+}
+
+// The import runs in Pictogrep, not in this window, so closing the panel or the
+// tab leaves it downloading. Whatever window is open next picks the result up.
+async function watchPinterestImport() {
+  if (pinterestWatching) return;
+  pinterestWatching = true;
+  let failures = 0;
+  try {
+    for (;;) {
+      let status = null;
+      try {
+        status = await request("/api/app/plugins/pinterest/import");
+        failures = 0;
+      } catch (error) {
+        if (++failures > 5) { showPinterestFailure(error.message); return; }
+      }
+      if (status && status.state !== "running") {
+        if (status.state === "done") await showPinterestResult(status.result || {});
+        else if (status.state === "cancelled") await showPinterestStopped(status.result);
+        else if (status.state === "error") showPinterestFailure(status.error || t("pinterest.failed_title"));
+        else clearPinterestWorking();
+        return;
+      }
+      if (status) showPinterestWorking(status);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  } finally {
+    pinterestWatching = false;
+  }
+}
+
+async function resumePinterestImport() {
+  if (appState.plugins?.pinterest?.enabled === false) return;
+  try {
+    const status = await request("/api/app/plugins/pinterest/import");
+    if (status.state === "running") { showPinterestWorking(status); watchPinterestImport(); }
+  } catch (_) {}
 }
 
 function resetPinterestImport() {
@@ -2807,7 +2892,7 @@ $("#emptyAddImages").onclick = () => {
 $("#imageFiles").onchange = event => uploadFiles(event.target.files);
 $("#imageFolder").onchange = event => uploadFiles(event.target.files);
 $("#pinterestImportForm").onsubmit = importPinterestBoard;
-$("#pinterestCancelImport").onclick = () => pinterestImportController?.abort();
+$("#pinterestCancelImport").onclick = () => request("/api/app/plugins/pinterest/import", {method: "DELETE"}).catch(() => {});
 $("#pinterestImportAnother").onclick = resetPinterestImport;
 $("#pinterestOpenFolder").onclick = openImportedPinterestFolder;
 $("#closeImportProgress").onclick = () => {
@@ -3043,6 +3128,7 @@ async function start() {
   // Tells the local server this window is still open, so it only closes itself
   // once nothing is left to break.
   setInterval(() => fetch("/api/app/heartbeat", {cache: "no-store"}).catch(() => {}), 60 * 1000);
+  resumePinterestImport();
 }
 
 window.addEventListener("popstate", syncViewerFromHistory);

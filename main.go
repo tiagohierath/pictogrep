@@ -256,7 +256,7 @@ func serve(app *application, args []string) error {
 		ticker := time.NewTicker(idleCheckEvery)
 		defer ticker.Stop()
 		for range ticker.C {
-			if watch.idleFor() < idleShutdownAfter || app.indexing() {
+			if watch.idleFor() < idleShutdownAfter || app.indexing() || handler.pinterest.running() {
 				continue
 			}
 			fmt.Println("Pictogrep closed itself after an hour with no windows open.")

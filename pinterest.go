@@ -27,6 +27,98 @@ const (
 
 type galleryDLRunner func(context.Context, string, string) error
 
+// A board takes minutes to download, so the import outlives the request that
+// starts it. Closing the panel, the tab, or the whole browser leaves it running,
+// and the window that comes back asks for the result.
+type pinterestImport struct {
+	mu        sync.Mutex
+	state     string
+	phase     string
+	done      int
+	total     int
+	board     string
+	result    map[string]any
+	failed    string
+	cancel    context.CancelFunc
+	cancelled bool
+}
+
+// Downloading reports how many files have arrived, because the board size is
+// not known up front. Importing knows both halves.
+func (job *pinterestImport) progress(phase string, done, total int) {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	job.phase, job.done, job.total = phase, done, total
+}
+
+func (job *pinterestImport) start(board string, cancel context.CancelFunc) bool {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	if job.state == "running" {
+		return false
+	}
+	job.state, job.board = "running", board
+	job.phase, job.done, job.total = "downloading", 0, 0
+	job.result, job.failed, job.cancel, job.cancelled = nil, "", cancel, false
+	return true
+}
+
+func (job *pinterestImport) finish(result map[string]any, err error) {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	job.cancel = nil
+	job.phase = ""
+	switch {
+	case job.cancelled:
+		// Whatever finished downloading before the stop was still imported.
+		job.state, job.result = "cancelled", result
+	case err != nil:
+		job.state, job.failed = "error", err.Error()
+	default:
+		job.state, job.result = "done", result
+	}
+}
+
+func (job *pinterestImport) stop() bool {
+	job.mu.Lock()
+	cancel := job.cancel
+	if cancel != nil {
+		job.cancelled = true
+	}
+	job.mu.Unlock()
+	if cancel == nil {
+		return false
+	}
+	cancel()
+	return true
+}
+
+func (job *pinterestImport) running() bool {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	return job.state == "running"
+}
+
+func (job *pinterestImport) snapshot() map[string]any {
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	state := job.state
+	if state == "" {
+		state = "idle"
+	}
+	payload := map[string]any{
+		"ok": true, "state": state, "board": job.board,
+		"phase": job.phase, "done": job.done, "total": job.total,
+	}
+	if job.result != nil {
+		payload["result"] = job.result
+	}
+	if job.failed != "" {
+		payload["error"] = job.failed
+	}
+	return payload
+}
+
 func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 	if !s.app.pluginEnabled("pinterest") {
 		sendError(w, http.StatusNotFound, fmt.Errorf("Pinterest import plugin is disabled"))
@@ -51,29 +143,82 @@ func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Deliberately not the request context: the download has to survive the
+	// window that asked for it.
+	ctx, cancel := context.WithCancel(context.Background())
+	if !s.pinterest.start(pinterestBoardName(boardURL), cancel) {
+		cancel()
+		sendError(w, http.StatusConflict, fmt.Errorf("a Pinterest import is already running"))
+		return
+	}
+	go func() {
+		defer cancel()
+		result, err := s.runPinterestImport(ctx, boardURL, request.Mode, request.SkipExisting)
+		s.pinterest.finish(result, err)
+	}()
+	sendJSON(w, http.StatusAccepted, s.pinterest.snapshot())
+}
+
+func (s *server) pinterestImportStatus(w http.ResponseWriter, r *http.Request) {
+	if !s.app.pluginEnabled("pinterest") {
+		sendError(w, http.StatusNotFound, fmt.Errorf("Pinterest import plugin is disabled"))
+		return
+	}
+	sendJSON(w, http.StatusOK, s.pinterest.snapshot())
+}
+
+func (s *server) cancelPinterestImport(w http.ResponseWriter, r *http.Request) {
+	if !s.pinterest.stop() {
+		sendError(w, http.StatusConflict, fmt.Errorf("no Pinterest import is running"))
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "state": "cancelled"})
+}
+
+func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode string, skipExisting bool) (map[string]any, error) {
 	downloadDir, err := os.MkdirTemp("", "pictogrep-pinterest-")
 	if err != nil {
-		sendError(w, http.StatusInternalServerError, fmt.Errorf("could not prepare Pinterest import"))
-		return
+		return nil, fmt.Errorf("could not prepare Pinterest import")
 	}
 	defer os.RemoveAll(downloadDir)
-	if err := s.galleryDL(r.Context(), boardURL.String(), downloadDir); err != nil {
-		sendError(w, importErrorStatus(err, http.StatusBadGateway), err)
-		return
+
+	sampled := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(pinterestUsageInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-sampled:
+				return
+			case <-ticker.C:
+				if files, _, usageErr := pinterestDownloadUsage(downloadDir); usageErr == nil {
+					s.pinterest.progress("downloading", files, 0)
+				}
+			}
+		}
+	}()
+	downloadErr := s.galleryDL(ctx, boardURL.String(), downloadDir)
+	close(sampled)
+	// Stopping an import keeps whatever already arrived, so half an hour of
+	// downloading is never thrown away on the way out.
+	if downloadErr != nil && ctx.Err() == nil {
+		return nil, downloadErr
 	}
+
 	images, err := pinterestDownloadedImages(downloadDir)
 	if err != nil {
-		sendError(w, http.StatusBadRequest, err)
-		return
+		if ctx.Err() == nil {
+			return nil, err
+		}
+		images = nil
 	}
 
 	boardName := pinterestBoardName(boardURL)
 	folder := ""
-	if request.Mode == "board" {
+	if mode == "board" {
 		folder, err = collectionName(boardName)
 		if err != nil {
-			sendError(w, http.StatusBadRequest, fmt.Errorf("Pinterest board name cannot be used as a folder"))
-			return
+			return nil, fmt.Errorf("Pinterest board name cannot be used as a folder")
 		}
 	}
 	digestIndex := s.app.importDigestIndex()
@@ -87,7 +232,8 @@ func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	imported, skipped, linked, failed := 0, 0, 0, 0
 	lastError := ""
-	for _, imagePath := range images {
+	for index, imagePath := range images {
+		s.pinterest.progress("importing", index, len(images))
 		file, openErr := os.Open(imagePath)
 		if openErr != nil {
 			failed++
@@ -106,7 +252,7 @@ func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 		}
 		if duplicate, _ := result["duplicate"].(bool); duplicate {
 			path, _ := result["path"].(string)
-			if folder != "" && !request.SkipExisting && !collectionSet[path] {
+			if folder != "" && !skipExisting && !collectionSet[path] {
 				collectionSet[path] = true
 				collectionPaths = append(collectionPaths, path)
 				linked++
@@ -124,22 +270,20 @@ func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 		}
 		imported++
 	}
-	if folder != "" {
+	if folder != "" && len(images) > 0 {
 		directory := filepath.Join(s.app.tagsDir, folder)
 		if err := os.MkdirAll(directory, 0o755); err != nil {
-			sendError(w, http.StatusBadRequest, fmt.Errorf("could not create Pinterest board folder: %v", err))
-			return
+			return nil, fmt.Errorf("could not create Pinterest board folder: %v", err)
 		}
 		if err := writeTagManifest(directory, collectionPaths); err != nil {
-			sendError(w, http.StatusBadRequest, fmt.Errorf("could not organize Pinterest board folder: %v", err))
-			return
+			return nil, fmt.Errorf("could not organize Pinterest board folder: %v", err)
 		}
 	}
-	sendJSON(w, http.StatusOK, map[string]any{
+	return map[string]any{
 		"ok": true, "board": boardName, "boardUrl": boardURL.String(), "folder": folder,
 		"total": len(images), "imported": imported, "skipped": skipped,
 		"linked": linked, "failed": failed, "lastError": lastError,
-	})
+	}, nil
 }
 
 func runGalleryDL(ctx context.Context, boardURL, directory string) error {
@@ -150,6 +294,11 @@ func runGalleryDL(ctx context.Context, boardURL, directory string) error {
 	downloadContext, cancel := context.WithTimeout(ctx, pinterestDownloadTimeout)
 	defer cancel()
 	command := exec.CommandContext(downloadContext, binary, galleryDLArguments(boardURL, directory)...)
+	command.Cancel = func() error {
+		killProcessGroup(command)
+		return nil
+	}
+	groupProcess(command)
 	output := &boundedCommandOutput{maximum: maxGalleryDLLogBytes}
 	command.Stdout = output
 	command.Stderr = output

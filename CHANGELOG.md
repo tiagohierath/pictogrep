@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.7.3 - 2026-08-15
+
+- Pinterest imports now run inside Pictogrep instead of inside the browser window. Close the import panel, the tab, or the whole browser and the board keeps downloading. Whatever window you open next reattaches to it and reports the result.
+- The import says what it is doing while it runs: how many images have arrived, then how many of those have been added to the library.
+- Stopping an import keeps the images that already downloaded instead of discarding the whole download.
+- Stopping an import now actually stops the downloader. It used to survive the cancel and keep downloading into a folder Pictogrep had already deleted, burning bandwidth for nothing.
+- Starting a second import while one is still running is refused instead of running two boards at once.
+- An import in progress keeps Pictogrep from closing itself on the idle timer.
+
 ## 0.7.2 - 2026-08-15
 
 - Pictogrep now closes itself after an hour with no windows open, instead of staying in the background and holding the library. Closing the tab used to leave the server running, so the next launch refused to start and looked like nothing happened at all.

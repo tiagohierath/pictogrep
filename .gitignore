@@ -34,3 +34,5 @@ collections/
 
 # Local build output
 /bin/pictogrep
+/pictogrep
+/pictogrep-local

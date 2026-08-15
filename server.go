@@ -40,6 +40,7 @@ type server struct {
 	practice      []byte
 	remoteFetcher remoteImageFetcher
 	galleryDL     galleryDLRunner
+	pinterest     pinterestImport
 }
 
 type imageRecord struct {
@@ -80,6 +81,8 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/app/plugins/wikimedia/search", s.wikimediaSearch)
 	mux.HandleFunc("GET /api/app/plugins/calendar", s.calendarView)
 	mux.HandleFunc("POST /api/app/plugins/pinterest/import", s.importPinterestBoard)
+	mux.HandleFunc("GET /api/app/plugins/pinterest/import", s.pinterestImportStatus)
+	mux.HandleFunc("DELETE /api/app/plugins/pinterest/import", s.cancelPinterestImport)
 	mux.HandleFunc("POST /api/app/settings/storage", s.saveStorageSettings)
 	mux.HandleFunc("POST /api/app/settings/language", s.saveStorageSettings)
 	mux.HandleFunc("POST /api/app/settings/browser", s.saveBrowserSettings)

@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestGalleryDLArgumentsApplyDownloadLimits(t *testing.T) {
@@ -186,17 +187,21 @@ func TestPinterestImportIsOptionalAndValidatesBeforeGalleryDL(t *testing.T) {
 		ran = true
 		return nil
 	}
-	response := postPinterestImport(t, handler.routes(), map[string]any{
+	routes := handler.routes()
+	response := postPinterestImport(t, routes, map[string]any{
 		"url": "https://pinterest.com/artist/board/", "mode": "board", "skipExisting": true,
 	})
-	if response.Code != http.StatusBadRequest || !ran {
-		t.Fatalf("default-enabled plugin did not run gallery-dl: status=%d ran=%v body=%s", response.Code, ran, response.Body)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("import was not accepted for background download: status=%d body=%s", response.Code, response.Body)
+	}
+	if status := waitForPinterestImport(t, routes); status["state"] != "error" || !ran {
+		t.Fatalf("default-enabled plugin did not run gallery-dl: ran=%v status=%#v", ran, status)
 	}
 	if err := app.setPluginEnabled("pinterest", false); err != nil {
 		t.Fatal(err)
 	}
 	ran = false
-	response = postPinterestImport(t, handler.routes(), map[string]any{
+	response = postPinterestImport(t, routes, map[string]any{
 		"url": "https://pinterest.com/artist/board/", "mode": "board", "skipExisting": true,
 	})
 	if response.Code != http.StatusNotFound || ran {
@@ -205,7 +210,7 @@ func TestPinterestImportIsOptionalAndValidatesBeforeGalleryDL(t *testing.T) {
 	if err := app.setPluginEnabled("pinterest", true); err != nil {
 		t.Fatal(err)
 	}
-	response = postPinterestImport(t, handler.routes(), map[string]any{
+	response = postPinterestImport(t, routes, map[string]any{
 		"url": "https://example.com/artist/board/", "mode": "board", "skipExisting": true,
 	})
 	if response.Code != http.StatusBadRequest || ran {
@@ -225,21 +230,22 @@ func TestPinterestImportUsesGalleryDLAndSkipsExistingBytes(t *testing.T) {
 	picture := testRemotePNG(t)
 	handler.galleryDL = func(_ context.Context, raw, directory string) error {
 		if raw != "https://www.pinterest.com/artist/film-references/" {
-			t.Fatalf("gallery-dl received unexpected URL: %s", raw)
+			return fmt.Errorf("gallery-dl received unexpected URL: %s", raw)
 		}
 		if err := os.WriteFile(filepath.Join(directory, "one.png"), picture, 0o644); err != nil {
 			return err
 		}
 		return os.WriteFile(filepath.Join(directory, "two.png"), picture, 0o644)
 	}
-	response := postPinterestImport(t, handler.routes(), map[string]any{
+	routes := handler.routes()
+	response := postPinterestImport(t, routes, map[string]any{
 		"url":  "https://www.pinterest.com/artist/film-references/",
 		"mode": "board", "skipExisting": true,
 	})
-	if response.Code != http.StatusOK {
-		t.Fatalf("Pinterest import failed: status=%d body=%s", response.Code, response.Body)
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("Pinterest import was not accepted: status=%d body=%s", response.Code, response.Body)
 	}
-	result := recorderJSON(t, response)
+	result := pinterestResult(t, waitForPinterestImport(t, routes))
 	if result["board"] != "film references" || result["folder"] != "film-references" ||
 		result["total"] != float64(2) || result["imported"] != float64(1) ||
 		result["skipped"] != float64(1) || result["failed"] != float64(0) {
@@ -271,13 +277,15 @@ func TestPinterestOriginalModeKeepsGalleryDLFilename(t *testing.T) {
 	handler.galleryDL = func(_ context.Context, _ string, directory string) error {
 		return os.WriteFile(filepath.Join(directory, "Original Camera Name.png"), testRemotePNG(t), 0o644)
 	}
-	response := postPinterestImport(t, handler.routes(), map[string]any{
+	routes := handler.routes()
+	response := postPinterestImport(t, routes, map[string]any{
 		"url":  "https://www.pinterest.com/artist/loose-references/",
 		"mode": "original", "skipExisting": true,
 	})
-	if response.Code != http.StatusOK {
+	if response.Code != http.StatusAccepted {
 		t.Fatalf("Pinterest original import failed: status=%d body=%s", response.Code, response.Body)
 	}
+	waitForPinterestImport(t, routes)
 	paths, _, _ := app.snapshot()
 	if len(paths) != 1 || filepath.Base(paths[0]) != "Original-Camera-Name.png" {
 		t.Fatalf("gallery-dl filename was not kept: %#v", paths)
@@ -306,13 +314,14 @@ func TestPinterestBoardLinksExistingDuplicateOnce(t *testing.T) {
 		}
 		return os.WriteFile(filepath.Join(directory, "duplicate.png"), data, 0o644)
 	}
-	response := postPinterestImport(t, handler.routes(), map[string]any{
+	routes := handler.routes()
+	response := postPinterestImport(t, routes, map[string]any{
 		"url": "https://www.pinterest.com/artist/duplicates/", "mode": "board", "skipExisting": false,
 	})
-	if response.Code != http.StatusOK {
+	if response.Code != http.StatusAccepted {
 		t.Fatalf("Pinterest import failed: status=%d body=%s", response.Code, response.Body)
 	}
-	result := recorderJSON(t, response)
+	result := pinterestResult(t, waitForPinterestImport(t, routes))
 	if result["linked"] != float64(1) || result["imported"] != float64(0) {
 		t.Fatalf("unexpected duplicate result: %#v", result)
 	}
@@ -323,6 +332,111 @@ func TestPinterestBoardLinksExistingDuplicateOnce(t *testing.T) {
 	var paths []string
 	if err := json.Unmarshal(manifest, &paths); err != nil || len(paths) != 1 || paths[0] != existing {
 		t.Fatalf("duplicate was not linked once: err=%v paths=%#v", err, paths)
+	}
+}
+
+func TestPinterestImportKeepsDownloadingAfterTheWindowCloses(t *testing.T) {
+	app := testApplication(t)
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	picture := testRemotePNG(t)
+	release := make(chan struct{})
+	handler.galleryDL = func(_ context.Context, _ string, directory string) error {
+		<-release
+		return os.WriteFile(filepath.Join(directory, "late.png"), picture, 0o644)
+	}
+	routes := handler.routes()
+
+	// A request context cancelled the instant the import starts stands in for a
+	// window that was closed straight away.
+	ctx, closeWindow := context.WithCancel(context.Background())
+	body, err := json.Marshal(map[string]any{
+		"url": "https://www.pinterest.com/artist/slow-board/", "mode": "board", "skipExisting": true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/app/plugins/pinterest/import", bytes.NewReader(body)).WithContext(ctx)
+	request.Host = "127.0.0.1"
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	routes.ServeHTTP(response, request)
+	closeWindow()
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("import was not accepted: status=%d body=%s", response.Code, response.Body)
+	}
+
+	if !handler.pinterest.running() {
+		t.Fatal("closing the window stopped the import")
+	}
+	close(release)
+	result := pinterestResult(t, waitForPinterestImport(t, routes))
+	if result["imported"] != float64(1) {
+		t.Fatalf("import that outlived its window did not finish: %#v", result)
+	}
+}
+
+func TestStoppingAPinterestImportKeepsWhatAlreadyDownloaded(t *testing.T) {
+	app := testApplication(t)
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	picture := testRemotePNG(t)
+	downloading := make(chan struct{})
+	handler.galleryDL = func(ctx context.Context, _ string, directory string) error {
+		if err := os.WriteFile(filepath.Join(directory, "arrived.png"), picture, 0o644); err != nil {
+			return err
+		}
+		close(downloading)
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	routes := handler.routes()
+	response := postPinterestImport(t, routes, map[string]any{
+		"url": "https://www.pinterest.com/artist/stopped/", "mode": "board", "skipExisting": true,
+	})
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("import was not accepted: status=%d body=%s", response.Code, response.Body)
+	}
+	<-downloading
+
+	cancel := httptest.NewRequest(http.MethodDelete, "/api/app/plugins/pinterest/import", nil)
+	cancel.Host = "127.0.0.1"
+	cancelled := httptest.NewRecorder()
+	routes.ServeHTTP(cancelled, cancel)
+	if cancelled.Code != http.StatusOK {
+		t.Fatalf("cancel was refused: status=%d body=%s", cancelled.Code, cancelled.Body)
+	}
+
+	status := waitForPinterestImport(t, routes)
+	if status["state"] != "cancelled" {
+		t.Fatalf("stopped import did not report itself stopped: %#v", status)
+	}
+	result := pinterestResult(t, status)
+	if result["imported"] != float64(1) {
+		t.Fatalf("stopping threw away an image that had already downloaded: %#v", result)
+	}
+}
+
+func TestPinterestImportReportsProgressWhileItRuns(t *testing.T) {
+	app := testApplication(t)
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.pinterest.start("film references", func() {})
+	handler.pinterest.progress("downloading", 128, 0)
+	status := handler.pinterest.snapshot()
+	if status["state"] != "running" || status["phase"] != "downloading" || status["done"] != 128 {
+		t.Fatalf("download progress is not reported: %#v", status)
+	}
+	handler.pinterest.progress("importing", 40, 128)
+	status = handler.pinterest.snapshot()
+	if status["phase"] != "importing" || status["done"] != 40 || status["total"] != 128 {
+		t.Fatalf("import progress is not reported: %#v", status)
 	}
 }
 
@@ -375,7 +489,7 @@ func TestPinterestUIContainsRequestedOptionalImportForm(t *testing.T) {
 	}
 	for _, required := range []string{
 		"togglePinterestPlugin", "importPinterestBoard", "/api/app/plugins/pinterest/import",
-		"pinterestImportController", "openImportedPinterestFolder", `t("pinterest.imported_notice"`,
+		"watchPinterestImport", "resumePinterestImport", "openImportedPinterestFolder", `t("pinterest.imported_notice"`,
 	} {
 		if !bytes.Contains(script, []byte(required)) {
 			t.Errorf("Pinterest UI behavior is missing %q", required)
@@ -410,6 +524,32 @@ func TestWordmarkHoverEasterEggIsPlainText(t *testing.T) {
 			t.Fatalf("wordmark easter egg is missing %q", expected)
 		}
 	}
+}
+
+func waitForPinterestImport(t *testing.T, routes http.Handler) map[string]any {
+	t.Helper()
+	for attempt := 0; attempt < 600; attempt++ {
+		request := httptest.NewRequest(http.MethodGet, "/api/app/plugins/pinterest/import", nil)
+		request.Host = "127.0.0.1"
+		response := httptest.NewRecorder()
+		routes.ServeHTTP(response, request)
+		status := recorderJSON(t, response)
+		if status["state"] != "running" {
+			return status
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatal("the background Pinterest import never finished")
+	return nil
+}
+
+func pinterestResult(t *testing.T, status map[string]any) map[string]any {
+	t.Helper()
+	result, ok := status["result"].(map[string]any)
+	if !ok {
+		t.Fatalf("import did not finish with a result: %#v", status)
+	}
+	return result
 }
 
 func postPinterestImport(t *testing.T, handler http.Handler, payload map[string]any) *httptest.ResponseRecorder {

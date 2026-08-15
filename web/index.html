@@ -124,7 +124,7 @@
         <label class="pinterest-skip"><input id="pinterestSkipExisting" type="checkbox" checked><span><strong data-i18n="pinterest.skip_existing">Skip images already in my library</strong><small data-i18n="pinterest.duplicates_help">Exact duplicates are kept only once.</small></span></label>
         <div class="pinterest-actions"><button type="submit" id="pinterestImportButton" data-i18n="pinterest.download_all">Download all</button><button type="button" id="pinterestCancelImport" data-i18n="app.cancel" hidden>Cancel</button></div>
         <div class="pinterest-working" id="pinterestWorking" role="status" aria-live="polite" hidden>
-          <span class="pinterest-spinner" aria-hidden="true"></span><span><strong data-i18n="pinterest.downloading_board">Downloading board…</strong><small data-i18n="pinterest.large_board_help">Large boards can take a few minutes.</small></span>
+          <span class="pinterest-spinner" aria-hidden="true"></span><span><strong id="pinterestWorkingTitle" data-i18n="pinterest.downloading_board">Downloading board…</strong><small id="pinterestWorkingHelp" data-i18n="pinterest.large_board_help">Large boards can take a few minutes.</small></span>
         </div>
         <section class="pinterest-result" id="pinterestImportResult" role="status" aria-live="polite" hidden>
           <span class="pinterest-result-icon" id="pinterestResultIcon" aria-hidden="true">✓</span>
