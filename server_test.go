@@ -202,15 +202,7 @@ func TestBrowserSmoke(t *testing.T) {
 		}
 		browser = resolved
 	} else {
-		for _, candidate := range []string{"google-chrome", "chromium", "chromium-browser"} {
-			if resolved, err := exec.LookPath(candidate); err == nil {
-				browser = resolved
-				break
-			}
-		}
-		if browser == "" {
-			t.Skip("Chrome or Chromium is not installed")
-		}
+		t.Skip("PICTOGREP_BROWSER is not set")
 	}
 
 	_, server := testHTTPServer(t)

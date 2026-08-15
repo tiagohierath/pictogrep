@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.7.1 - 2026-08-15
+
+- Fixed Pinterest imports that failed with "could not monitor Pinterest download". The download monitor read the temporary folder while gallery-dl was renaming finished files into place, then treated a file that had just been renamed as a fatal error and cancelled the whole board.
+- Stopped Pinterest imports from downloading Idea Pin videos. Pictogrep cannot add them to a library, and they were spending the per-board size and count limits that public boards need for images.
+- Made the Nix flake report the version it actually packages, which had fallen a release behind.
+- Made the browser smoke test opt-in so `go test ./...` stays fast and deterministic in CI.
+
 ## 0.7.0 - 2026-08-14
 
 - Completed Brazilian Portuguese localization across Pinterest import and the remaining browser, plugin, dialog, update, import, canvas, and storyboard interfaces.

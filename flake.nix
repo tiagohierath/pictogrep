@@ -11,6 +11,8 @@
     in {
       packages = forAllSystems (pkgs:
         let
+          # Keep in step with `var version` in app.go; a Go test guards the pair.
+          version = "0.7.1";
           desktopItem = pkgs.makeDesktopItem {
             name = "pictogrep";
             desktopName = "Pictogrep";
@@ -23,11 +25,11 @@
         in {
           default = pkgs.buildGoModule {
             pname = "pictogrep";
-            version = "0.6.1";
+            inherit version;
             src = self;
             vendorHash = null;
             subPackages = [ "." ];
-            ldflags = [ "-s" "-w" ];
+            ldflags = [ "-s" "-w" "-X" "main.version=${version}" ];
             nativeBuildInputs = [ pkgs.makeWrapper ];
             postInstall = ''
               mkdir -p $out/share/applications

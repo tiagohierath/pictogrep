@@ -4,7 +4,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"testing"
 )
@@ -13,6 +15,20 @@ func TestSplitCommandDefaultsToWeb(t *testing.T) {
 	command, args := splitCommand(nil)
 	if command != "web" || len(args) != 0 {
 		t.Fatalf("unexpected default command: %q %#v", command, args)
+	}
+}
+
+func TestNixFlakeVersionMatchesTheBuiltVersion(t *testing.T) {
+	flake, err := os.ReadFile("flake.nix")
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := regexp.MustCompile(`version = "([^"]+)"`).FindSubmatch(flake)
+	if declared == nil {
+		t.Fatal("flake.nix no longer declares a version")
+	}
+	if string(declared[1]) != version {
+		t.Fatalf("flake.nix packages version %q while Pictogrep reports %q", declared[1], version)
 	}
 }
 

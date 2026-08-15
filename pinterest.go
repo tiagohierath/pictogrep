@@ -22,6 +22,7 @@ const (
 	maxPinterestDownloadBytes = int64(2 << 30)
 	maxGalleryDLLogBytes      = 64 << 10
 	pinterestDownloadTimeout  = 30 * time.Minute
+	pinterestUsageInterval    = 2 * time.Second
 )
 
 type galleryDLRunner func(context.Context, string, string) error
@@ -157,7 +158,7 @@ func runGalleryDL(ctx context.Context, boardURL, directory string) error {
 	}
 	done := make(chan error, 1)
 	go func() { done <- command.Wait() }()
-	ticker := time.NewTicker(250 * time.Millisecond)
+	ticker := time.NewTicker(pinterestUsageInterval)
 	defer ticker.Stop()
 	for {
 		select {
@@ -203,8 +204,20 @@ func galleryDLArguments(boardURL, directory string) []string {
 		"--config-ignore", "--no-input",
 		"--range", "1-" + strconv.Itoa(maxPinterestImages+1),
 		"--filesize-max", strconv.FormatInt(maxUploadBytes, 10),
+		"--filter", galleryDLImageFilter(),
 		"-D", directory, "-f", "/O", boardURL,
 	}
+}
+
+// Boards mix pins with Idea Pin videos that Pictogrep can never import. Asking
+// gallery-dl to skip them keeps the download budget on images we can use.
+func galleryDLImageFilter() string {
+	extensions := make([]string, 0, len(imageExtensions))
+	for extension := range imageExtensions {
+		extensions = append(extensions, "'"+strings.TrimPrefix(extension, ".")+"'")
+	}
+	sort.Strings(extensions)
+	return "extension in (" + strings.Join(extensions, ",") + ")"
 }
 
 type boundedCommandOutput struct {
@@ -240,8 +253,14 @@ func (output *boundedCommandOutput) String() string {
 }
 
 func pinterestDownloadUsage(root string) (files int, bytes int64, err error) {
+	// gallery-dl downloads into ".part" files and renames them when each one
+	// finishes, so entries routinely disappear between reading the directory and
+	// measuring them. A file that vanished mid-walk is normal progress.
 	err = filepath.WalkDir(root, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
+			if errors.Is(walkErr, os.ErrNotExist) {
+				return nil
+			}
 			return walkErr
 		}
 		if entry.Type()&os.ModeSymlink != 0 || entry.IsDir() {
@@ -249,6 +268,9 @@ func pinterestDownloadUsage(root string) (files int, bytes int64, err error) {
 		}
 		info, infoErr := entry.Info()
 		if infoErr != nil {
+			if errors.Is(infoErr, os.ErrNotExist) {
+				return nil
+			}
 			return infoErr
 		}
 		files++

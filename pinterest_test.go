@@ -47,6 +47,71 @@ func TestPinterestDownloadUsageCountsAllDownloadedBytes(t *testing.T) {
 	}
 }
 
+func TestPinterestDownloadUsageIgnoresFilesRenamedMidWalk(t *testing.T) {
+	root := t.TempDir()
+	for index := 0; index < 64; index++ {
+		if err := os.WriteFile(filepath.Join(root, fmt.Sprintf("settled-%02d.jpg", index)), make([]byte, 8), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stop, renamed := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(renamed)
+		for index := 0; index < 500; index++ {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			part := filepath.Join(root, fmt.Sprintf("pin-%03d.jpg.part", index))
+			if err := os.WriteFile(part, make([]byte, 8), 0o644); err != nil {
+				return
+			}
+			if err := os.Rename(part, strings.TrimSuffix(part, ".part")); err != nil {
+				return
+			}
+		}
+	}()
+
+	var failure error
+	for monitoring := true; monitoring; {
+		select {
+		case <-renamed:
+			monitoring = false
+		default:
+			if _, _, err := pinterestDownloadUsage(root); err != nil {
+				failure, monitoring = err, false
+			}
+		}
+	}
+	close(stop)
+	<-renamed
+	if failure != nil {
+		t.Fatalf("download monitor aborted the import while gallery-dl renamed a file: %v", failure)
+	}
+}
+
+func TestGalleryDLArgumentsSkipVideoDownloads(t *testing.T) {
+	arguments := galleryDLArguments("https://www.pinterest.com/artist/board/", t.TempDir())
+	filter := ""
+	for index, argument := range arguments {
+		if argument == "--filter" && index+1 < len(arguments) {
+			filter = arguments[index+1]
+		}
+	}
+	if filter == "" {
+		t.Fatal("gallery-dl is not restricted to importable images")
+	}
+	for extension := range imageExtensions {
+		if !strings.Contains(filter, "'"+strings.TrimPrefix(extension, ".")+"'") {
+			t.Errorf("gallery-dl filter drops supported extension %q: %s", extension, filter)
+		}
+	}
+	if strings.Contains(filter, "mp4") {
+		t.Errorf("gallery-dl filter still spends the download budget on videos: %s", filter)
+	}
+}
+
 func TestGalleryDLDiagnosticOutputIsBounded(t *testing.T) {
 	output := &boundedCommandOutput{maximum: 16}
 	if _, err := output.Write([]byte("0123456789")); err != nil {
