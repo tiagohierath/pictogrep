@@ -239,14 +239,30 @@ func serve(app *application, args []string) error {
 			}
 		}()
 	}
-	httpServer := &http.Server{Handler: handler.routes(), ReadHeaderTimeout: 5 * time.Second}
+	watch := newIdleWatch()
+	httpServer := &http.Server{Handler: watch.wrap(handler.routes()), ReadHeaderTimeout: 5 * time.Second}
+	shutdown := func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = httpServer.Shutdown(ctx)
+	}
 	stopped := make(chan os.Signal, 1)
 	signal.Notify(stopped, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-stopped
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		_ = httpServer.Shutdown(ctx)
+		shutdown()
+	}()
+	go func() {
+		ticker := time.NewTicker(idleCheckEvery)
+		defer ticker.Stop()
+		for range ticker.C {
+			if watch.idleFor() < idleShutdownAfter || app.indexing() {
+				continue
+			}
+			fmt.Println("Pictogrep closed itself after an hour with no windows open.")
+			shutdown()
+			return
+		}
 	}()
 	err = httpServer.Serve(listener)
 	if err == http.ErrServerClosed {

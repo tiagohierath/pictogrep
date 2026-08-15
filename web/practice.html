@@ -1985,6 +1985,10 @@
       e.returnValue = '';
     });
 
+    // Drawing sends nothing to the server, so tell it this window is still open
+    // and stop it closing itself under a long session.
+    setInterval(() => fetch('/api/app/heartbeat', {cache: 'no-store'}).catch(() => {}), 60 * 1000);
+
     restorePaneSplit();
     setReferenceScale(refScale);
     setBoardScale(boardScale, false);

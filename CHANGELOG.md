@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.7.2 - 2026-08-15
+
+- Pictogrep now closes itself after an hour with no windows open, instead of staying in the background and holding the library. Closing the tab used to leave the server running, so the next launch refused to start and looked like nothing happened at all.
+- An open library or storyboard window keeps Pictogrep running even while you are only drawing, and an import or a folder scan is never cut short by the idle timer.
+
 ## 0.7.1 - 2026-08-15
 
 - Fixed Pinterest imports that failed with "could not monitor Pinterest download". The download monitor read the temporary folder while gallery-dl was renaming finished files into place, then treated a file that had just been renamed as a fatal error and cancelled the whole board.

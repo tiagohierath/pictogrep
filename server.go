@@ -74,6 +74,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /i18n/i18n.js", s.i18nScript)
 	mux.HandleFunc("GET /i18n/locales/{name}", s.locale)
 	mux.HandleFunc("GET /api/app/state", s.appState)
+	mux.HandleFunc("GET /api/app/heartbeat", s.heartbeat)
 	mux.HandleFunc("POST /api/app/log", s.appLog)
 	mux.HandleFunc("POST /api/app/plugins", s.savePlugin)
 	mux.HandleFunc("GET /api/app/plugins/wikimedia/search", s.wikimediaSearch)

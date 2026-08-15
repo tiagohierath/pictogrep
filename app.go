@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-var version = "0.7.1"
+var version = "0.7.2"
 
 const (
 	maxCachedQueries = 512
@@ -946,6 +946,12 @@ func (a *application) snapshot() (paths, sources []string, job jobState) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	return append([]string(nil), a.paths...), append([]string(nil), a.sources...), a.job
+}
+
+func (a *application) indexing() bool {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.job.State == "running"
 }
 
 func (a *application) addPath(path string) int {

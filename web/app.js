@@ -3040,6 +3040,9 @@ async function start() {
   if (appState?.index?.count) scheduleSemanticIndex(700);
   setTimeout(refreshLibraryWhenDue, 1400);
   setInterval(refreshLibraryWhenDue, 5 * 60 * 1000);
+  // Tells the local server this window is still open, so it only closes itself
+  // once nothing is left to break.
+  setInterval(() => fetch("/api/app/heartbeat", {cache: "no-store"}).catch(() => {}), 60 * 1000);
 }
 
 window.addEventListener("popstate", syncViewerFromHistory);
