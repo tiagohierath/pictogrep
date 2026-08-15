@@ -533,17 +533,14 @@ async function semanticSearch(query) {
   return requestSemanticResults(query);
 }
 
-function showMessage(text, error = false, persist = false) {
-  if (!error) {
-    logBackground("ui-status", text, "", "info");
-    return;
-  }
+function showMessage(text, error = false, persist = false, seconds = 3.5) {
+  if (!error) logBackground("ui-status", text, "", "info");
   const box = $("#message");
   clearTimeout(messageTimer);
   $("#messageText").textContent = text;
-  box.classList.add("error");
+  box.classList.toggle("error", error);
   box.hidden = false;
-  if (!persist) messageTimer = setTimeout(() => { box.hidden = true; }, 3500);
+  if (!persist) messageTimer = setTimeout(() => { box.hidden = true; }, seconds * 1000);
 }
 
 function closeMessage() {
@@ -2431,8 +2428,9 @@ async function importPinterestBoard(event) {
   resultBox.hidden = true;
   resultBox.classList.remove("error");
   showPinterestWorking();
+  let started;
   try {
-    await request("/api/app/plugins/pinterest/import", {
+    started = await request("/api/app/plugins/pinterest/import", {
       method: "POST",
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({
@@ -2445,6 +2443,15 @@ async function importPinterestBoard(event) {
     showPinterestFailure(error.status === 409 ? t("pinterest.already_running") : error.message);
     return;
   }
+  // Nothing here needs the panel any more, so hand the board off and put the
+  // library back in front of the user.
+  // showMenuHome reopens the drawer, so it has to run before the close.
+  showMenuHome();
+  closeMenu();
+  lastPinterestFolder = "";
+  $("#pinterestBoardURL").value = "";
+  $("#pinterestImportResult").hidden = true;
+  showMessage(t("pinterest.handed_off", {board: started.board}), false, false, 10);
   watchPinterestImport();
 }
 
@@ -2524,7 +2531,7 @@ async function showPinterestResult(result) {
   $("#pinterestImportAnother").hidden = false;
   $("#pinterestImportResult").classList.toggle("error", Boolean(result.failed));
   $("#pinterestImportResult").hidden = false;
-  showMessage(t("pinterest.imported_notice", {board: result.board}));
+  showMessage(t("pinterest.imported_notice", {board: result.board}), false, false, 8);
 }
 
 // The import runs in Pictogrep, not in this window, so closing the panel or the

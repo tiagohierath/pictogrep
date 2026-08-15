@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.7.4 - 2026-08-15
+
+- Starting a Pinterest import now closes the import panel and puts you back in your library, with a notice at the bottom of the screen saying the board is being taken care of. There is nothing to wait around for, so the panel no longer asks you to.
+- Notices that are not errors are now actually shown. Every success message in Pictogrep, including the one that says an import finished, was only being written to the background log and never reached the screen.
+
 ## 0.7.3 - 2026-08-15
 
 - Pinterest imports now run inside Pictogrep instead of inside the browser window. Close the import panel, the tab, or the whole browser and the board keeps downloading. Whatever window you open next reattaches to it and reports the result.

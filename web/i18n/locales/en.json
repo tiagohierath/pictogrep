@@ -241,6 +241,7 @@
   "pinterest.progress_downloading": "{count} images downloaded so far",
   "pinterest.progress_importing": "Adding {count} of {total}",
   "pinterest.keeps_running": "You can close this and keep using Pictogrep. The download continues.",
+  "pinterest.handed_off": "Relax, we've got this. {board} is downloading in the background.",
   "pinterest.cancelled_kept": "Nothing else will be downloaded. What had already arrived was added.",
   "pinterest.cancelled_empty": "Nothing else will be downloaded.",
   "pinterest.already_running": "A Pinterest import is already running.",

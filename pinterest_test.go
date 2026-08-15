@@ -500,6 +500,47 @@ func TestPinterestUIContainsRequestedOptionalImportForm(t *testing.T) {
 	}
 }
 
+func scriptSection(t *testing.T, from, to string) []byte {
+	t.Helper()
+	script, err := embeddedFiles.ReadFile("web/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	start := bytes.Index(script, []byte(from))
+	if start < 0 {
+		t.Fatalf("web/app.js no longer defines %q", from)
+	}
+	rest := script[start:]
+	end := bytes.Index(rest, []byte(to))
+	if end < 0 {
+		t.Fatalf("web/app.js no longer defines %q", to)
+	}
+	return rest[:end]
+}
+
+func TestStartingAnImportHandsItOffAndReturnsToTheLibrary(t *testing.T) {
+	handoff := scriptSection(t, "async function importPinterestBoard", "function showPinterestWorking")
+	for _, required := range []string{"closeMenu()", "showMenuHome()", `t("pinterest.handed_off"`, "watchPinterestImport()"} {
+		if !bytes.Contains(handoff, []byte(required)) {
+			t.Errorf("starting an import does not run %s, so the user is left waiting on the panel", required)
+		}
+	}
+	// showMenuHome ends by opening the drawer, so closing has to come after it.
+	if bytes.Index(handoff, []byte("closeMenu()")) < bytes.Index(handoff, []byte("showMenuHome()")) {
+		t.Error("the drawer is closed before showMenuHome reopens it, leaving the menu on screen")
+	}
+}
+
+func TestNotificationsAreShownAndNotOnlyLogged(t *testing.T) {
+	notify := scriptSection(t, "function showMessage(", "function closeMessage(")
+	if bytes.Contains(notify, []byte("return;")) {
+		t.Error("showMessage still drops everything that is not an error, so success notices never appear")
+	}
+	if !bytes.Contains(notify, []byte("seconds * 1000")) {
+		t.Error("showMessage cannot hold a notice on screen for a given time")
+	}
+}
+
 func TestPinterestBoardNameComesFromURL(t *testing.T) {
 	boardURL, _ := url.Parse("https://www.pinterest.com/artist/film-references/")
 	if name := pinterestBoardName(boardURL); name != "film references" {
