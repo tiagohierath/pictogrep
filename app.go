@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/binary"
 	"encoding/json"
@@ -540,6 +541,45 @@ func encodeEmbedding(model embeddingModel, path string, record embeddingRecord) 
 	return data, nil
 }
 
+// decodeEmbeddingRecord reads the record at the front of data: the magic, the
+// path length, the mtime, the path, the vector, and a CRC32 over all of it.
+func (a *application) decodeEmbeddingRecord(data []byte) (string, embeddingRecord, int, bool) {
+	if len(data) < 16 || string(data[:4]) != embeddingMagic {
+		return "", embeddingRecord{}, 0, false
+	}
+	pathLength := int(binary.LittleEndian.Uint32(data[4:8]))
+	mtime := int64(binary.LittleEndian.Uint64(data[8:16]))
+	length := 16 + pathLength + a.embeddingModel.Dimensions*4 + 4
+	if pathLength < 1 || pathLength > 1<<20 || length > len(data) {
+		return "", embeddingRecord{}, 0, false
+	}
+	checksumOffset := length - 4
+	if crc32.ChecksumIEEE(data[:checksumOffset]) != binary.LittleEndian.Uint32(data[checksumOffset:length]) {
+		return "", embeddingRecord{}, 0, false
+	}
+	vector := make([]float32, a.embeddingModel.Dimensions)
+	offset := 16 + pathLength
+	for index := range vector {
+		vector[index] = math.Float32frombits(binary.LittleEndian.Uint32(data[offset : offset+4]))
+		offset += 4
+	}
+	return expandPath(string(data[16 : 16+pathLength])), embeddingRecord{Mtime: mtime, Vector: vector}, length, true
+}
+
+// nextEmbeddingRecord finds where the next record could start. The magic can
+// also occur inside a vector by chance, so a hit is only a candidate: the
+// checksum is what decides whether a record really begins there.
+func nextEmbeddingRecord(data []byte, from int) int {
+	if from < 0 || from >= len(data) {
+		return -1
+	}
+	index := bytes.Index(data[from:], []byte(embeddingMagic))
+	if index < 0 {
+		return -1
+	}
+	return from + index
+}
+
 func (a *application) loadEmbeddingStore() error {
 	data, err := os.ReadFile(a.embeddingStorePath)
 	if errors.Is(err, os.ErrNotExist) {
@@ -548,33 +588,31 @@ func (a *application) loadEmbeddingStore() error {
 	if err != nil {
 		return err
 	}
-	offset := 0
+	offset, damaged := 0, false
 	for offset < len(data) {
-		start := offset
-		if len(data)-offset < 16 || string(data[offset:offset+4]) != embeddingMagic {
+		path, record, length, ok := a.decodeEmbeddingRecord(data[offset:])
+		if ok {
+			a.embeddings[path] = record
+			offset += length
+			continue
+		}
+		// One damaged record used to cost every record written after it: the
+		// loader stopped at the first bad byte and cut the rest of the file
+		// away. Re-syncing on the next record keeps the loss to the pictures
+		// actually damaged instead of an afternoon of re-indexing.
+		next := nextEmbeddingRecord(data, offset+1)
+		if next < 0 {
 			break
 		}
-		pathLength := int(binary.LittleEndian.Uint32(data[offset+4 : offset+8]))
-		mtime := int64(binary.LittleEndian.Uint64(data[offset+8 : offset+16]))
-		recordLength := 16 + pathLength + a.embeddingModel.Dimensions*4 + 4
-		if pathLength < 1 || pathLength > 1<<20 || recordLength > len(data)-offset {
-			break
-		}
-		checksumOffset := offset + recordLength - 4
-		if crc32.ChecksumIEEE(data[offset:checksumOffset]) != binary.LittleEndian.Uint32(data[checksumOffset:checksumOffset+4]) {
-			break
-		}
-		path := expandPath(string(data[offset+16 : offset+16+pathLength]))
-		vector := make([]float32, a.embeddingModel.Dimensions)
-		vectorOffset := offset + 16 + pathLength
-		for index := range vector {
-			vector[index] = math.Float32frombits(binary.LittleEndian.Uint32(data[vectorOffset : vectorOffset+4]))
-			vectorOffset += 4
-		}
-		a.embeddings[path] = embeddingRecord{Mtime: mtime, Vector: vector}
-		offset = start + recordLength
+		damaged = true
+		offset = next
+	}
+	if damaged {
+		// The damage is still on disk, so write back only what survived.
+		return a.writeEmbeddingStoreLocked()
 	}
 	if offset != len(data) {
+		// A torn record at the end is an interrupted append, not corruption.
 		return os.Truncate(a.embeddingStorePath, int64(offset))
 	}
 	return nil
@@ -966,6 +1004,35 @@ func (a *application) addPath(path string) int {
 	a.paths = append(a.paths, path)
 	_ = a.saveLibraryLocked()
 	return len(a.paths) - 1
+}
+
+// addPaths adds a whole import at once. Adding them one at a time rewrote the
+// entire library state per picture, so a two thousand image board wrote that
+// file two thousand times, each write longer than the one before it.
+func (a *application) addPaths(paths []string) int {
+	if len(paths) == 0 {
+		return 0
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	known := make(map[string]bool, len(a.paths))
+	for _, existing := range a.paths {
+		known[existing] = true
+	}
+	added := 0
+	for _, path := range paths {
+		path = expandPath(path)
+		if known[path] {
+			continue
+		}
+		known[path] = true
+		a.paths = append(a.paths, path)
+		added++
+	}
+	if added > 0 {
+		_ = a.saveLibraryLocked()
+	}
+	return added
 }
 
 func (a *application) removePath(path string) error {

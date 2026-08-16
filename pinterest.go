@@ -110,6 +110,12 @@ func (job *pinterestImport) snapshot() map[string]any {
 		"ok": true, "state": state, "board": job.board,
 		"phase": job.phase, "done": job.done, "total": job.total,
 	}
+	// Stopping still has to import whatever already arrived, so the job stays
+	// "running" for a while after the user asks it to stop. Saying so keeps the
+	// panel from insisting it is still downloading.
+	if job.cancelled && state == "running" {
+		payload["stopping"] = true
+	}
 	if job.result != nil {
 		payload["result"] = job.result
 	}
@@ -142,6 +148,15 @@ func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 		sendError(w, http.StatusBadRequest, fmt.Errorf("choose how Pinterest images should be organized"))
 		return
 	}
+	// A board name that cannot become a folder has to be caught here. Finding
+	// out after the download would throw away everything it just spent half an
+	// hour fetching.
+	if request.Mode == "board" {
+		if _, err := collectionName(pinterestBoardName(boardURL)); err != nil {
+			sendError(w, http.StatusBadRequest, fmt.Errorf("this board's name cannot be used as a folder; import it straight into your library instead"))
+			return
+		}
+	}
 
 	// Deliberately not the request context: the download has to survive the
 	// window that asked for it.
@@ -153,6 +168,7 @@ func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 	}
 	go func() {
 		defer cancel()
+		defer guard(func(err error) { s.pinterest.finish(nil, err) })
 		result, err := s.runPinterestImport(ctx, boardURL, request.Mode, request.SkipExisting)
 		s.pinterest.finish(result, err)
 	}()
@@ -183,7 +199,10 @@ func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode
 	defer os.RemoveAll(downloadDir)
 
 	sampled := make(chan struct{})
+	stopped := make(chan struct{})
 	go func() {
+		defer close(stopped)
+		defer guard(nil)
 		ticker := time.NewTicker(pinterestUsageInterval)
 		defer ticker.Stop()
 		for {
@@ -198,7 +217,10 @@ func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode
 		}
 	}()
 	downloadErr := s.galleryDL(ctx, boardURL.String(), downloadDir)
+	// Waiting for the sampler keeps a late tick from reporting a download that
+	// has already finished, or worse, one that belongs to the next import.
 	close(sampled)
+	<-stopped
 	// Stopping an import keeps whatever already arrived, so half an hour of
 	// downloading is never thrown away on the way out.
 	if downloadErr != nil && ctx.Err() == nil {
@@ -221,7 +243,8 @@ func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode
 			return nil, fmt.Errorf("Pinterest board name cannot be used as a folder")
 		}
 	}
-	digestIndex := s.app.importDigestIndex()
+	batch := s.app.newImportBatch()
+	defer batch.commit(s.app)
 	collectionPaths := []string{}
 	collectionSet := map[string]bool{}
 	if folder != "" {
@@ -241,7 +264,7 @@ func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode
 			continue
 		}
 		result, _, saveErr := s.saveImportedImageWithOptions(
-			file, filepath.Base(imagePath), "", "", false, true, digestIndex,
+			file, filepath.Base(imagePath), "", "", false, true, batch,
 		)
 		_ = file.Close()
 		_ = os.Remove(imagePath)
@@ -270,6 +293,10 @@ func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode
 		}
 		imported++
 	}
+	s.pinterest.progress("importing", len(images), len(images))
+	// The pictures are on disk either way, so they join the library before the
+	// folder is written and before any of this can return an error.
+	batch.commit(s.app)
 	if folder != "" && len(images) > 0 {
 		directory := filepath.Join(s.app.tagsDir, folder)
 		if err := os.MkdirAll(directory, 0o755); err != nil {
@@ -298,6 +325,11 @@ func runGalleryDL(ctx context.Context, boardURL, directory string) error {
 		killProcessGroup(command)
 		return nil
 	}
+	// Wait blocks until the output pipes close, which a surviving grandchild can
+	// hold open forever. Without a delay, one stuck downloader would wedge the
+	// import in "running" for the rest of the session: no other board could
+	// start, and Pictogrep could never close itself.
+	command.WaitDelay = 10 * time.Second
 	groupProcess(command)
 	output := &boundedCommandOutput{maximum: maxGalleryDLLogBytes}
 	command.Stdout = output

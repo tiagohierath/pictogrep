@@ -484,3 +484,105 @@ func TestVectorSearchSkipsEmbeddingAfterImageChanges(t *testing.T) {
 		t.Fatalf("stale embedding remained searchable: %#v", results)
 	}
 }
+
+func TestDamagedEmbeddingRecordOnlyCostsItsOwnPicture(t *testing.T) {
+	app := testApplication(t)
+	vector := make([]float32, app.embeddingModel.Dimensions)
+	for index := range vector {
+		vector[index] = 0.25
+	}
+	// Equal-length names keep every record the same size, so the test can point
+	// at the middle one.
+	names := []string{"/aaa.png", "/bbb.png", "/ccc.png"}
+	store := []byte{}
+	for _, name := range names {
+		data, err := encodeEmbedding(app.embeddingModel, name, embeddingRecord{Mtime: 7, Vector: vector})
+		if err != nil {
+			t.Fatal(err)
+		}
+		store = append(store, data...)
+	}
+	recordSize := len(store) / len(names)
+	store[recordSize+20] ^= 0xFF
+	if err := os.WriteFile(app.embeddingStorePath, store, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app.embeddings = map[string]embeddingRecord{}
+	if err := app.loadEmbeddingStore(); err != nil {
+		t.Fatal(err)
+	}
+	if _, found := app.embeddings[expandPath("/ccc.png")]; !found {
+		t.Fatalf("a damaged record took every record after it: %d of 3 survived", len(app.embeddings))
+	}
+	if _, found := app.embeddings[expandPath("/aaa.png")]; !found {
+		t.Fatal("a damaged record lost the record before it")
+	}
+	if _, found := app.embeddings[expandPath("/bbb.png")]; found {
+		t.Fatal("a damaged record loaded anyway")
+	}
+	// The damage is rewritten away, so the next start reads a clean file.
+	info, err := os.Stat(app.embeddingStorePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() != int64(2*recordSize) {
+		t.Fatalf("the damaged store was not rewritten: size=%d want=%d", info.Size(), 2*recordSize)
+	}
+}
+
+func TestInterruptedEmbeddingAppendIsTrimmed(t *testing.T) {
+	app := testApplication(t)
+	vector := make([]float32, app.embeddingModel.Dimensions)
+	data, err := encodeEmbedding(app.embeddingModel, "/one.png", embeddingRecord{Mtime: 3, Vector: vector})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A crash mid-append leaves half a record behind, which is not corruption.
+	store := append(append([]byte{}, data...), data[:len(data)/2]...)
+	if err := os.WriteFile(app.embeddingStorePath, store, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	app.embeddings = map[string]embeddingRecord{}
+	if err := app.loadEmbeddingStore(); err != nil {
+		t.Fatal(err)
+	}
+	if len(app.embeddings) != 1 {
+		t.Fatalf("a torn final record lost the whole store: %d records", len(app.embeddings))
+	}
+	info, err := os.Stat(app.embeddingStorePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() != int64(len(data)) {
+		t.Fatalf("the torn record was not trimmed: size=%d want=%d", info.Size(), len(data))
+	}
+}
+
+func TestAddPathsTakesAWholeImportInOneWrite(t *testing.T) {
+	app := testApplication(t)
+	first := filepath.Join(app.libraryDir, "first.png")
+	second := filepath.Join(app.libraryDir, "second.png")
+	writeTestPNG(t, first)
+	writeTestPNG(t, second)
+	if added := app.addPaths([]string{first, second, first}); added != 2 {
+		t.Fatalf("addPaths counted a repeat twice: added=%d", added)
+	}
+	if added := app.addPaths([]string{second}); added != 0 {
+		t.Fatalf("addPaths added a picture the library already had: added=%d", added)
+	}
+	paths, _, _ := app.snapshot()
+	if len(paths) != 2 {
+		t.Fatalf("the library does not hold the import: %#v", paths)
+	}
+	saved, err := os.ReadFile(app.statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var state libraryState
+	if err := json.Unmarshal(saved, &state); err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Images) != 2 {
+		t.Fatalf("the batched import was not saved to disk: %#v", state.Images)
+	}
+}

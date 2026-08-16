@@ -615,3 +615,73 @@ func recorderJSON(t *testing.T, response *httptest.ResponseRecorder) map[string]
 	}
 	return result
 }
+
+func TestUnusableBoardFolderNameIsRefusedBeforeDownloading(t *testing.T) {
+	app := testApplication(t)
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	handler.galleryDL = func(context.Context, string, string) error {
+		ran = true
+		return nil
+	}
+	routes := handler.routes()
+	response := postPinterestImport(t, routes, map[string]any{
+		"url": "https://www.pinterest.com/artist/!!!/", "mode": "board",
+	})
+	if response.Code != http.StatusBadRequest || ran {
+		t.Fatalf("a board name that cannot be a folder was only caught after downloading: status=%d ran=%v body=%s", response.Code, ran, response.Body)
+	}
+	// The same board is fine when it never needs a folder name.
+	response = postPinterestImport(t, routes, map[string]any{
+		"url": "https://www.pinterest.com/artist/!!!/", "mode": "original",
+	})
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("a library import was refused over a folder name it does not use: status=%d body=%s", response.Code, response.Body)
+	}
+	waitForPinterestImport(t, routes)
+}
+
+func TestStoppingIsVisibleWhileTheImportFinishesUp(t *testing.T) {
+	job := &pinterestImport{}
+	if !job.start("film references", func() {}) {
+		t.Fatal("a fresh import refused to start")
+	}
+	if _, stopping := job.snapshot()["stopping"]; stopping {
+		t.Fatal("a running import already reports that it is stopping")
+	}
+	if !job.stop() {
+		t.Fatal("a running import could not be stopped")
+	}
+	// Stopping still has to import what already arrived, so the job stays
+	// running: the panel would otherwise keep claiming it is downloading.
+	if status := job.snapshot(); status["state"] != "running" || status["stopping"] != true {
+		t.Fatalf("a stopping import does not say so: %#v", status)
+	}
+	job.finish(map[string]any{"imported": float64(2)}, nil)
+	if status := job.snapshot(); status["state"] != "cancelled" || status["stopping"] != nil {
+		t.Fatalf("a finished import still reports that it is stopping: %#v", status)
+	}
+}
+
+func TestBackgroundWorkReportsAPanicInsteadOfClosingPictogrep(t *testing.T) {
+	// net/http recovers a panicking handler, but a background import has no
+	// such net: an unguarded panic would take the whole process with it.
+	var reported error
+	func() {
+		defer guard(func(err error) { reported = err })
+		panic("gallery-dl returned something impossible")
+	}()
+	if reported == nil {
+		t.Fatal("a panicking background job reported no error")
+	}
+	reported = nil
+	func() {
+		defer guard(func(err error) { reported = err })
+	}()
+	if reported != nil {
+		t.Fatalf("ordinary background work was reported as a failure: %v", reported)
+	}
+}

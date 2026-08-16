@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Importing a large Pinterest board is much faster. Each picture used to rewrite the entire library file before the next one could start, so a two thousand image board wrote that file two thousand times, every write longer than the one before it. The board now joins the library in a single write.
+- A board whose name cannot be used as a folder is refused before the download starts. Finding out afterwards threw away everything the download had just spent half an hour fetching.
+- An import that hits an unexpected internal error now fails on its own instead of closing Pictogrep. Work that runs in the background had no protection from that, so a single unexpected error during an import ended the whole program and took the open session with it. The same protection covers folder scans.
+- Stopping an import says it is stopping while it puts away what already arrived. The panel used to keep reporting the download, which made the stop button look broken.
+- Import progress now reaches the last picture instead of stopping one short of it.
+- A downloader that will not exit can no longer wedge importing for the rest of the session. Pictogrep gives it ten seconds and then carries on, where it used to wait forever: no other board could be imported, and Pictogrep could never close itself.
+- One damaged record in the search index no longer discards every record saved after it. Pictogrep skips the damaged record, keeps the rest, and writes the file back clean, so the damage costs the pictures it actually touched instead of an afternoon of re-indexing.
+
 ## 0.7.4 - 2026-08-15
 
 - Starting a Pinterest import now closes the import panel and puts you back in your library, with a notice at the bottom of the screen saying the board is being taken care of. There is nothing to wait around for, so the panel no longer asks you to.

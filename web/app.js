@@ -2458,7 +2458,9 @@ async function importPinterestBoard(event) {
 function showPinterestWorking(status) {
   pinterestRunning = true;
   const title = $("#pinterestWorkingTitle");
-  if (status && status.phase === "importing" && status.total) {
+  if (status && status.stopping) {
+    title.textContent = t("pinterest.stopping");
+  } else if (status && status.phase === "importing" && status.total) {
     title.textContent = t("pinterest.progress_importing", {count: status.done, total: status.total});
   } else if (status && status.done) {
     title.textContent = t("pinterest.progress_downloading", {count: status.done});

@@ -1091,6 +1091,7 @@ func (s *server) appIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	s.app.setJob("running", 0, 0, "Scanning image folders…")
 	go func() {
+		defer guard(func(err error) { s.app.setJob("error", 0, 0, err.Error()) })
 		if request.Mode == "incremental" {
 			refresh, err := s.app.refreshLibrary(request.Folder)
 			if err != nil {

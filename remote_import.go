@@ -85,7 +85,7 @@ func (s *server) saveImportedImage(reader io.Reader, requestedName, folder, sour
 // duplicate should be linked to the destination collection and whether a
 // duplicate outside a collection is a successful no-op. Ordinary one-image
 // imports retain their existing conflict behavior through saveImportedImage.
-func (s *server) saveImportedImageWithOptions(reader io.Reader, requestedName, folder, source string, linkDuplicate, duplicateOK bool, digestIndex map[[32]byte]string) (map[string]any, int, error) {
+func (s *server) saveImportedImageWithOptions(reader io.Reader, requestedName, folder, source string, linkDuplicate, duplicateOK bool, batch *importBatch) (map[string]any, int, error) {
 	name, err := safeImageName(requestedName)
 	if err != nil {
 		return nil, http.StatusBadRequest, err
@@ -112,7 +112,7 @@ func (s *server) saveImportedImageWithOptions(reader io.Reader, requestedName, f
 		_ = os.Remove(target)
 		return nil, http.StatusBadRequest, fmt.Errorf("dropped file is not a valid image")
 	}
-	existing, duplicate, digest, err := s.importDuplicate(target, digestIndex)
+	existing, duplicate, digest, err := s.importDuplicate(target, batch)
 	if err != nil {
 		_ = os.Remove(target)
 		return nil, http.StatusBadRequest, err
@@ -143,9 +143,11 @@ func (s *server) saveImportedImageWithOptions(reader io.Reader, requestedName, f
 			return nil, http.StatusBadRequest, err
 		}
 	}
-	s.app.addPath(target)
-	if digestIndex != nil {
-		digestIndex[digest] = target
+	if batch == nil {
+		s.app.addPath(target)
+	} else {
+		batch.digests[digest] = target
+		batch.added = append(batch.added, target)
 	}
 	return map[string]any{
 		"ok": true, "name": filepath.Base(target), "path": target,
@@ -153,11 +155,43 @@ func (s *server) saveImportedImageWithOptions(reader io.Reader, requestedName, f
 	}, http.StatusOK, nil
 }
 
-// importDuplicate uses a batch digest index when one is available. A Pinterest
-// board can contain thousands of images, so rereading every library file for
-// every item would otherwise turn one import into quadratic disk I/O.
-func (s *server) importDuplicate(candidate string, digestIndex map[[32]byte]string) (string, bool, [32]byte, error) {
-	if digestIndex == nil {
+// An import batch carries the two things a thousand-image board cannot afford
+// to redo per image: the digest index that answers "is this already in the
+// library" without rereading every library file, and the list of new files,
+// which joins the library in one write at the end instead of rewriting the
+// whole library state once per picture.
+type importBatch struct {
+	digests map[[32]byte]string
+	added   []string
+}
+
+func (a *application) newImportBatch() *importBatch {
+	paths, _, _ := a.snapshot()
+	batch := &importBatch{digests: make(map[[32]byte]string, len(paths))}
+	for _, path := range paths {
+		if digest, err := fileDigest(path); err == nil {
+			if _, exists := batch.digests[digest]; !exists {
+				batch.digests[digest] = path
+			}
+		}
+	}
+	return batch
+}
+
+// commit hands everything the batch imported to the library in a single write.
+// It is safe to call more than once: a cancelled import commits what already
+// arrived, and the normal ending commits the rest.
+func (batch *importBatch) commit(a *application) int {
+	if batch == nil || len(batch.added) == 0 {
+		return 0
+	}
+	added := a.addPaths(batch.added)
+	batch.added = batch.added[:0]
+	return added
+}
+
+func (s *server) importDuplicate(candidate string, batch *importBatch) (string, bool, [32]byte, error) {
+	if batch == nil {
 		existing, duplicate, err := s.app.duplicatePath(candidate)
 		return existing, duplicate, [32]byte{}, err
 	}
@@ -165,21 +199,8 @@ func (s *server) importDuplicate(candidate string, digestIndex map[[32]byte]stri
 	if err != nil {
 		return "", false, digest, err
 	}
-	existing, duplicate := digestIndex[digest]
+	existing, duplicate := batch.digests[digest]
 	return existing, duplicate, digest, nil
-}
-
-func (a *application) importDigestIndex() map[[32]byte]string {
-	paths, _, _ := a.snapshot()
-	index := make(map[[32]byte]string, len(paths))
-	for _, path := range paths {
-		if digest, err := fileDigest(path); err == nil {
-			if _, exists := index[digest]; !exists {
-				index[digest] = path
-			}
-		}
-	}
-	return index
 }
 
 func (s *server) importDestination(folder, source string) (directory, cleanFolder, cleanSource string, err error) {

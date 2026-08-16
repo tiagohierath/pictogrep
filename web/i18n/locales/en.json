@@ -215,6 +215,7 @@
   "pinterest.library_direct": "Directly in my library",
   "pinterest.keep_names": "Keep downloaded filenames",
   "pinterest.skip_existing": "Skip images already in my library",
+  "pinterest.stopping": "Stopping. Keeping what already arrived.",
   "pinterest.duplicates_help": "Exact duplicates are kept only once.",
   "pinterest.download_all": "Download all",
   "pinterest.downloading_board": "Downloading board…",
