@@ -25,6 +25,8 @@
   "empty.search_text": "Descreva o que você lembra na caixa de pesquisa.",
   "empty.organize_title": "Organize o que encontrar",
   "empty.organize_text": "Coloque imagens em pastas e crie storyboards.",
+  "empty.pinterest_action": "Ou importe uma pasta do Pinterest",
+  "empty.pinterest_help": "Opcional. O Pictogrep baixa uma pasta p\u00fablica para a sua biblioteca.",
   "empty.choose_action": "Escolher imagens ou pasta",
   "state.loading_title": "Carregando imagens…",
   "state.loading_text": "Lendo sua biblioteca.",
@@ -431,5 +433,12 @@
   "storyboard.pan_h": "Pan. H 2:1",
   "storyboard.pan_v": "Pan. V 3:4",
   "folders.path_copied": "Caminho da pasta copiado.",
+  "state.loading_more": "Carregando mais imagens\u2026",
+  "folders.merge_hint": "Juntar",
+  "folders.merged": "\u201c{from}\u201d foi juntada em \u201c{into}\u201d.",
+  "folders.delete": "Excluir pasta",
+  "folders.delete_confirm": "Excluir a pasta \u201c{name}\u201d? As imagens continuam no seu disco.",
+  "folders.deleted": "Pasta \u201c{name}\u201d exclu\u00edda.",
+  "folders.delete_cancel": "Cancelar",
   "folders.copy_path_prompt": "Copiar caminho da pasta"
 }

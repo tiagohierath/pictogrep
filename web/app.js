@@ -9,6 +9,8 @@ let currentQuery = "";
 let commandPaletteIndex = 0;
 let commandPaletteItems = [];
 let sidebarMode = "random";
+let draggedFolder = null;
+let folderPendingDelete = null;
 let vimPendingG = false;
 let messageTimer = null;
 let pollTimer = null;
@@ -19,6 +21,8 @@ let lastLibraryRefreshAt = 0;
 let aiWorker = null;
 let aiRequestId = 0;
 let imageLoadId = 0;
+let imagePaging = null;
+let imageScrollObserver = null;
 let viewerImageLoadId = 0;
 let viewerPreviewTimer = null;
 let semanticIndexPromise = null;
@@ -40,6 +44,9 @@ let queryPrimeTimer = null;
 let currentViewerItem = null;
 let browserImages = [];
 let relatedLoadId = 0;
+let relatedPaging = null;
+let relatedScrollObserver = null;
+const RELATED_PAGE_SIZE = 18;
 let canvasPositions = new Map();
 let canvasImages = [];
 let canvasPan = {x: 0, y: 0};
@@ -791,10 +798,15 @@ function viewerURL(id = "") {
 
 function openImageViewer(item, updateHistory = true) {
   const viewer = $("#imageViewer");
+  const wasOpen = viewer.open;
   showViewerImage(item, false);
-  if (!viewer.open) viewer.showModal();
+  if (!wasOpen) viewer.showModal();
   if (updateHistory && new URL(location.href).searchParams.get("image") !== item.id) {
-    history.pushState({pictogrepViewer: true}, "", viewerURL(item.id));
+    // The whole viewer takes a single history entry: hopping from one image to
+    // a similar one replaces it, so Escape and × leave the viewer for good
+    // instead of walking back through everything that was clicked.
+    if (wasOpen) history.replaceState({pictogrepViewer: history.state?.pictogrepViewer === true}, "", viewerURL(item.id));
+    else history.pushState({pictogrepViewer: true}, "", viewerURL(item.id));
   }
 }
 
@@ -967,34 +979,7 @@ function renderViewerTags(tags) {
 
 function renderRelatedImages(data) {
   const grid = $("#relatedGrid");
-  grid.replaceChildren(...data.images.map(item => {
-    const button = document.createElement("button");
-    button.className = "related-card";
-    button.type = "button";
-    button.title = item.name;
-    button.setAttribute("aria-label", item.name);
-    const image = document.createElement("img");
-    image.loading = "lazy";
-    image.decoding = "async";
-    if (item.width && item.height) {
-      image.width = item.width;
-      image.height = item.height;
-    }
-    loadImage(image, thumbnailURL(item), {fallback: item.url, label: ""});
-    button.append(image);
-    button.onclick = () => openImageViewer(item);
-    button.onpointerenter = () => {
-      clearTimeout(viewerPreviewTimer);
-      viewerPreviewTimer = setTimeout(() => { preloadViewerPreview(item); }, 180);
-    };
-    button.onpointerleave = () => clearTimeout(viewerPreviewTimer);
-    button.onpointerdown = () => {
-      clearTimeout(viewerPreviewTimer);
-      preloadViewerPreview(item);
-    };
-    bindImageContextMenu(button, item);
-    return button;
-  }));
+  grid.replaceChildren(...data.images.map(relatedCard));
   const status = $("#relatedStatus");
   if (!data.ready) status.textContent = t("viewer.preparing_similar");
   else if (!data.images.length && data.indexed < data.total) status.textContent = t("viewer.similar_later");
@@ -1002,6 +987,81 @@ function renderRelatedImages(data) {
   else if (data.indexed < data.total) status.textContent = t("viewer.similar_progress", {indexed: data.indexed, total: data.total});
   else status.textContent = "";
   status.hidden = !status.textContent;
+  relatedPaging = data.ready && data.images.length
+    ? {id: currentViewerItem?.id, limit: RELATED_PAGE_SIZE, offset: data.images.length, loading: false, done: data.images.length < RELATED_PAGE_SIZE}
+    : null;
+  $("#relatedMore").hidden = true;
+  fillRelatedViewport();
+}
+
+// The viewer keeps handing out the next slice of the similarity ranking while
+// you scroll past the ones it already showed.
+async function loadMoreRelated() {
+  const paging = relatedPaging;
+  if (!paging || paging.loading || paging.done) return;
+  if (!$("#imageViewer").open || currentViewerItem?.id !== paging.id) return;
+  const loadId = relatedLoadId;
+  paging.loading = true;
+  $("#relatedMore").hidden = false;
+  try {
+    const data = await request(`/api/app/related/${encodeURIComponent(paging.id)}?limit=${paging.limit}&offset=${paging.offset}`);
+    if (loadId !== relatedLoadId || paging !== relatedPaging || currentViewerItem?.id !== paging.id) return;
+    const images = data.images || [];
+    paging.offset += images.length;
+    $("#relatedGrid").append(...images.map(relatedCard));
+    if (images.length < paging.limit) paging.done = true;
+  } catch (_) {
+    paging.done = true;
+  } finally {
+    paging.loading = false;
+    $("#relatedMore").hidden = true;
+  }
+  if (paging === relatedPaging && !paging.done) fillRelatedViewport();
+}
+
+function fillRelatedViewport() {
+  const sentinel = $("#relatedSentinel");
+  const viewer = $("#imageViewer");
+  if (!sentinel || !relatedPaging || relatedPaging.done || relatedPaging.loading) return;
+  if (sentinel.getBoundingClientRect().top < viewer.getBoundingClientRect().bottom + 400) loadMoreRelated();
+}
+
+function watchRelatedScroll() {
+  const sentinel = $("#relatedSentinel");
+  if (!sentinel || relatedScrollObserver) return;
+  relatedScrollObserver = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) loadMoreRelated();
+  }, {root: $("#imageViewer"), rootMargin: "400px"});
+  relatedScrollObserver.observe(sentinel);
+}
+
+function relatedCard(item) {
+  const button = document.createElement("button");
+  button.className = "related-card";
+  button.type = "button";
+  button.title = item.name;
+  button.setAttribute("aria-label", item.name);
+  const image = document.createElement("img");
+  image.loading = "lazy";
+  image.decoding = "async";
+  if (item.width && item.height) {
+    image.width = item.width;
+    image.height = item.height;
+  }
+  loadImage(image, thumbnailURL(item), {fallback: item.url, label: ""});
+  button.append(image);
+  button.onclick = () => openImageViewer(item);
+  button.onpointerenter = () => {
+    clearTimeout(viewerPreviewTimer);
+    viewerPreviewTimer = setTimeout(() => { preloadViewerPreview(item); }, 180);
+  };
+  button.onpointerleave = () => clearTimeout(viewerPreviewTimer);
+  button.onpointerdown = () => {
+    clearTimeout(viewerPreviewTimer);
+    preloadViewerPreview(item);
+  };
+  bindImageContextMenu(button, item);
+  return button;
 }
 
 async function refreshRelatedResults() {
@@ -1009,7 +1069,7 @@ async function refreshRelatedResults() {
   if (!item || !$("#imageViewer").open) return;
   const loadId = relatedLoadId;
   try {
-    const data = await request(`/api/app/related/${encodeURIComponent(item.id)}?limit=18`);
+    const data = await request(`/api/app/related/${encodeURIComponent(item.id)}?limit=${RELATED_PAGE_SIZE}`);
     if (loadId === relatedLoadId && currentViewerItem?.id === item.id) renderRelatedImages(data);
   } catch (_) {
     // Background refreshes stay quiet; the initial load reports useful errors.
@@ -1018,18 +1078,21 @@ async function refreshRelatedResults() {
 
 async function loadRelatedImages(item) {
   const loadId = ++relatedLoadId;
+  relatedPaging = null;
+  $("#relatedMore").hidden = true;
+  watchRelatedScroll();
   $("#relatedGrid").replaceChildren();
   $("#relatedStatus").hidden = false;
   $("#relatedStatus").textContent = t("viewer.finding_similar");
   try {
-    let data = await request(`/api/app/related/${encodeURIComponent(item.id)}?limit=18`);
+    let data = await request(`/api/app/related/${encodeURIComponent(item.id)}?limit=${RELATED_PAGE_SIZE}`);
     let state = null;
     if (!data.ready) {
       state = await request("/api/app/ai");
       const missing = state.missing.find(candidate => candidate.path === item.path);
       if (missing) {
         await saveSemanticEmbedding(missing);
-        data = await request(`/api/app/related/${encodeURIComponent(item.id)}?limit=18`);
+        data = await request(`/api/app/related/${encodeURIComponent(item.id)}?limit=${RELATED_PAGE_SIZE}`);
       }
     }
     if (loadId !== relatedLoadId || currentViewerItem?.id !== item.id) return;
@@ -1075,16 +1138,85 @@ function showAllImages() {
 }
 
 function showLocalImages() {
+  const query = searchQueryValue();
+  // Coming back from another tab with the same scope keeps the pictures that
+  // are already on screen instead of shuffling a fresh set.
+  if (!currentTag && !currentSource && query === currentQuery && browserImages.length) {
+    switchTab("images");
+    fillImageViewport();
+    return;
+  }
   currentTag = "";
   currentSource = "";
   currentFolderName = "";
-  currentQuery = searchQueryValue();
+  currentQuery = query;
   renderSearchScope();
   loadImages();
 }
 
+function imagePageURL({mode, pageSize, offset, seed}) {
+  return `/api/app/images?mode=${mode}&count=${pageSize}&offset=${offset}&seed=${seed}`
+    + `&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}`;
+}
+
+function setMoreImagesVisible(visible) {
+  const more = $("#imageGridMore");
+  if (more) more.hidden = !visible;
+}
+
+function appendImages(images) {
+  browserImages = browserImages.concat(images);
+  $("#imageGrid").append(...images.map(pictureCard));
+  $("#imageCount").textContent = imagePaging?.total ? `(${imagePaging.total})` : "";
+}
+
+// The grid grows a page at a time as the sentinel below it comes into view, so
+// a big library never has to be rendered all at once.
+async function loadMoreImages() {
+  const paging = imagePaging;
+  if (!paging || paging.loading || paging.done) return;
+  if ($("#imagesPanel").hidden) return;
+  const loadId = imageLoadId;
+  paging.loading = true;
+  setMoreImagesVisible(true);
+  try {
+    const data = await request(imagePageURL(paging));
+    if (loadId !== imageLoadId || paging !== imagePaging) return;
+    paging.total = data.total ?? paging.total;
+    paging.offset += paging.pageSize;
+    appendImages(data.images || []);
+    if (paging.offset >= paging.total || !(data.images || []).length) paging.done = true;
+  } catch (error) {
+    paging.done = true;
+    showMessage(error.message, true);
+  } finally {
+    paging.loading = false;
+    setMoreImagesVisible(false);
+  }
+  if (paging === imagePaging && !paging.done) fillImageViewport();
+}
+
+// An IntersectionObserver only fires on a crossing, so after each page we check
+// whether the sentinel is still on screen and keep going until it is pushed off.
+function fillImageViewport() {
+  const sentinel = $("#imageGridSentinel");
+  if (!sentinel || !imagePaging || imagePaging.done || imagePaging.loading) return;
+  if (sentinel.getBoundingClientRect().top < window.innerHeight + 600) loadMoreImages();
+}
+
+function watchImageScroll() {
+  const sentinel = $("#imageGridSentinel");
+  if (!sentinel || imageScrollObserver) return;
+  imageScrollObserver = new IntersectionObserver(entries => {
+    if (entries.some(entry => entry.isIntersecting)) loadMoreImages();
+  }, {rootMargin: "600px"});
+  imageScrollObserver.observe(sentinel);
+}
+
 async function loadImages() {
   const loadId = ++imageLoadId;
+  imagePaging = null;
+  setMoreImagesVisible(false);
   renderSearchScope();
   switchTab("images");
   const preserveResults = Boolean($("#imageGrid .image-card:not(.image-card-skeleton)"));
@@ -1102,14 +1234,22 @@ async function loadImages() {
       } else if (!semanticIndexPromise && !semanticWarmupPromise) closeMessage();
     } else {
       const mode = currentTag || currentSource ? "recent" : sidebarMode;
-      const count = sidebarMode === "random" ? 50 : 300;
-      const data = await request(`/api/app/images?mode=${mode}&count=${count}&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}`);
+      const pageSize = mode === "random" ? 50 : 120;
+      const data = await request(imagePageURL({mode, pageSize, offset: 0, seed: 0}));
       if (loadId !== imageLoadId) return;
-      if (sidebarMode === "unsorted" && !currentTag && !currentSource) {
-        data.images = data.images.filter(item => !(item.tags || []).length);
-        data.total = data.images.length;
-      }
       renderImages(data.images, data.total);
+      imagePaging = {
+        mode,
+        pageSize,
+        tag: currentTag,
+        source: currentSource,
+        seed: data.seed || 0,
+        offset: pageSize,
+        total: data.total || data.images.length,
+        loading: false,
+      };
+      imagePaging.done = imagePaging.offset >= imagePaging.total;
+      fillImageViewport();
     }
   } catch (error) {
     if (loadId !== imageLoadId) return;
@@ -1360,9 +1500,43 @@ function folderCard(folder) {
   details.className = "folder-details";
   details.append(name, count);
   card.append(preview, details);
+  if (folder.kind === "tag") makeFolderMergeable(card, folder);
   card.onclick = () => openFolder(folder);
   card.oncontextmenu = event => openFolderContextMenu(event, folder);
   return card;
+}
+
+// Collections can be dragged onto each other; the badge is the only prompt, so
+// the merge happens without a dialog or a name to type.
+function makeFolderMergeable(card, folder) {
+  const badge = document.createElement("span");
+  badge.className = "folder-merge-badge";
+  badge.textContent = t("folders.merge_hint");
+  card.append(badge);
+  card.draggable = true;
+  card.ondragstart = event => {
+    draggedFolder = folder;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("application/x-pictogrep-folder", folder.value);
+  };
+  card.ondragend = () => {
+    draggedFolder = null;
+    document.querySelectorAll(".is-merge-target").forEach(element => element.classList.remove("is-merge-target"));
+  };
+  card.ondragover = event => {
+    if (!draggedFolder || draggedFolder.value === folder.value) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    card.classList.add("is-merge-target");
+  };
+  card.ondragleave = () => card.classList.remove("is-merge-target");
+  card.ondrop = event => {
+    event.preventDefault();
+    card.classList.remove("is-merge-target");
+    const from = draggedFolder;
+    draggedFolder = null;
+    if (from) mergeFolders(from, folder);
+  };
 }
 
 function setFolderScope(folder) {
@@ -1437,8 +1611,54 @@ function openFolderContextMenu(event, folder) {
       window.prompt(t("folders.copy_path_prompt"), folder.value);
     }
   };
+  const remove = $("#folderContextDelete");
+  remove.hidden = folder.kind !== "tag";
+  remove.onclick = () => {
+    closeCardMenus();
+    openDeleteFolder(folder);
+  };
   menu.hidden = false;
   positionContextMenu(menu, event);
+}
+
+function openDeleteFolder(folder) {
+  folderPendingDelete = folder;
+  $("#deleteFolderText").textContent = t("folders.delete_confirm", {name: folder.name});
+  $("#deleteFolderDialog").showModal();
+}
+
+async function deleteFolder(folder) {
+  try {
+    await request("/api/app/tags", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "delete", tag: folder.value}),
+    });
+    if (currentTag === folder.value) {
+      currentTag = "";
+      currentFolderName = "";
+    }
+    await refreshState();
+    await loadFolders();
+    showMessage(t("folders.deleted", {name: folder.name}));
+  } catch (error) { showMessage(error.message, true); }
+}
+
+// Dropping one folder on another merges them, keeping the dragged folder's
+// name so nothing has to be typed.
+async function mergeFolders(from, into) {
+  if (from.value === into.value) return;
+  try {
+    await request("/api/app/tags", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "merge", tag: from.value, into: into.value}),
+    });
+    if (currentTag === into.value) currentTag = from.value;
+    await refreshState();
+    await loadFolders();
+    showMessage(t("folders.merged", {from: from.name, into: into.name}));
+  } catch (error) { showMessage(error.message, true); }
 }
 
 function newFolderCard() {
@@ -2391,6 +2611,17 @@ async function togglePinterestPlugin() {
   }
 }
 
+// An empty library is the moment a Pinterest board is most useful, so the
+// welcome screen offers it and turns the plugin on for whoever asks.
+async function startPinterestOnboarding() {
+  if (!appState?.plugins?.pinterest?.enabled) {
+    $("#pinterestPluginToggle").checked = true;
+    await togglePinterestPlugin();
+  }
+  if (!appState?.plugins?.pinterest?.enabled) return;
+  showPinterestImport();
+}
+
 function showPinterestImport() {
   $("#addSection").hidden = true;
   $("#boardsSection").hidden = true;
@@ -2872,6 +3103,14 @@ $("#checkIndexNow").onclick = checkIndexNow;
 $("#rebuildSearchIndex").onclick = () => $("#reindexDialog").showModal();
 $("#reindexForm").onsubmit = rebuildSearchIndex;
 $("#cancelReindex").onclick = () => $("#reindexDialog").close();
+$("#cancelDeleteFolder").onclick = () => $("#deleteFolderDialog").close();
+$("#deleteFolderForm").onsubmit = event => {
+  event.preventDefault();
+  const folder = folderPendingDelete;
+  folderPendingDelete = null;
+  $("#deleteFolderDialog").close();
+  if (folder) deleteFolder(folder);
+};
 $("#clearRecentSearches").onclick = clearRecentSearchHistory;
 $("#wikimediaPluginToggle").onchange = toggleWikimediaPlugin;
 $("#calendarPluginToggle").onchange = toggleCalendarPlugin;
@@ -2898,6 +3137,7 @@ $("#emptyAddImages").onclick = () => {
   $("#addSection").hidden = false;
   openMenu();
 };
+$("#emptyPinterest").onclick = startPinterestOnboarding;
 $("#imageFiles").onchange = event => uploadFiles(event.target.files);
 $("#imageFolder").onchange = event => uploadFiles(event.target.files);
 $("#pinterestImportForm").onsubmit = importPinterestBoard;
@@ -3042,6 +3282,7 @@ $("#imageViewer").addEventListener("cancel", event => { event.preventDefault(); 
 $("#imageViewer").addEventListener("close", () => {
   currentViewerItem = null;
   relatedLoadId++;
+  relatedPaging = null;
 });
 $("#closeCanvas").onclick = () => $("#canvasDialog").close();
 $("#canvasViewport").onpointerdown = event => {
@@ -3128,6 +3369,7 @@ async function start() {
   setLoading();
   lastJobState = appState.indexJob.state;
   renderState();
+  watchImageScroll();
   await loadImages();
   await loadFolders();
   await syncViewerFromHistory();

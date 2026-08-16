@@ -1109,3 +1109,136 @@ func TestSemanticQueryCacheRoundTrip(t *testing.T) {
 		t.Fatalf("query cache lookup failed: status=%d %#v", response.StatusCode, value)
 	}
 }
+
+func postTagAction(t *testing.T, serverURL string, payload map[string]any) (*http.Response, map[string]any) {
+	t.Helper()
+	body, _ := json.Marshal(payload)
+	response, err := http.Post(serverURL+"/api/app/tags", "application/json", bytes.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return response, responseJSON(t, response)
+}
+
+func TestImagePagesCoverTheLibraryWithoutRepeating(t *testing.T) {
+	app, server := testHTTPServer(t)
+	folder := t.TempDir()
+	for index := 0; index < 12; index++ {
+		picture := filepath.Join(folder, "picture-"+strconv.Itoa(index)+".png")
+		writeTestPNG(t, picture)
+		app.addPath(picture)
+	}
+
+	seen := map[string]bool{}
+	seed := ""
+	for offset := 0; offset < 12; offset += 5 {
+		response, err := http.Get(server.URL + "/api/app/images?mode=random&count=5&offset=" + strconv.Itoa(offset) + "&seed=" + seed)
+		if err != nil {
+			t.Fatal(err)
+		}
+		value := responseJSON(t, response)
+		if value["total"].(float64) != 12 {
+			t.Fatalf("wrong total: %#v", value["total"])
+		}
+		seed = strconv.FormatInt(int64(value["seed"].(float64)), 10)
+		for _, entry := range value["images"].([]any) {
+			name := entry.(map[string]any)["name"].(string)
+			if seen[name] {
+				t.Fatalf("page at offset %d repeated %s", offset, name)
+			}
+			seen[name] = true
+		}
+	}
+	if len(seen) != 12 {
+		t.Fatalf("paging skipped pictures: saw %d of 12", len(seen))
+	}
+}
+
+func TestUnsortedModeSkipsPicturesAlreadyInFolders(t *testing.T) {
+	app, server := testHTTPServer(t)
+	folder := t.TempDir()
+	sorted := filepath.Join(folder, "sorted.png")
+	loose := filepath.Join(folder, "loose.png")
+	writeTestPNG(t, sorted)
+	writeTestPNG(t, loose)
+	app.addPath(sorted)
+	app.addPath(loose)
+	if _, value := postTagAction(t, server.URL, map[string]any{"action": "add", "tag": "cats", "imageId": stableImageID(sorted)}); value["ok"] != true {
+		t.Fatalf("could not tag picture: %#v", value)
+	}
+
+	response, err := http.Get(server.URL + "/api/app/images?mode=unsorted&count=50")
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := responseJSON(t, response)
+	images := value["images"].([]any)
+	if value["total"].(float64) != 1 || len(images) != 1 || images[0].(map[string]any)["name"] != "loose.png" {
+		t.Fatalf("unsorted returned tagged pictures: %#v", value)
+	}
+}
+
+func TestMergingFoldersKeepsTheDraggedName(t *testing.T) {
+	app, server := testHTTPServer(t)
+	folder := t.TempDir()
+	first := filepath.Join(folder, "first.png")
+	second := filepath.Join(folder, "second.png")
+	writeTestPNG(t, first)
+	writeTestPNG(t, second)
+	app.addPath(first)
+	app.addPath(second)
+	postTagAction(t, server.URL, map[string]any{"action": "add", "tag": "keep", "imageId": stableImageID(first)})
+	postTagAction(t, server.URL, map[string]any{"action": "add", "tag": "gone", "imageId": stableImageID(second)})
+
+	response, value := postTagAction(t, server.URL, map[string]any{"action": "merge", "tag": "keep", "into": "gone"})
+	if response.StatusCode != http.StatusOK || value["tag"] != "keep" || value["count"].(float64) != 2 {
+		t.Fatalf("merge failed: status=%d %#v", response.StatusCode, value)
+	}
+	if _, err := os.Stat(filepath.Join(app.tagsDir, "gone")); !os.IsNotExist(err) {
+		t.Fatalf("merge left the folder it swallowed: %v", err)
+	}
+	handler, _ := newServer(app)
+	merged := handler.collectionImages("keep")
+	if len(merged) != 2 {
+		t.Fatalf("merged folder is missing pictures: %#v", merged)
+	}
+	for _, picture := range []string{first, second} {
+		if _, err := os.Stat(picture); err != nil {
+			t.Fatalf("merge touched an original picture: %v", err)
+		}
+	}
+}
+
+func TestDeletingAFolderKeepsThePicturesOnDisk(t *testing.T) {
+	app, server := testHTTPServer(t)
+	folder := t.TempDir()
+	picture := filepath.Join(folder, "kept.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+	postTagAction(t, server.URL, map[string]any{"action": "add", "tag": "temporary", "imageId": stableImageID(picture)})
+
+	response, value := postTagAction(t, server.URL, map[string]any{"action": "delete", "tag": "temporary"})
+	if response.StatusCode != http.StatusOK || value["deleted"] != true {
+		t.Fatalf("delete failed: status=%d %#v", response.StatusCode, value)
+	}
+	if _, err := os.Stat(filepath.Join(app.tagsDir, "temporary")); !os.IsNotExist(err) {
+		t.Fatalf("delete left the folder: %v", err)
+	}
+	if _, err := os.Stat(picture); err != nil {
+		t.Fatalf("delete removed the original picture: %v", err)
+	}
+}
+
+func TestDeletingAFolderWithSubfoldersIsRefused(t *testing.T) {
+	app, server := testHTTPServer(t)
+	postTagAction(t, server.URL, map[string]any{"action": "create", "tag": "parent"})
+	postTagAction(t, server.URL, map[string]any{"action": "create", "tag": "parent/child"})
+
+	response, value := postTagAction(t, server.URL, map[string]any{"action": "delete", "tag": "parent"})
+	if response.StatusCode != http.StatusBadRequest || value["ok"] != false {
+		t.Fatalf("delete removed a folder with subfolders: status=%d %#v", response.StatusCode, value)
+	}
+	if _, err := os.Stat(filepath.Join(app.tagsDir, "parent", "child")); err != nil {
+		t.Fatalf("refused delete still changed the folders: %v", err)
+	}
+}

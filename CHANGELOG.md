@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- The library keeps loading as you scroll instead of stopping at the first batch. Pictogrep used to render one fixed set of pictures and that was the end of the page, so most of a big library was unreachable without searching for it. Pages are drawn one at a time as you get near the bottom, and a random view keeps the same shuffle across pages, so nothing repeats and nothing is skipped.
+- Similar images under an open picture also keep loading as you scroll further down the ranking.
+- Going to the Folders tab and back no longer reshuffles what you were looking at. The pictures you left on screen are still there.
+- Escape and the × now leave the viewer entirely instead of stepping back through every similar picture you clicked to get there.
+- Folders can be merged by dragging one onto another. There is no dialog and nothing to name: the merged folder keeps the name of the folder you dragged.
+- Right-clicking a folder can delete it, after a confirmation. Only the folder goes away; the pictures stay where they live on disk.
+- The welcome screen now offers importing a Pinterest board, which turns the plugin on for you. It stays optional.
+
 ## 0.7.5 - 2026-08-15
 
 - Importing a large Pinterest board is much faster. Each picture used to rewrite the entire library file before the next one could start, so a two thousand image board wrote that file two thousand times, every write longer than the one before it. The board now joins the library in a single write.

@@ -764,19 +764,41 @@ func (s *server) filteredPaths(tag, source string) ([]string, error) {
 }
 
 func (s *server) appImages(w http.ResponseWriter, r *http.Request) {
-	paths, err := s.filteredPaths(r.URL.Query().Get("tag"), r.URL.Query().Get("source"))
+	query := r.URL.Query()
+	paths, err := s.filteredPaths(query.Get("tag"), query.Get("source"))
 	if err != nil {
 		sendError(w, 400, err)
 		return
 	}
-	if r.URL.Query().Get("mode") == "recent" {
+	mode := query.Get("mode")
+	if mode == "unsorted" {
+		tagged := s.taggedPaths()
+		kept := paths[:0]
+		for _, path := range paths {
+			if !tagged[expandPath(path)] {
+				kept = append(kept, path)
+			}
+		}
+		paths = kept
+	}
+	// The shuffle is seeded so a caller paging through the library keeps one
+	// order across requests instead of seeing pictures repeat or go missing.
+	// Kept well under 2^53 so the seed survives the round trip through JSON
+	// numbers and every page really does shuffle the same way.
+	seed, err := strconv.ParseInt(query.Get("seed"), 10, 64)
+	if err != nil || seed <= 0 || seed >= 1<<48 {
+		seed = rand.New(rand.NewSource(time.Now().UnixNano())).Int63n(1<<48-1) + 1
+	}
+	if mode == "recent" {
 		sort.SliceStable(paths, func(i, j int) bool { return fileMtime(paths[i]) > fileMtime(paths[j]) })
-	} else if r.URL.Query().Get("mode") == "random" {
-		random := rand.New(rand.NewSource(time.Now().UnixNano()))
+	} else if mode == "random" {
+		random := rand.New(rand.NewSource(seed))
 		random.Shuffle(len(paths), func(i, j int) { paths[i], paths[j] = paths[j], paths[i] })
 	}
 	total := len(paths)
-	count := boundedInt(r.URL.Query().Get("count"), 120, 1, 500)
+	offset := boundedInt(query.Get("offset"), 0, 0, total)
+	paths = paths[offset:]
+	count := boundedInt(query.Get("count"), 120, 1, 500)
 	if len(paths) > count {
 		paths = paths[:count]
 	}
@@ -786,7 +808,7 @@ func (s *server) appImages(w http.ResponseWriter, r *http.Request) {
 			records = append(records, s.imageRecord(path, nil))
 		}
 	}
-	sendJSON(w, 200, map[string]any{"ok": true, "images": records, "total": total})
+	sendJSON(w, 200, map[string]any{"ok": true, "images": records, "total": total, "offset": offset, "seed": seed})
 }
 
 func (s *server) appImage(w http.ResponseWriter, r *http.Request) {
@@ -840,13 +862,21 @@ func (s *server) appRelated(w http.ResponseWriter, r *http.Request) {
 		sendError(w, 400, fmt.Errorf("unknown image"))
 		return
 	}
-	limit := boundedInt(r.URL.Query().Get("limit"), 18, 1, 30)
+	limit := boundedInt(r.URL.Query().Get("limit"), 18, 1, 60)
+	// Paging walks further down the same ranking, so the viewer can keep
+	// showing less and less similar pictures as you scroll.
+	offset := boundedInt(r.URL.Query().Get("offset"), 0, 0, 5000)
 	indexed := s.app.indexedEmbeddingCount()
 	vector, ready := s.app.imageEmbedding(path)
 	images := []imageRecord{}
 	if ready {
-		for _, result := range s.app.vectorSearch(vector, limit+1) {
+		skipped := 0
+		for _, result := range s.app.vectorSearch(vector, limit+offset+1) {
 			if result.Path == path {
+				continue
+			}
+			if skipped < offset {
+				skipped++
 				continue
 			}
 			score := result.Score
@@ -857,7 +887,7 @@ func (s *server) appRelated(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendJSON(w, 200, map[string]any{
-		"ok": true, "ready": ready, "images": images,
+		"ok": true, "ready": ready, "images": images, "offset": offset,
 		"indexed": indexed, "total": len(paths),
 	})
 }
@@ -1344,6 +1374,7 @@ func (s *server) appTags(w http.ResponseWriter, r *http.Request) {
 		Prompt  string    `json:"prompt"`
 		Limit   int       `json:"limit"`
 		ImageID string    `json:"imageId"`
+		Into    string    `json:"into"`
 		Vector  []float32 `json:"vector"`
 	}
 	if err := decodeJSON(r, &request, 2<<20); err != nil {
@@ -1413,6 +1444,49 @@ func (s *server) appTags(w http.ResponseWriter, r *http.Request) {
 			"ok": true, "tag": name, "prompt": prompt, "added": len(combined) - len(existing),
 			"matched": len(selected), "indexed": s.app.indexedEmbeddingCount(), "total": len(paths),
 		})
+	case "merge":
+		// The dragged folder keeps its name and swallows the one it was
+		// dropped on, so nothing has to be renamed by hand.
+		into, err := collectionName(request.Into)
+		if err != nil {
+			sendError(w, 400, err)
+			return
+		}
+		if into == name {
+			sendError(w, 400, fmt.Errorf("choose two different folders"))
+			return
+		}
+		if children := s.subCollections(into); len(children) > 0 {
+			sendError(w, 400, fmt.Errorf("move the subfolders of %s out first", into))
+			return
+		}
+		combined := existingUniquePaths(append(s.collectionImages(name), s.collectionImages(into)...))
+		directory := filepath.Join(s.app.tagsDir, name)
+		if err := os.MkdirAll(directory, 0o755); err != nil {
+			sendError(w, 400, err)
+			return
+		}
+		if err := writeTagManifest(directory, combined); err != nil {
+			sendError(w, 400, err)
+			return
+		}
+		if err := os.RemoveAll(filepath.Join(s.app.tagsDir, into)); err != nil {
+			sendError(w, 400, err)
+			return
+		}
+		sendJSON(w, 200, map[string]any{"ok": true, "tag": name, "merged": into, "count": len(combined)})
+	case "delete":
+		if children := s.subCollections(name); len(children) > 0 {
+			sendError(w, 400, fmt.Errorf("move the subfolders of %s out first", name))
+			return
+		}
+		// Only the collection's own links and manifest go away; the pictures
+		// themselves stay wherever they live on disk.
+		if err := os.RemoveAll(filepath.Join(s.app.tagsDir, name)); err != nil {
+			sendError(w, 400, err)
+			return
+		}
+		sendJSON(w, 200, map[string]any{"ok": true, "tag": name, "deleted": true})
 	case "remove":
 		path, found := s.imagePathByID(request.ImageID)
 		if !found {
@@ -1424,6 +1498,16 @@ func (s *server) appTags(w http.ResponseWriter, r *http.Request) {
 	default:
 		sendError(w, 400, fmt.Errorf("unknown tag action"))
 	}
+}
+
+func (s *server) subCollections(name string) []string {
+	children := []string{}
+	for _, candidate := range s.collectionNames() {
+		if strings.HasPrefix(candidate, name+"/") {
+			children = append(children, candidate)
+		}
+	}
+	return children
 }
 
 func (s *server) collectionNames() []string {
@@ -1476,6 +1560,18 @@ func (s *server) collectionImages(name string) []string {
 		}
 	}
 	return existingUniquePaths(paths)
+}
+
+// taggedPaths collects every image that belongs to a collection in one sweep,
+// which keeps "unsorted" cheap compared with asking tagsForImage per picture.
+func (s *server) taggedPaths() map[string]bool {
+	tagged := map[string]bool{}
+	for _, name := range s.collectionNames() {
+		for _, path := range s.collectionImages(name) {
+			tagged[expandPath(path)] = true
+		}
+	}
+	return tagged
 }
 
 func (s *server) tagsForImage(path string) []string {

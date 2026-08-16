@@ -25,6 +25,8 @@
   "empty.search_text": "Describe what you remember in the search box.",
   "empty.organize_title": "Organize what you find",
   "empty.organize_text": "Put pictures into folders and build storyboards.",
+  "empty.pinterest_action": "Or import a Pinterest board",
+  "empty.pinterest_help": "Optional. Pictogrep downloads a public board into your library.",
   "empty.choose_action": "Choose pictures or folder",
   "state.loading_title": "Loading pictures…",
   "state.loading_text": "Reading your library.",
@@ -431,5 +433,12 @@
   "storyboard.pan_h": "Pan H 2:1",
   "storyboard.pan_v": "Pan V 3:4",
   "folders.path_copied": "Folder path copied.",
+  "state.loading_more": "Loading more pictures\u2026",
+  "folders.merge_hint": "Merge",
+  "folders.merged": "Merged \u201c{from}\u201d into \u201c{into}\u201d.",
+  "folders.delete": "Delete folder",
+  "folders.delete_confirm": "Delete the folder \u201c{name}\u201d? The pictures stay on your disk.",
+  "folders.deleted": "Folder \u201c{name}\u201d deleted.",
+  "folders.delete_cancel": "Cancel",
   "folders.copy_path_prompt": "Copy folder path"
 }

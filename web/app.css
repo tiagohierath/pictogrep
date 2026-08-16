@@ -87,6 +87,8 @@ button, a, summary, label { cursor: pointer; }
 body[data-thumbnail-size="small"] .image-grid { columns: 160px; }
 body[data-thumbnail-size="large"] .image-grid { columns: 300px; }
 .image-grid.is-loading { columns: auto; }
+.grid-more { padding: 18px 0; color: #777; font-size: 13px; text-align: center; }
+.grid-sentinel { height: 1px; }
 .image-card { position: relative; width: 100%; margin: 0 0 18px; break-inside: avoid; background: #fff; }
 .image-card > img { display: block; width: 100%; height: auto; background: #eee; border-radius: 6px; cursor: pointer; }
 .loading-image { background: #ececea; }
@@ -137,6 +139,9 @@ body.show-filenames .image-filename { display: block; }
 .empty-tutorial strong { font-size: 14px; font-weight: 600; }
 .empty-tutorial span { margin-top: 3px; color: #666; font-size: 12px; line-height: 1.4; }
 .empty button { padding: 8px 12px; border: 1px solid #999; background: #fff; }
+.empty-alternative { margin: 16px 0 0; }
+.empty .link-button { padding: 0; border: 0; background: none; color: #171717; font-size: 13px; text-decoration: underline; cursor: pointer; }
+.empty-alternative-help { display: block; margin-top: 5px; color: #666; font-size: 12px; }
 
 .folder-list { display: grid; width: min(760px, 100%); gap: 2px; }
 .folder-toolbar { display: flex; justify-content: flex-end; width: min(760px, 100%); margin-bottom: 12px; }
@@ -154,6 +159,9 @@ body.show-filenames .image-filename { display: block; }
 .folder-details { min-width: 0; }
 .folder-card strong { display: block; margin: 0 0 3px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
 .folder-card small { color: #666; font-size: 11px; }
+.folder-card.is-merge-target { outline: 2px solid #171717; background: #f3f3f3; }
+.folder-merge-badge { position: absolute; top: 50%; right: 12px; display: none; padding: 3px 8px; border-radius: 4px; background: #171717; color: #fff; font-size: 11px; text-transform: lowercase; transform: translateY(-50%); }
+.folder-card.is-merge-target .folder-merge-badge { display: block; }
 .new-folder .folder-preview { display: grid; place-items: center; background: #eee; }
 .folder-create-button { font-size: 24px; font-weight: 400; }
 

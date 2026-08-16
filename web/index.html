@@ -42,6 +42,8 @@
         <button type="button" id="resultStateAction" hidden></button>
       </div>
       <div class="image-grid" id="imageGrid" aria-live="polite"></div>
+      <div class="grid-more" id="imageGridMore" hidden data-i18n="state.loading_more">Loading more pictures…</div>
+      <div class="grid-sentinel" id="imageGridSentinel" aria-hidden="true"></div>
       <div class="empty" id="imagesEmpty" hidden>
         <h2 data-i18n="empty.welcome">Welcome to Pictogrep</h2>
         <p class="empty-intro" data-i18n="empty.intro">Your picture library is empty. Here’s how it works:</p>
@@ -51,6 +53,7 @@
           <li><div><strong data-i18n="empty.organize_title">Organize what you find</strong><span data-i18n="empty.organize_text">Put pictures into folders and build storyboards.</span></div></li>
         </ol>
         <button id="emptyAddImages" data-i18n="empty.choose_action">Choose pictures or folder</button>
+        <p class="empty-alternative"><button type="button" class="link-button" id="emptyPinterest" data-i18n="empty.pinterest_action">Or import a Pinterest board</button><span class="empty-alternative-help" data-i18n="empty.pinterest_help">Optional. Pictogrep downloads a public board into your library.</span></p>
       </div>
     </section>
 
@@ -236,6 +239,14 @@
     </form>
   </dialog>
 
+  <dialog id="deleteFolderDialog">
+    <form id="deleteFolderForm">
+      <h2 data-i18n="folders.delete">Delete folder</h2>
+      <p id="deleteFolderText"></p>
+      <div class="dialog-actions"><button type="button" id="cancelDeleteFolder" data-i18n="folders.delete_cancel">Cancel</button><button type="submit" data-i18n="folders.delete">Delete folder</button></div>
+    </form>
+  </dialog>
+
   <dialog id="reindexDialog">
     <form id="reindexForm">
       <h2 data-i18n="reindex.title">Rebuild the full search index?</h2>
@@ -292,6 +303,8 @@
         <h2 id="relatedTitle" data-i18n="viewer.similar">Similar images</h2>
         <p id="relatedStatus" data-i18n="viewer.finding_similar">Finding similar pictures…</p>
         <div class="related-grid" id="relatedGrid"></div>
+        <div class="grid-more" id="relatedMore" hidden data-i18n="state.loading_more">Loading more pictures…</div>
+        <div class="grid-sentinel" id="relatedSentinel" aria-hidden="true"></div>
       </section>
     </div>
   </dialog>
@@ -330,6 +343,7 @@
     <button type="button" id="folderContextNewSubfolder" data-i18n="folder_menu.new_subfolder">New subfolder…</button>
     <button type="button" id="folderContextRefresh" data-i18n="folder_menu.refresh">Check for new pictures</button>
     <button type="button" id="folderContextCopyPath" data-i18n="folder_menu.copy_path">Copy folder path</button>
+    <button type="button" class="menu-danger" id="folderContextDelete" data-i18n="folders.delete">Delete folder</button>
   </div>
 
   <div class="drop-overlay" id="dropOverlay" aria-hidden="true" hidden>
