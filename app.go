@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-var version = "0.7.4"
+var version = "0.7.5"
 
 const (
 	maxCachedQueries = 512

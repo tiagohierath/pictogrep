@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.7.5 - 2026-08-15
+
 - Importing a large Pinterest board is much faster. Each picture used to rewrite the entire library file before the next one could start, so a two thousand image board wrote that file two thousand times, every write longer than the one before it. The board now joins the library in a single write.
 - A board whose name cannot be used as a folder is refused before the download starts. Finding out afterwards threw away everything the download had just spent half an hour fetching.
 - An import that hits an unexpected internal error now fails on its own instead of closing Pictogrep. Work that runs in the background had no protection from that, so a single unexpected error during an import ended the whole program and took the open session with it. The same protection covers folder scans.
