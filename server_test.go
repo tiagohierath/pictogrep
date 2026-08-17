@@ -1064,7 +1064,7 @@ func TestBrowserLocalizationKeysExist(t *testing.T) {
 		regexp.MustCompile(`data-i18n(?:-[a-z-]+)?="([a-z0-9_.-]+)"`),
 		regexp.MustCompile(`\bt\(["']([a-z0-9_.-]+)["']`),
 	}
-	for _, name := range []string{"web/index.html", "web/practice.html", "web/app.js"} {
+	for _, name := range []string{"web/index.html", "web/practice.html", "web/app.js", "web/onboarding.js"} {
 		source, err := embeddedFiles.ReadFile(name)
 		if err != nil {
 			t.Fatal(err)
