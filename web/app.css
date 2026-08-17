@@ -727,6 +727,12 @@ kbd { padding: 2px var(--space-2); border: 1px solid var(--line-strong); border-
 .onboarding-path { display: flex; align-items: center; gap: var(--space-3); min-width: 0; }
 .onboarding-up { flex: none; width: 32px; height: 32px; min-height: 0; padding: 0; border: 1px solid var(--line); border-radius: 0; background: var(--bg); }
 .onboarding-up:hover { border-color: var(--fg); }
+.onboarding-jump { display: flex; gap: var(--space-2); min-width: 0; }
+.onboarding-jump-input { flex: 1; min-width: 0; min-height: var(--control-height); padding: var(--space-2); border: 1px solid var(--line); border-radius: 0; background: var(--bg); color: var(--fg); font-family: var(--font-mono); font-size: var(--text-xs); }
+.onboarding-jump-input:focus { border-color: var(--fg); }
+.onboarding-jump-go { flex: none; min-height: var(--control-height); padding: 0 var(--space-3); border: 1px solid var(--line); border-radius: 0; background: var(--bg); color: var(--fg); }
+.onboarding-jump-go:hover { border-color: var(--fg); }
+
 .onboarding-path-value { overflow: hidden; color: var(--fg-muted); font-family: var(--font-mono); font-size: var(--text-xs); white-space: nowrap; direction: rtl; text-overflow: ellipsis; }
 
 /* The checkerboard shows through an empty folder list, which is the same thing

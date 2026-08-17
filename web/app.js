@@ -3839,6 +3839,28 @@ function renderFolderBrowser(container, {onChoose, chooseLabel = null} = {}) {
   const note = document.createElement("p");
   note.className = "onboarding-note";
   note.textContent = t("onboarding.folder.stays");
+  // Clicking down from the home folder never reaches a second drive without a
+  // long climb through the root, so the path can also be typed or pasted. The
+  // backend already accepts any absolute path.
+  const jump = document.createElement("form");
+  jump.className = "onboarding-jump";
+  const jumpInput = document.createElement("input");
+  jumpInput.type = "text";
+  jumpInput.className = "onboarding-jump-input";
+  jumpInput.spellcheck = false;
+  jumpInput.autocapitalize = "off";
+  jumpInput.setAttribute("aria-label", t("onboarding.folder.jump_label"));
+  jumpInput.placeholder = t("onboarding.folder.jump_placeholder");
+  const jumpGo = document.createElement("button");
+  jumpGo.type = "submit";
+  jumpGo.className = "onboarding-jump-go";
+  jumpGo.textContent = t("onboarding.folder.jump");
+  jump.append(jumpInput, jumpGo);
+  jump.onsubmit = event => {
+    event.preventDefault();
+    const target = jumpInput.value.trim();
+    target && show(target);
+  };
   let current = "";
 
   const quiet = text => {
@@ -3853,6 +3875,7 @@ function renderFolderBrowser(container, {onChoose, chooseLabel = null} = {}) {
     try {
       const data = await request(`/api/app/browse?path=${encodeURIComponent(target || "")}`);
       current = data.path;
+      jumpInput.value = data.path;
       path.replaceChildren();
       if (data.parent) {
         const up = document.createElement("button");
@@ -3868,10 +3891,16 @@ function renderFolderBrowser(container, {onChoose, chooseLabel = null} = {}) {
       value.textContent = data.path;
       value.title = data.path;
       path.append(value);
-      use.disabled = data.images === 0;
-      use.textContent = data.images === 0
-        ? t("onboarding.folder.none_here")
-        : chooseLabel?.(data) || t("onboarding.folder.use", {count: data.images + (data.truncated ? "+" : "")});
+      // A count of zero only means "empty" when the walk actually finished. It
+      // gives up on slow drives and deep trees, and a folder full of pictures
+      // was refused because the counter ran out of time before it saw one.
+      const unknown = data.images === 0 && data.truncated;
+      use.disabled = data.images === 0 && !data.truncated;
+      use.textContent = unknown
+        ? chooseLabel?.(data) || t("onboarding.folder.use_unknown")
+        : data.images === 0
+          ? t("onboarding.folder.none_here")
+          : chooseLabel?.(data) || t("onboarding.folder.use", {count: data.images + (data.truncated ? "+" : "")});
       list.replaceChildren(...(data.folders.length
         ? data.folders.map(folder => {
           const button = document.createElement("button");
@@ -3899,7 +3928,7 @@ function renderFolderBrowser(container, {onChoose, chooseLabel = null} = {}) {
     }
   };
 
-  container.append(path, list, use, note);
+  container.append(path, list, jump, use, note);
   show("");
 }
 

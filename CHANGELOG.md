@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.8.6 - 2026-08-17
+
+- A folder on a second drive can be chosen. The folder picker started in your home folder and walked one click at a time, which left an external or second disk reachable only by climbing all the way to the top of the drive, so the way to use those pictures was to copy them into the library. The picker now has the current path in a box you can type or paste into, so a path like /media/disk2/art gets you there in one go. Nothing about where pictures live changed: Pictogrep still reads them where they are, and copies made to work around this can be deleted.
+- The picker stops refusing folders it did not manage to count. It counts pictures under a folder to show how many you are about to add, and that count gives up early on a slow drive or a deeply nested tree. A folder it gave up on was reported as having no pictures and could not be chosen at all, which is exactly what happened on external disks. A count that did not finish is now treated as unknown rather than as empty.
 - The interface is one interface. Spacing, type sizes, greys, corners and control heights now come from a single set of values instead of being decided again in every panel, so a dialog, a settings row and an import panel are built from the same parts. Nothing moved; things that were meant to match now do.
 - One button. Every button in the app is the same shape and size, with exactly two variations: the one action a panel is about is filled dark, and anything that deletes a file is filled red. Buttons used to differ by a pixel or two of padding and three shades of border depending on which panel they landed in.
 - One dialog. Every dialog has the same width step, padding, heading size and action row, with Cancel and the main action always in the same place. The create-folder dialog no longer has its own oversized centred heading.
