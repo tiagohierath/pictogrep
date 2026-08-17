@@ -99,6 +99,10 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/app/canvas", s.saveAppCanvas)
 	mux.HandleFunc("GET /api/app/boards", s.appBoards)
 	mux.HandleFunc("POST /api/app/index", s.appIndex)
+	mux.HandleFunc("GET /api/app/browse", s.appBrowse)
+	mux.HandleFunc("GET /api/app/plugins/pinterest/boards", s.appPinterestBoards)
+	mux.HandleFunc("POST /api/app/settings/pinterest", s.savePinterestSettings)
+	mux.HandleFunc("POST /api/app/onboarding", s.saveOnboarding)
 	mux.HandleFunc("POST /api/app/upload", s.appUpload)
 	mux.HandleFunc("POST /api/app/import-url", s.importImageURL)
 	mux.HandleFunc("POST /api/app/tags", s.appTags)
@@ -395,6 +399,8 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 		"ok": true, "version": version, "model": s.app.embeddingModel.ModelID, "pretrained": s.app.embeddingModel.Revision,
 		"semanticModel": s.app.embeddingModel.Key, "embeddingModel": s.app.embeddingModel,
 		"updateMethod": updateMethod(),
+		"onboarding":   s.app.onboardingSettings(),
+		"pinterest":    s.app.pinterestSettings(),
 		"index":        index, "indexJob": job, "sources": sources, "tags": tags,
 		"searchIndex": map[string]any{
 			"automatic": indexing.Automatic, "indexed": len(paths) - len(missing),

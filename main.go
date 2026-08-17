@@ -241,6 +241,11 @@ func serve(app *application, args []string) error {
 	}
 	watch := newIdleWatch()
 	httpServer := &http.Server{Handler: watch.wrap(handler.routes()), ReadHeaderTimeout: 5 * time.Second}
+	// Tracked Pinterest boards are re-checked in the background so a board that
+	// keeps growing does not silently fall behind the library.
+	syncCtx, stopSync := context.WithCancel(context.Background())
+	defer stopSync()
+	go handler.watchPinterestBoards(syncCtx)
 	shutdown := func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()

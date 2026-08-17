@@ -41,6 +41,7 @@ type pinterestImport struct {
 	failed    string
 	cancel    context.CancelFunc
 	cancelled bool
+	automatic bool
 }
 
 // Downloading reports how many files have arrived, because the board size is
@@ -60,6 +61,19 @@ func (job *pinterestImport) start(board string, cancel context.CancelFunc) bool 
 	job.state, job.board = "running", board
 	job.phase, job.done, job.total = "downloading", 0, 0
 	job.result, job.failed, job.cancel, job.cancelled = nil, "", cancel, false
+	job.automatic = false
+	return true
+}
+
+// A weekly check nobody asked for should not look like an import somebody
+// started. The flag rides along so the interface can stay quiet about it.
+func (job *pinterestImport) startAutomatic(board string, cancel context.CancelFunc) bool {
+	if !job.start(board, cancel) {
+		return false
+	}
+	job.mu.Lock()
+	defer job.mu.Unlock()
+	job.automatic = true
 	return true
 }
 
@@ -109,6 +123,7 @@ func (job *pinterestImport) snapshot() map[string]any {
 	payload := map[string]any{
 		"ok": true, "state": state, "board": job.board,
 		"phase": job.phase, "done": job.done, "total": job.total,
+		"automatic": job.automatic,
 	}
 	// Stopping still has to import whatever already arrived, so the job stays
 	// "running" for a while after the user asks it to stop. Saying so keeps the
@@ -170,6 +185,18 @@ func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 		defer cancel()
 		defer guard(func(err error) { s.pinterest.finish(nil, err) })
 		result, err := s.runPinterestImport(ctx, boardURL, request.Mode, request.SkipExisting)
+		// A board that imported at least once is worth following, so it gets
+		// re-checked about weekly until auto-sync is turned off or the board is
+		// forgotten. Only the import settles what "now" means, so the timestamp
+		// is written here rather than when the request arrived.
+		if err == nil {
+			_ = s.app.trackBoard(trackedBoard{
+				URL:          boardURL.String(),
+				Mode:         request.Mode,
+				SkipExisting: request.SkipExisting,
+				LastSyncAt:   time.Now().Unix(),
+			})
+		}
 		s.pinterest.finish(result, err)
 	}()
 	sendJSON(w, http.StatusAccepted, s.pinterest.snapshot())
