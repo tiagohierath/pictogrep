@@ -529,13 +529,24 @@ func TestDamagedEmbeddingRecordOnlyCostsItsOwnPicture(t *testing.T) {
 	if _, found := app.embeddings[expandPath("/bbb.png")]; found {
 		t.Fatal("a damaged record loaded anyway")
 	}
-	// The damage is rewritten away, so the next start reads a clean file.
+	// The damage is rewritten away, so the next start reads a clean file. The
+	// records come back keyed by their expanded path, which on Windows is
+	// longer than the name written here ("/aaa.png" becomes "C:\aaa.png"), so
+	// the size that survives is measured rather than assumed.
+	want := 0
+	for _, name := range []string{"/aaa.png", "/ccc.png"} {
+		data, err := encodeEmbedding(app.embeddingModel, expandPath(name), embeddingRecord{Mtime: 7, Vector: vector})
+		if err != nil {
+			t.Fatal(err)
+		}
+		want += len(data)
+	}
 	info, err := os.Stat(app.embeddingStorePath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Size() != int64(2*recordSize) {
-		t.Fatalf("the damaged store was not rewritten: size=%d want=%d", info.Size(), 2*recordSize)
+	if info.Size() != int64(want) {
+		t.Fatalf("the damaged store was not rewritten: size=%d want=%d", info.Size(), want)
 	}
 }
 
