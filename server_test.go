@@ -99,6 +99,28 @@ func TestBrowserPagesCannotBeFramed(t *testing.T) {
 	}
 }
 
+func TestBrowserPagesAreCrossOriginIsolated(t *testing.T) {
+	app := testApplication(t)
+	server, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodGet, "http://127.0.0.1:8765/", nil)
+	response := httptest.NewRecorder()
+	server.routes().ServeHTTP(response, request)
+	// Both halves have to be there or the browser withholds SharedArrayBuffer,
+	// and the bundled runtime silently prepares pictures on one thread.
+	for header, want := range map[string]string{
+		"Cross-Origin-Opener-Policy":   "same-origin",
+		"Cross-Origin-Embedder-Policy": "credentialless",
+		"Cross-Origin-Resource-Policy": "same-origin",
+	} {
+		if value := response.Header().Get(header); value != want {
+			t.Fatalf("%s=%q, want %q", header, value, want)
+		}
+	}
+}
+
 func TestBrowserBackgroundLogEndpoint(t *testing.T) {
 	_, server := testHTTPServer(t)
 	response, err := http.Post(server.URL+"/api/app/log", "application/json", strings.NewReader(`{
@@ -870,7 +892,8 @@ func TestNativeSemanticIndexRoundTrip(t *testing.T) {
 		t.Fatalf("expected one missing embedding: %#v", state)
 	}
 	item := missing[0].(map[string]any)
-	if item["id"] != stableImageID(picture) || item["url"] != "/image/"+stableImageID(picture) {
+	if item["id"] != stableImageID(picture) || item["url"] != embeddingPreviewURL(stableImageID(picture)) ||
+		item["originalUrl"] != "/image/"+stableImageID(picture) {
 		t.Fatalf("missing embedding did not use its stable image URL: %#v", item)
 	}
 	vector := make([]float32, defaultEmbeddingModel.Dimensions)

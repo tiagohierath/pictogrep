@@ -43,6 +43,24 @@ function backendFor(model) {
   return activeBackend;
 }
 
+// Indexing reads Pictogrep's preview because the model only ever sees a small
+// square, and decoding a whole photograph to reach it is the slowest part of
+// preparing a library. Pictures with dimensions Pictogrep refuses to resize have
+// no preview, so the original stays as the fallback rather than dropping them
+// out of search entirely.
+async function loadPicture(item) {
+  const sources = [item.url, item.originalUrl].filter(Boolean);
+  let failure = new Error("Picture has no source to read");
+  for (const source of sources) {
+    try {
+      return await RawImage.fromURL(new URL(source, self.location.origin).href);
+    } catch (error) {
+      failure = error;
+    }
+  }
+  throw failure;
+}
+
 function normalizedVector(tensor, dimensions) {
   const vector = Array.from(tensor.normalize().data);
   if (vector.length !== dimensions || vector.some(value => !Number.isFinite(value))) {
@@ -103,7 +121,7 @@ function createCLIPBackend(model) {
     async embedImage(item) {
       const [processor, visionModel] = await visionParts();
       try {
-        const image = await RawImage.fromURL(new URL(item.url, self.location.origin).href);
+        const image = await loadPicture(item);
         const inputs = await processor(image);
         const {image_embeds: embedding} = await visionModel(inputs);
         return normalizedVector(embedding, model.dimensions);

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- Preparing pictures for search uses more than one core. The search runtime will not start a second thread unless the page it runs in is allowed shared memory, Pictogrep never sent the two headers that allow it, and so every release so far prepared a library on one core no matter how many the machine had. Nothing about what gets prepared changed, only how much of the computer works on it.
+- Preparing a picture reads a preview of it instead of the whole file. The model looks at a 224 pixel square, so a 24 megapixel photograph was decoded in full to produce something the size of a postage stamp. A picture too large to preview safely is still read whole, so nothing drops out of search, and pictures already prepared stay prepared.
+- A page on the internet cannot probe your library any more. Any website can point an image tag at an address on your own computer and learn from what loads, and Pictogrep now refuses to answer anything that is not its own page.
+
 ## 0.8.6 - 2026-08-17
 
 - A folder on a second drive can be chosen. The folder picker started in your home folder and walked one click at a time, which left an external or second disk reachable only by climbing all the way to the top of the drive, so the way to use those pictures was to copy them into the library. The picker now has the current path in a box you can type or paste into, so a path like /media/disk2/art gets you there in one go. Nothing about where pictures live changed: Pictogrep still reads them where they are, and copies made to work around this can be deleted.

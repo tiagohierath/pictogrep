@@ -205,6 +205,22 @@ func securityHeaders(next http.Handler) http.Handler {
 		w.Header().Set("X-Frame-Options", "DENY")
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Referrer-Policy", "no-referrer")
+		// Cross-origin isolation is the only thing that turns on SharedArrayBuffer,
+		// and without it the bundled ONNX Runtime pins itself to a single wasm
+		// thread no matter how many cores the machine has. Preparing pictures was
+		// therefore using one core on every Pictogrep ever shipped.
+		//
+		// "credentialless" rather than "require-corp" because the Commons plugin
+		// loads its thumbnails straight from upload.wikimedia.org: require-corp
+		// would block every one of them, while credentialless only drops the
+		// credentials those public images never needed. A browser that does not
+		// know the value ignores it, stays unisolated, and behaves as it always has.
+		w.Header().Set("Cross-Origin-Opener-Policy", "same-origin")
+		w.Header().Set("Cross-Origin-Embedder-Policy", "credentialless")
+		// Nothing here is meant to be pulled into a page from somewhere else. Any
+		// website can point an <img> at 127.0.0.1 and watch which ones load, which
+		// is how a remote page learns what is in a local library.
+		w.Header().Set("Cross-Origin-Resource-Policy", "same-origin")
 		if !isLoopbackAuthority(r.Host) {
 			sendError(w, http.StatusForbidden, fmt.Errorf("Pictogrep only accepts local requests"))
 			return

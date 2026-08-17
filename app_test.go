@@ -606,3 +606,26 @@ func TestAddPathsTakesAWholeImportInOneWrite(t *testing.T) {
 		t.Fatalf("the batched import was not saved to disk: %#v", state.Images)
 	}
 }
+
+func TestPreparingAPictureReadsItsPreview(t *testing.T) {
+	app := testApplication(t)
+	picture := filepath.Join(app.libraryDir, "reference.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+
+	missing := app.missingEmbeddings()
+	if len(missing) != 1 {
+		t.Fatalf("the library did not queue its only picture: %#v", missing)
+	}
+	id := stableImageID(picture)
+	// Reaching a 224 pixel square by decoding a whole photograph is the slowest
+	// part of preparing a library, so preparing reads the preview instead.
+	if missing[0]["url"] != "/thumbnail/"+id+"?size=512" {
+		t.Fatalf("preparing did not read a preview: %#v", missing[0])
+	}
+	// A picture whose dimensions are unsafe to resize has no preview, and without
+	// the original it would drop out of every search instead.
+	if missing[0]["originalUrl"] != "/image/"+id {
+		t.Fatalf("preparing has nothing to fall back to: %#v", missing[0])
+	}
+}

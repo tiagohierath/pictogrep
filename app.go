@@ -790,6 +790,22 @@ func (a *application) pruneQueryEmbeddingsLocked() {
 	}
 }
 
+// Preparing a picture reads a preview of it, not the original. The model works
+// from a 224 pixel square, so handing it a 24 megapixel photograph spends the
+// whole decode on pixels that are thrown away before anything is learned. 512
+// keeps the short edge above 224 for anything up to a 2.3:1 frame, and a format
+// the preview encoder cannot read, webp today, is still served whole by the
+// same route.
+//
+// The original travels with it because a picture whose dimensions are unsafe to
+// decode has no preview at all, and refusing to prepare it would quietly leave
+// it out of every search.
+const embeddingPreviewSize = "512"
+
+func embeddingPreviewURL(id string) string {
+	return "/thumbnail/" + id + "?size=" + embeddingPreviewSize
+}
+
 func (a *application) missingEmbeddings() []map[string]any {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -800,7 +816,8 @@ func (a *application) missingEmbeddings() []map[string]any {
 		if !found || record.Mtime != mtime || len(record.Vector) != a.embeddingModel.Dimensions {
 			id := stableImageID(path)
 			items = append(items, map[string]any{
-				"id": id, "name": filepath.Base(path), "url": "/image/" + id, "path": path, "mtime": mtime,
+				"id": id, "name": filepath.Base(path), "url": embeddingPreviewURL(id),
+				"originalUrl": "/image/" + id, "path": path, "mtime": mtime,
 			})
 		}
 	}
