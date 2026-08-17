@@ -9,8 +9,10 @@ permissions:
 
 jobs:
   linux:
-    # Runs after Windows on purpose. GitHub lists release assets in upload
-    # order, and the Windows installer is what most people came for.
+    # Runs after Windows so a failed Windows build cannot leave a release
+    # published with Linux archives alone. GitHub sorts the asset list
+    # alphabetically whatever the upload order, so the notes are what actually
+    # points people at the right download.
     needs: windows
     strategy:
       matrix:
