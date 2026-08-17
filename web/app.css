@@ -682,3 +682,13 @@ body.onboarding-open { overflow: hidden; }
 @media (max-width: 480px) {
   .auto-sync { left: 10px; right: 10px; bottom: 10px; max-width: none; }
 }
+
+/* Boards Pictogrep re-checks, each one able to be dropped on its own. */
+.followed-boards { display: flex; flex-direction: column; margin: -4px 0 4px; border: 1px solid #e2e2e2; }
+.followed-board { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border-bottom: 1px solid #f0f0f0; }
+.followed-board:last-child { border-bottom: 0; }
+.followed-board span { display: flex; min-width: 0; flex-direction: column; }
+.followed-board strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.followed-board small { color: #777; font-size: 11px; }
+.followed-board button { flex: none; padding: 4px 10px; border: 1px solid #999; background: #fff; font-size: 12px; }
+.followed-board button[disabled] { color: #9a9a9a; border-color: #e2e2e2; }

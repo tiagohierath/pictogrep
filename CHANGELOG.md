@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.8.2 - 2026-08-17
+
+- Boards Pictogrep keeps up to date are listed under Official plugins, each one able to be dropped on its own. Turning the whole feature off was the only way to stop following a board, so one board you no longer wanted meant giving up the ones you did.
+- Folders Pictogrep reads can be removed from Settings. Indexing only ever added folders to the list, so a folder chosen by mistake, or an enormous one chosen without meaning to, stayed for good and was rescanned forever. Removing one stops Pictogrep reading it. The folder and every picture in it are left exactly where they are.
+
 ## 0.8.1 - 2026-08-17
 
 - The folder canvas is an optional plugin now, and off until you turn it on. It was an action on every folder menu for something most libraries never use. Turn it on under Official plugins.

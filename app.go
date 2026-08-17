@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-var version = "0.8.1"
+var version = "0.8.2"
 
 const (
 	maxCachedQueries = 512
@@ -1193,6 +1193,37 @@ func (a *application) indexFolders(requested []string) error {
 	if len(folders) == 0 {
 		return errors.New("add an image folder first")
 	}
+	return a.indexFolderSet(folders)
+}
+
+// forgetSourceFolder stops reading a folder. Indexing only ever unions the
+// folders it knows with the ones it is handed, so without this the list could
+// only grow, and a folder added by accident stayed for good.
+func (a *application) forgetSourceFolder(folder string) error {
+	folder = expandPath(folder)
+	_, remembered, _ := a.snapshot()
+	kept := make([]string, 0, len(remembered))
+	found := false
+	for _, source := range remembered {
+		if source == folder {
+			found = true
+			continue
+		}
+		kept = append(kept, source)
+	}
+	if !found {
+		return fmt.Errorf("Pictogrep is not reading that folder")
+	}
+	// The pictures themselves are untouched. Only the record of where to look
+	// goes away, so nothing is deleted from anybody's disk.
+	return a.indexFolderSet(kept)
+}
+
+// indexFolderSet rebuilds the library from exactly these folders. An empty set
+// is allowed and leaves the managed library on its own, which is what removing
+// the last folder should do rather than failing.
+func (a *application) indexFolderSet(folders []string) error {
+	folders = uniqueStrings(folders)
 	// Managed imports are always part of the library, even when this operation
 	// refreshes one or more external source folders. Otherwise replacing the
 	// catalog below would silently orphan every image imported into libraryDir.

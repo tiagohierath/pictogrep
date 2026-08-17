@@ -2000,6 +2000,7 @@ function renderState() {
   $("#homeOrderSetting").value = appState.browser?.homeOrder || "random";
   $("#libraryLocation").textContent = appState.paths?.library || "";
   const sourceCount = (appState.sources || []).length;
+  renderSourceFolders();
   $("#sourceFolderSummary").textContent = sourceCount === 1
     ? t("settings.folders_one")
     : sourceCount ? t("settings.folders_count", {count: sourceCount}) : t("settings.folders_help");
@@ -2613,7 +2614,125 @@ function showPlugins() {
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = false;
   renderState();
+  renderFollowedBoards();
   openMenu(t("menu.plugins"));
+}
+
+// Adding a folder is one click now, so removing one has to be too. A folder
+// picked by mistake, or a huge one picked without meaning to, used to be
+// permanent: indexing only ever unions what it knows with what it is given.
+function renderSourceFolders() {
+  const list = $("#sourceFolderList");
+  if (!list) return;
+  const sources = appState?.sources || [];
+  if (!sources.length) {
+    list.hidden = true;
+    return;
+  }
+  list.replaceChildren(...sources.map(folder => {
+    const row = document.createElement("div");
+    row.className = "followed-board";
+    const text = document.createElement("span");
+    const name = document.createElement("strong");
+    name.textContent = folder.split(/[\\/]/).filter(Boolean).pop() || folder;
+    name.title = folder;
+    const path = document.createElement("small");
+    path.textContent = folder;
+    text.append(name, path);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.textContent = t("settings.stop_reading");
+    remove.onclick = async () => {
+      remove.disabled = true;
+      try {
+        await request("/api/app/folders/forget", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({folder}),
+        });
+        showMessage(t("settings.stopped_reading", {name: name.textContent}));
+        await refreshState();
+        await loadImages();
+        await loadFolders();
+      } catch (error) {
+        remove.disabled = false;
+        showMessage(error.message, true);
+      }
+    };
+    row.append(text, remove);
+    return row;
+  }));
+  list.hidden = false;
+}
+
+// A board name is the last piece of its address, which is what people called it
+// on Pinterest.
+function pinterestBoardLabel(rawURL) {
+  try {
+    const parts = new URL(rawURL).pathname.split("/").filter(Boolean);
+    return parts.length ? decodeURIComponent(parts[parts.length - 1]).replace(/-/g, " ") : rawURL;
+  } catch (_) { return rawURL; }
+}
+
+function lastCheckedLabel(seconds) {
+  if (!seconds) return t("pinterest.never_checked");
+  const days = Math.floor((Date.now() / 1000 - seconds) / 86400);
+  if (days <= 0) return t("pinterest.checked_today");
+  return days === 1 ? t("pinterest.checked_yesterday") : t("pinterest.checked_days", {count: days});
+}
+
+// Turning the whole feature off was the only way to stop following a board, so
+// one board you no longer want meant giving up the ones you do.
+async function renderFollowedBoards() {
+  const list = $("#pinterestBoardList");
+  if (!list) return;
+  if (!appState?.plugins?.pinterest?.enabled) {
+    list.hidden = true;
+    return;
+  }
+  let boards = [];
+  try {
+    boards = (await request("/api/app/plugins/pinterest/boards")).boards || [];
+  } catch (_) {
+    list.hidden = true;
+    return;
+  }
+  if (!boards.length) {
+    list.hidden = true;
+    return;
+  }
+  list.replaceChildren(...boards.map(board => {
+    const row = document.createElement("div");
+    row.className = "followed-board";
+    const text = document.createElement("span");
+    const name = document.createElement("strong");
+    name.textContent = pinterestBoardLabel(board.url);
+    name.title = board.url;
+    const when = document.createElement("small");
+    when.textContent = lastCheckedLabel(board.lastSyncAt);
+    text.append(name, when);
+    const stop = document.createElement("button");
+    stop.type = "button";
+    stop.textContent = t("pinterest.unfollow");
+    stop.onclick = async () => {
+      stop.disabled = true;
+      try {
+        await request("/api/app/settings/pinterest", {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({forget: board.url}),
+        });
+        showMessage(t("pinterest.unfollowed", {board: pinterestBoardLabel(board.url)}));
+        await renderFollowedBoards();
+      } catch (error) {
+        stop.disabled = false;
+        showMessage(error.message, true);
+      }
+    };
+    row.append(text, stop);
+    return row;
+  }));
+  list.hidden = false;
 }
 
 async function toggleWikimediaPlugin() {
@@ -2727,6 +2846,7 @@ async function togglePinterestPlugin() {
     });
     appState.plugins.pinterest = {...appState.plugins.pinterest, enabled};
     renderState();
+    renderFollowedBoards();
     showMessage(t(enabled ? "pinterest.enabled" : "pinterest.disabled"));
   } catch (error) {
     $("#pinterestPluginToggle").checked = !enabled;
@@ -3314,6 +3434,7 @@ $("#pinterestAutoSyncToggle").onchange = async () => {
       body: JSON.stringify({autoSync}),
     });
     await refreshState();
+    renderFollowedBoards();
   } catch (error) {
     $("#pinterestAutoSyncToggle").checked = !autoSync;
     showMessage(error.message, true);

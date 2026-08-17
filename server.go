@@ -100,6 +100,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/app/boards", s.appBoards)
 	mux.HandleFunc("POST /api/app/index", s.appIndex)
 	mux.HandleFunc("GET /api/app/browse", s.appBrowse)
+	mux.HandleFunc("POST /api/app/folders/forget", s.forgetFolder)
 	mux.HandleFunc("GET /api/app/plugins/pinterest/boards", s.appPinterestBoards)
 	mux.HandleFunc("POST /api/app/settings/pinterest", s.savePinterestSettings)
 	mux.HandleFunc("POST /api/app/onboarding", s.saveOnboarding)

@@ -479,5 +479,13 @@
   "plugins.canvas": "Área livre da pasta",
   "plugins.canvas_help": "Adiciona uma ação para espalhar as imagens de uma pasta em uma área livre e arrastá-las. Os arquivos nunca saem do lugar.",
   "plugins.canvas_enabled": "Área livre da pasta ativada",
-  "plugins.canvas_disabled": "Área livre da pasta desativada"
+  "plugins.canvas_disabled": "Área livre da pasta desativada",
+  "pinterest.unfollow": "Parar de seguir",
+  "pinterest.unfollowed": "Você não segue mais {board}",
+  "pinterest.never_checked": "Ainda não verificada",
+  "pinterest.checked_today": "Verificada hoje",
+  "pinterest.checked_yesterday": "Verificada ontem",
+  "pinterest.checked_days": "Verificada há {count} dias",
+  "settings.stop_reading": "Parar de ler",
+  "settings.stopped_reading": "O Pictogrep não lê mais {name}. A pasta e as imagens continuam intactas."
 }

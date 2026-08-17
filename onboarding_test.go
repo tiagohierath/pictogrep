@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -131,5 +132,72 @@ func TestOnboardingSaveKeepsOtherSettings(t *testing.T) {
 	}
 	if !app.onboardingSettings().Completed {
 		t.Fatal("onboarding completion was not saved")
+	}
+}
+
+// Removing a folder must never remove pictures. Only the record of where to
+// look goes away.
+func TestForgettingAFolderLeavesTheFilesAlone(t *testing.T) {
+	app, server := testHTTPServer(t)
+	keep := t.TempDir()
+	drop := t.TempDir()
+	kept := filepath.Join(keep, "kept.png")
+	dropped := filepath.Join(drop, "dropped.png")
+	writeTestPNG(t, kept)
+	writeTestPNG(t, dropped)
+	if err := app.indexFolders([]string{keep, drop}); err != nil {
+		t.Fatal(err)
+	}
+	if paths, sources, _ := app.snapshot(); len(paths) != 2 || len(sources) != 2 {
+		t.Fatalf("both folders should be indexed: %#v %#v", paths, sources)
+	}
+
+	response, err := http.Post(server.URL+"/api/app/folders/forget", "application/json",
+		strings.NewReader(`{"folder":`+strconv.Quote(drop)+`}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if value := responseJSON(t, response); response.StatusCode != http.StatusOK {
+		t.Fatalf("forgetting failed: status=%d %#v", response.StatusCode, value)
+	}
+
+	paths, sources, _ := app.snapshot()
+	if len(sources) != 1 || sources[0] != keep {
+		t.Fatalf("the wrong folder was forgotten: %#v", sources)
+	}
+	if len(paths) != 1 || paths[0] != kept {
+		t.Fatalf("the wrong pictures survived: %#v", paths)
+	}
+	// The whole point: the file is still on disk.
+	if _, err := os.Stat(dropped); err != nil {
+		t.Fatalf("forgetting a folder deleted a picture: %v", err)
+	}
+}
+
+func TestForgettingTheLastFolderIsAllowed(t *testing.T) {
+	app, _ := testHTTPServer(t)
+	only := t.TempDir()
+	writeTestPNG(t, filepath.Join(only, "one.png"))
+	if err := app.indexFolders([]string{only}); err != nil {
+		t.Fatal(err)
+	}
+	if err := app.forgetSourceFolder(only); err != nil {
+		t.Fatalf("removing the last folder should be allowed: %v", err)
+	}
+	if _, sources, _ := app.snapshot(); len(sources) != 0 {
+		t.Fatalf("sources should be empty: %#v", sources)
+	}
+}
+
+func TestForgettingAnUnknownFolderIsRefused(t *testing.T) {
+	app, server := testHTTPServer(t)
+	_ = app
+	response, err := http.Post(server.URL+"/api/app/folders/forget", "application/json",
+		strings.NewReader(`{"folder":"/definitely/not/indexed"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected a refusal, got %d", response.StatusCode)
 	}
 }

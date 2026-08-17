@@ -479,5 +479,13 @@
   "plugins.canvas": "Folder canvas",
   "plugins.canvas_help": "Adds an action for spreading a folder's pictures out on a flat workspace and dragging them around. The files never move.",
   "plugins.canvas_enabled": "Folder canvas is on",
-  "plugins.canvas_disabled": "Folder canvas is off"
+  "plugins.canvas_disabled": "Folder canvas is off",
+  "pinterest.unfollow": "Stop following",
+  "pinterest.unfollowed": "No longer following {board}",
+  "pinterest.never_checked": "Not checked yet",
+  "pinterest.checked_today": "Checked today",
+  "pinterest.checked_yesterday": "Checked yesterday",
+  "pinterest.checked_days": "Checked {count} days ago",
+  "settings.stop_reading": "Stop reading",
+  "settings.stopped_reading": "Pictogrep no longer reads {name}. The folder and its pictures are untouched."
 }

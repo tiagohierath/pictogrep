@@ -186,3 +186,26 @@ func (s *server) appBrowse(w http.ResponseWriter, r *http.Request) {
 		"folders": folders, "images": count, "truncated": truncated,
 	})
 }
+
+// forgetFolder stops Pictogrep reading a source folder. Adding one is easy now
+// that there is a picker, so removing one has to be just as reachable, and a
+// folder chosen by mistake was otherwise permanent.
+func (s *server) forgetFolder(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Folder string `json:"folder"`
+	}
+	if err := decodeJSON(r, &request, 1<<16); err != nil {
+		sendError(w, 400, err)
+		return
+	}
+	if strings.TrimSpace(request.Folder) == "" {
+		sendError(w, 400, fmt.Errorf("name the folder to stop reading"))
+		return
+	}
+	if err := s.app.forgetSourceFolder(request.Folder); err != nil {
+		sendError(w, 400, err)
+		return
+	}
+	_, sources, _ := s.app.snapshot()
+	sendJSON(w, 200, map[string]any{"ok": true, "sources": sources})
+}
