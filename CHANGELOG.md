@@ -5,6 +5,8 @@
 - Preparing pictures for search uses more than one core. The search runtime will not start a second thread unless the page it runs in is allowed shared memory, Pictogrep never sent the two headers that allow it, and so every release so far prepared a library on one core no matter how many the machine had. Nothing about what gets prepared changed, only how much of the computer works on it.
 - Preparing a picture reads a preview of it instead of the whole file. The model looks at a 224 pixel square, so a 24 megapixel photograph was decoded in full to produce something the size of a postage stamp. A picture too large to preview safely is still read whole, so nothing drops out of search, and pictures already prepared stay prepared.
 - A page on the internet cannot probe your library any more. Any website can point an image tag at an address on your own computer and learn from what loads, and Pictogrep now refuses to answer anything that is not its own page.
+- Pictogrep can be run by an Android app. The server can be told to shut down when whatever started it goes away, to leave the library unlocked, and to stop looking for its own updates, which are the three habits that make sense for a program you start yourself and none of which make sense inside an app. Nothing changes for a normal installation.
+- Pictogrep can require a secret. A local address keeps other computers out but not other programs on the same computer, which barely matters on a desktop you own and matters a great deal on a phone full of other people's apps. Given a secret to expect, Pictogrep answers only requests that carry it. Set nothing and nothing changes.
 
 ## 0.8.6 - 2026-08-17
 

@@ -63,16 +63,18 @@ func run(args []string) error {
 		return uninstallDesktopShortcut()
 	}
 	home := defaultHome()
-	lock, err := acquireInstanceLock(home)
-	if err != nil {
-		if errors.Is(err, errInstanceLocked) {
-			if reused, reuseErr := reuseExistingServer(command, commandArgs, home); reused || reuseErr != nil {
-				return reuseErr
+	if locksTheLibrary {
+		lock, err := acquireInstanceLock(home)
+		if err != nil {
+			if errors.Is(err, errInstanceLocked) {
+				if reused, reuseErr := reuseExistingServer(command, commandArgs, home); reused || reuseErr != nil {
+					return reuseErr
+				}
 			}
+			return err
 		}
-		return err
+		defer lock.Close()
 	}
-	defer lock.Close()
 	app, err := newApplication()
 	if err != nil {
 		return err
@@ -246,30 +248,35 @@ func serve(app *application, args []string) error {
 	syncCtx, stopSync := context.WithCancel(context.Background())
 	defer stopSync()
 	go handler.watchPinterestBoards(syncCtx)
-	go handler.watchForUpdates(syncCtx)
+	if updatesItself {
+		go handler.watchForUpdates(syncCtx)
+	}
 	shutdown := func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		_ = httpServer.Shutdown(ctx)
 	}
+	superviseParent(shutdown)
 	stopped := make(chan os.Signal, 1)
 	signal.Notify(stopped, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-stopped
 		shutdown()
 	}()
-	go func() {
-		ticker := time.NewTicker(idleCheckEvery)
-		defer ticker.Stop()
-		for range ticker.C {
-			if watch.idleFor() < idleShutdownAfter || app.indexing() || handler.pinterest.running() {
-				continue
+	if closesWhenIdle {
+		go func() {
+			ticker := time.NewTicker(idleCheckEvery)
+			defer ticker.Stop()
+			for range ticker.C {
+				if watch.idleFor() < idleShutdownAfter || app.indexing() || handler.pinterest.running() {
+					continue
+				}
+				fmt.Println("Pictogrep closed itself after an hour with no windows open.")
+				shutdown()
+				return
 			}
-			fmt.Println("Pictogrep closed itself after an hour with no windows open.")
-			shutdown()
-			return
-		}
-	}()
+		}()
+	}
 	err = httpServer.Serve(listener)
 	if err == http.ErrServerClosed {
 		return nil

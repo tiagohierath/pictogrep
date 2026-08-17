@@ -225,6 +225,10 @@ func securityHeaders(next http.Handler) http.Handler {
 			sendError(w, http.StatusForbidden, fmt.Errorf("Pictogrep only accepts local requests"))
 			return
 		}
+		if !hasAccessToken(r) {
+			rejectUntrustedCaller(w)
+			return
+		}
 		if requestChangesState(r.Method) && !hasTrustedOrigin(r) {
 			sendError(w, http.StatusForbidden, fmt.Errorf("cross-origin requests are not allowed"))
 			return
