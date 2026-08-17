@@ -47,6 +47,9 @@ let relatedLoadId = 0;
 let relatedPaging = null;
 let relatedScrollObserver = null;
 const RELATED_PAGE_SIZE = 18;
+// The images endpoint refuses to return more than this in one page, so a
+// restored view cannot ask for more than it either.
+const MAX_IMAGE_PAGE = 500;
 let canvasPositions = new Map();
 let canvasImages = [];
 let canvasPan = {x: 0, y: 0};
@@ -635,6 +638,7 @@ function setLoading() {
 function pictureCard(item) {
   const card = document.createElement("article");
   card.className = "image-card";
+  card.dataset.id = item.id;
   card.tabIndex = 0;
   card.setAttribute("aria-label", item.name);
   card.draggable = true;
@@ -1002,6 +1006,7 @@ async function loadMoreRelated() {
   if (!$("#imageViewer").open || currentViewerItem?.id !== paging.id) return;
   const loadId = relatedLoadId;
   paging.loading = true;
+  paging.failed = false;
   $("#relatedMore").hidden = false;
   try {
     const data = await request(`/api/app/related/${encodeURIComponent(paging.id)}?limit=${paging.limit}&offset=${paging.offset}`);
@@ -1011,18 +1016,20 @@ async function loadMoreRelated() {
     $("#relatedGrid").append(...images.map(relatedCard));
     if (images.length < paging.limit) paging.done = true;
   } catch (_) {
-    paging.done = true;
+    // Same as the library grid: a slice that failed is not the end of the
+    // ranking, so the next scroll gets to ask for it again.
+    paging.failed = true;
   } finally {
     paging.loading = false;
     $("#relatedMore").hidden = true;
   }
-  if (paging === relatedPaging && !paging.done) fillRelatedViewport();
+  if (paging === relatedPaging && !paging.done && !paging.failed) fillRelatedViewport();
 }
 
 function fillRelatedViewport() {
   const sentinel = $("#relatedSentinel");
   const viewer = $("#imageViewer");
-  if (!sentinel || !relatedPaging || relatedPaging.done || relatedPaging.loading) return;
+  if (!sentinel || !relatedPaging || relatedPaging.done || relatedPaging.loading || relatedPaging.failed) return;
   if (sentinel.getBoundingClientRect().top < viewer.getBoundingClientRect().bottom + 400) loadMoreRelated();
 }
 
@@ -1161,7 +1168,54 @@ function imagePageURL({mode, pageSize, offset, seed}) {
 
 function setMoreImagesVisible(visible) {
   const more = $("#imageGridMore");
-  if (more) more.hidden = !visible;
+  if (!more) return;
+  if (visible) more.replaceChildren(document.createTextNode(t("state.loading_more")));
+  more.hidden = !visible;
+}
+
+// A page that failed to arrive is not the end of the library, so the footer
+// says what went wrong and offers another go instead of leaving the grid to
+// stop growing for no visible reason.
+function showImageGridRetry(message) {
+  const more = $("#imageGridMore");
+  if (!more) return;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "grid-retry";
+  retry.textContent = t("state.try_again");
+  retry.onclick = () => {
+    if (!imagePaging) return;
+    imagePaging.failed = false;
+    setMoreImagesVisible(true);
+    loadMoreImages();
+  };
+  more.replaceChildren(document.createTextNode(`${t("state.load_more_failed", {error: message})} `), retry);
+  more.hidden = false;
+}
+
+// Taking the card out in place keeps every other picture exactly where it was.
+// Reloading cannot do that: a seeded shuffle over a list that is one shorter
+// deals a different order, so the whole library would rearrange itself around
+// the gap and the reader would lose their place over a single deletion.
+function forgetImage(id) {
+  const before = browserImages.length;
+  browserImages = browserImages.filter(item => item.id !== id);
+  $("#imageGrid").querySelectorAll(".image-card").forEach(card => {
+    if (card.dataset.id === id) card.remove();
+  });
+  // A picture deleted from somewhere other than the grid, a viewer opened
+  // straight from a link for instance, never took up a slot in the loaded
+  // pages, so the paging window stays where it is.
+  if (browserImages.length === before) return;
+  if (imagePaging) {
+    imagePaging.total = Math.max(0, imagePaging.total - 1);
+    imagePaging.offset = Math.max(0, imagePaging.offset - 1);
+    imagePaging.done = imagePaging.offset >= imagePaging.total;
+    $("#imageCount").textContent = imagePaging.total ? `(${imagePaging.total})` : "";
+  } else {
+    $("#imageCount").textContent = browserImages.length ? `(${browserImages.length})` : "";
+  }
+  fillImageViewport();
 }
 
 function appendImages(images) {
@@ -1178,6 +1232,7 @@ async function loadMoreImages() {
   if ($("#imagesPanel").hidden) return;
   const loadId = imageLoadId;
   paging.loading = true;
+  paging.failed = false;
   setMoreImagesVisible(true);
   try {
     const data = await request(imagePageURL(paging));
@@ -1187,20 +1242,25 @@ async function loadMoreImages() {
     appendImages(data.images || []);
     if (paging.offset >= paging.total || !(data.images || []).length) paging.done = true;
   } catch (error) {
-    paging.done = true;
-    showMessage(error.message, true);
+    // One page that would not load used to end the scroll for good, which put
+    // the rest of the library out of reach. The position is kept instead, so
+    // the retry button or the next scroll can pick it up again.
+    paging.failed = true;
+    showImageGridRetry(error.message);
   } finally {
     paging.loading = false;
-    setMoreImagesVisible(false);
+    if (!paging.failed) setMoreImagesVisible(false);
   }
-  if (paging === imagePaging && !paging.done) fillImageViewport();
+  if (paging === imagePaging && !paging.done && !paging.failed) fillImageViewport();
 }
 
 // An IntersectionObserver only fires on a crossing, so after each page we check
 // whether the sentinel is still on screen and keep going until it is pushed off.
+// A failed page is skipped here so a sentinel that stays on screen cannot spin
+// on the same error. The observer still retries once the reader scrolls again.
 function fillImageViewport() {
   const sentinel = $("#imageGridSentinel");
-  if (!sentinel || !imagePaging || imagePaging.done || imagePaging.loading) return;
+  if (!sentinel || !imagePaging || imagePaging.done || imagePaging.loading || imagePaging.failed) return;
   if (sentinel.getBoundingClientRect().top < window.innerHeight + 600) loadMoreImages();
 }
 
@@ -1213,8 +1273,13 @@ function watchImageScroll() {
   imageScrollObserver.observe(sentinel);
 }
 
-async function loadImages() {
+// `keepOrder` is for refreshing after an edit rather than navigating. It holds
+// on to the shuffle already on screen and asks for the pages already scrolled
+// through in one go, so the library does not reorder itself and throw the
+// reader back to the top over an unrelated change.
+async function loadImages({keepOrder = false} = {}) {
   const loadId = ++imageLoadId;
+  const previous = imagePaging;
   imagePaging = null;
   setMoreImagesVisible(false);
   renderSearchScope();
@@ -1235,7 +1300,11 @@ async function loadImages() {
     } else {
       const mode = currentTag || currentSource ? "recent" : sidebarMode;
       const pageSize = mode === "random" ? 50 : 120;
-      const data = await request(imagePageURL({mode, pageSize, offset: 0, seed: 0}));
+      const resumable = keepOrder && previous && previous.mode === mode
+        && previous.tag === currentTag && previous.source === currentSource;
+      const seed = resumable ? previous.seed : 0;
+      const count = resumable ? Math.min(Math.max(previous.offset, pageSize), MAX_IMAGE_PAGE) : pageSize;
+      const data = await request(imagePageURL({mode, pageSize: count, offset: 0, seed}));
       if (loadId !== imageLoadId) return;
       renderImages(data.images, data.total);
       imagePaging = {
@@ -1244,7 +1313,7 @@ async function loadImages() {
         tag: currentTag,
         source: currentSource,
         seed: data.seed || 0,
-        offset: pageSize,
+        offset: count,
         total: data.total || data.images.length,
         loading: false,
       };
@@ -1627,6 +1696,26 @@ function openDeleteFolder(folder) {
   $("#deleteFolderDialog").showModal();
 }
 
+// A folder that was deleted or absorbed cannot go on scoping the library. The
+// scope line and the pictures already on screen both have to let go of it,
+// otherwise the Images tab keeps showing a folder that is gone and scrolling
+// asks the server for more of it.
+function releaseFolderScope() {
+  renderSearchScope();
+  if (!$("#imagesPanel").hidden) {
+    loadImages();
+    return;
+  }
+  // Nothing is on screen to reload, so drop the scoped pictures and let the
+  // next visit to the library fetch a fresh page. Bumping the load id keeps a
+  // request that is still in flight from filling the grid back up.
+  imageLoadId++;
+  imagePaging = null;
+  browserImages = [];
+  $("#imageGrid").replaceChildren();
+  setMoreImagesVisible(false);
+}
+
 async function deleteFolder(folder) {
   try {
     await request("/api/app/tags", {
@@ -1637,6 +1726,7 @@ async function deleteFolder(folder) {
     if (currentTag === folder.value) {
       currentTag = "";
       currentFolderName = "";
+      releaseFolderScope();
     }
     await refreshState();
     await loadFolders();
@@ -1654,7 +1744,14 @@ async function mergeFolders(from, into) {
       headers: {"Content-Type": "application/json"},
       body: JSON.stringify({action: "merge", tag: from.value, into: into.value}),
     });
-    if (currentTag === into.value) currentTag = from.value;
+    // The dragged folder survives and swallows the one it was dropped on, so a
+    // view scoped to either side is now stale: one name no longer exists, and
+    // the other just gained a second folder's pictures.
+    if (currentTag === into.value || currentTag === from.value) {
+      currentTag = from.value;
+      currentFolderName = from.name;
+      releaseFolderScope();
+    }
     await refreshState();
     await loadFolders();
     showMessage(t("folders.merged", {from: from.name, into: into.name}));
@@ -1900,6 +1997,10 @@ function renderState() {
   $("#showFilenamesSetting").checked = Boolean(appState.browser?.showFilenames);
   $("#homeOrderSetting").value = appState.browser?.homeOrder || "random";
   $("#libraryLocation").textContent = appState.paths?.library || "";
+  const sourceCount = (appState.sources || []).length;
+  $("#sourceFolderSummary").textContent = sourceCount === 1
+    ? t("settings.folders_one")
+    : sourceCount ? t("settings.folders_count", {count: sourceCount}) : t("settings.folders_help");
   document.body.dataset.thumbnailSize = appState.browser?.thumbnailSize || "medium";
   document.body.classList.toggle("show-filenames", Boolean(appState.browser?.showFilenames));
   const wikimediaEnabled = Boolean(appState.plugins?.wikimedia?.enabled);
@@ -1917,6 +2018,8 @@ function renderState() {
   $("#commandPalettePluginToggle").checked = Boolean(appState.plugins?.commandPalette?.enabled);
   const pinterestEnabled = Boolean(appState.plugins?.pinterest?.enabled);
   $("#pinterestPluginToggle").checked = pinterestEnabled;
+  $("#pinterestAutoSyncToggle").checked = appState.pinterest?.autoSync !== false;
+  $("#pinterestAutoSyncToggle").disabled = !pinterestEnabled;
   $("#showPinterest").hidden = !pinterestEnabled;
   if (!pinterestEnabled) $("#pinterestSection").hidden = true;
   const pinterestAvailable = appState.plugins?.pinterest?.available !== false;
@@ -2407,8 +2510,8 @@ async function deleteConfirmedImage(event) {
     if (currentViewerItem?.id === item.id) closeImageViewer();
     pendingDeleteItem = null;
     semanticResults.clear();
+    forgetImage(item.id);
     await refreshState();
-    await loadImages();
     await loadFolders();
     showMessage(t("delete.deleted", {name: item.name}));
   } catch (error) {
@@ -2438,7 +2541,7 @@ async function saveTag(event) {
     $("#tagDialog").close();
     showMessage(t("tag_dialog.added", {name: tag}));
     await refreshState();
-    await loadImages();
+    await loadImages({keepOrder: true});
     await loadFolders();
   } catch (error) {
     showMessage(error.message, true);
@@ -2801,8 +2904,67 @@ async function resumePinterestImport() {
   if (appState.plugins?.pinterest?.enabled === false) return;
   try {
     const status = await request("/api/app/plugins/pinterest/import");
-    if (status.state === "running") { showPinterestWorking(status); watchPinterestImport(); }
+    if (status.state !== "running") return;
+    // A weekly check nobody started should not open the import panel and look
+    // like something went off on its own. It refreshes the library quietly when
+    // it lands, and the panel stays for imports the reader actually asked for.
+    if (status.automatic) {
+      showAutoSyncStatus(status);
+      watchAutomaticPinterestSync();
+      return;
+    }
+    showPinterestWorking(status);
+    watchPinterestImport();
   } catch (_) {}
+}
+
+// A download nobody started still has to be visible and still has to be
+// stoppable. Quiet is not the same as hidden: the strip names the board, says
+// how far along it is, and carries the stop button, because the import panel it
+// used to live in never opens for an automatic check.
+function showAutoSyncStatus(status) {
+  const strip = $("#autoSyncStatus");
+  const done = Number(status.done || 0);
+  $("#autoSyncText").textContent = done
+    ? t("pinterest.auto_running_count", {board: status.board || "", count: done})
+    : t("pinterest.auto_running", {board: status.board || ""});
+  $("#autoSyncStop").disabled = Boolean(status.stopping);
+  if (status.stopping) $("#autoSyncText").textContent = t("pinterest.stopping");
+  strip.hidden = false;
+}
+
+function hideAutoSyncStatus() {
+  $("#autoSyncStatus").hidden = true;
+  $("#autoSyncStop").disabled = false;
+}
+
+async function watchAutomaticPinterestSync() {
+  if (pinterestWatching) return;
+  pinterestWatching = true;
+  try {
+    for (;;) {
+      let status = null;
+      try {
+        status = await request("/api/app/plugins/pinterest/import");
+      } catch (_) {
+        hideAutoSyncStatus();
+        return;
+      }
+      if (status.state !== "running") {
+        hideAutoSyncStatus();
+        const added = Number(status.result?.saved || 0);
+        if (added > 0) {
+          showMessage(t("pinterest.auto_added", {count: added, board: status.board || ""}));
+          await refreshAfterImport(!$("#imagesPanel").hidden);
+        }
+        return;
+      }
+      showAutoSyncStatus(status);
+      await new Promise(resolve => setTimeout(resolve, 4000));
+    }
+  } finally {
+    pinterestWatching = false;
+  }
 }
 
 function resetPinterestImport() {
@@ -3092,6 +3254,10 @@ $("#newFolderButton").onclick = () => openCreateFolder();
 $("#showBoards").onclick = loadBoards;
 $("#showPinterest").onclick = showPinterestImport;
 $("#showPlugins").onclick = showPlugins;
+$("#showOnboarding").onclick = () => {
+  closeMenu();
+  window.PictogrepOnboarding?.start();
+};
 $("#showAbout").onclick = showAbout;
 $("#showSettings").onclick = showSettings;
 $("#languageSetting").onchange = saveLanguageSetting;
@@ -3118,6 +3284,20 @@ $("#sidebarPluginToggle").onchange = toggleSidebarPlugin;
 $("#vimPluginToggle").onchange = toggleVimPlugin;
 $("#commandPalettePluginToggle").onchange = toggleCommandPalettePlugin;
 $("#pinterestPluginToggle").onchange = togglePinterestPlugin;
+$("#pinterestAutoSyncToggle").onchange = async () => {
+  const autoSync = $("#pinterestAutoSyncToggle").checked;
+  try {
+    await request("/api/app/settings/pinterest", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({autoSync}),
+    });
+    await refreshState();
+  } catch (error) {
+    $("#pinterestAutoSyncToggle").checked = !autoSync;
+    showMessage(error.message, true);
+  }
+};
 $("#checkForUpdates").onclick = checkForUpdates;
 $("#installUpdate").onclick = installAvailableUpdate;
 $("#showAdd").onclick = () => {
@@ -3139,7 +3319,18 @@ $("#emptyAddImages").onclick = () => {
 };
 $("#emptyPinterest").onclick = startPinterestOnboarding;
 $("#imageFiles").onchange = event => uploadFiles(event.target.files);
-$("#imageFolder").onchange = event => uploadFiles(event.target.files);
+$("#chooseFolder").onclick = openFolderPickerDialog;
+$("#addSourceFolder").onclick = openFolderPickerDialog;
+$("#autoSyncStop").onclick = async () => {
+  $("#autoSyncStop").disabled = true;
+  try {
+    await request("/api/app/plugins/pinterest/import", {method: "DELETE"});
+  } catch (error) {
+    $("#autoSyncStop").disabled = false;
+    showMessage(error.message, true);
+  }
+};
+$("#folderPickerClose").onclick = () => $("#folderPickerDialog").close();
 $("#pinterestImportForm").onsubmit = importPinterestBoard;
 $("#pinterestCancelImport").onclick = () => request("/api/app/plugins/pinterest/import", {method: "DELETE"}).catch(() => {});
 $("#pinterestImportAnother").onclick = resetPinterestImport;
@@ -3380,7 +3571,140 @@ async function start() {
   // once nothing is left to break.
   setInterval(() => fetch("/api/app/heartbeat", {cache: "no-store"}).catch(() => {}), 60 * 1000);
   resumePinterestImport();
+  // First run only, and only while there is nothing to look at. Once it has
+  // been through, or closed, Pictogrep does not ask again.
+  if (!appState.onboarding?.completed && !appState.index?.count) window.PictogrepOnboarding?.start();
 }
+
+// The bridge the onboarding flow talks to. It is the whole contract between
+// web/onboarding.js and this file: onboarding never reaches into library
+// internals, so a screen can be rewritten without touching anything here, and
+// anything new a screen needs gets added as one more function below.
+// Walks real folders through /api/app/browse and hands back the one that was
+// chosen. Both the onboarding screen and the Add drawer render this, so there is
+// one folder picker in Pictogrep and one meaning of "choose a folder": the
+// pictures are read where they already are.
+function renderFolderBrowser(container, {onChoose, chooseLabel = null} = {}) {
+  const path = document.createElement("div");
+  path.className = "onboarding-path";
+  const list = document.createElement("div");
+  list.className = "onboarding-folders";
+  const use = document.createElement("button");
+  use.type = "button";
+  use.className = "onboarding-go";
+  use.disabled = true;
+  const note = document.createElement("p");
+  note.className = "onboarding-note";
+  note.textContent = t("onboarding.folder.stays");
+  let current = "";
+
+  const quiet = text => {
+    const line = document.createElement("p");
+    line.className = "onboarding-quiet";
+    line.textContent = text;
+    return line;
+  };
+
+  async function show(target) {
+    list.replaceChildren(quiet(t("onboarding.folder.loading")));
+    try {
+      const data = await request(`/api/app/browse?path=${encodeURIComponent(target || "")}`);
+      current = data.path;
+      path.replaceChildren();
+      if (data.parent) {
+        const up = document.createElement("button");
+        up.type = "button";
+        up.className = "onboarding-up";
+        up.textContent = "↑";
+        up.setAttribute("aria-label", t("onboarding.folder.up"));
+        up.onclick = () => show(data.parent);
+        path.append(up);
+      }
+      const value = document.createElement("span");
+      value.className = "onboarding-path-value";
+      value.textContent = data.path;
+      value.title = data.path;
+      path.append(value);
+      use.disabled = data.images === 0;
+      use.textContent = data.images === 0
+        ? t("onboarding.folder.none_here")
+        : chooseLabel?.(data) || t("onboarding.folder.use", {count: data.images + (data.truncated ? "+" : "")});
+      list.replaceChildren(...(data.folders.length
+        ? data.folders.map(folder => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "onboarding-folder";
+          button.textContent = folder.name;
+          button.onclick = () => show(folder.path);
+          return button;
+        })
+        : [quiet(t("onboarding.folder.no_subfolders"))]));
+    } catch (error) {
+      list.replaceChildren(quiet(error.message));
+      use.disabled = true;
+    }
+  }
+
+  use.onclick = async () => {
+    use.disabled = true;
+    use.textContent = t("onboarding.folder.starting");
+    try {
+      await onChoose(current);
+    } catch (error) {
+      list.replaceChildren(quiet(error.message));
+      use.disabled = false;
+    }
+  };
+
+  container.append(path, list, use, note);
+  show("");
+}
+
+function openFolderPickerDialog() {
+  closeMenu();
+  const body = $("#folderPickerBody");
+  body.replaceChildren();
+  renderFolderBrowser(body, {
+    onChoose: async folder => {
+      await startIndex({folders: [folder]}, {announce: true});
+      $("#folderPickerDialog").close();
+    },
+  });
+  $("#folderPickerDialog").showModal();
+}
+
+window.PictogrepApp = {
+  renderFolderBrowser,
+  browseFolders: path => request(`/api/app/browse?path=${encodeURIComponent(path || "")}`),
+
+  // Index a folder in place. Nothing is copied or moved: the scan records where
+  // the pictures already are, which is what the onboarding promises.
+  indexFolder: path => startIndex({folders: [path]}, {announce: true}),
+
+  startPinterest: () => startPinterestOnboarding(),
+
+  setLanguage: async locale => {
+    await request("/api/app/settings/language", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({language: locale}),
+    });
+    appState.language = locale;
+    await window.PictogrepI18n.init(locale);
+    renderState();
+  },
+
+  enterLibrary: () => {
+    switchTab("images");
+    if (!browserImages.length) loadImages();
+  },
+
+  completeOnboarding: () => request("/api/app/onboarding", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({completed: true}),
+  }),
+};
 
 window.addEventListener("popstate", syncViewerFromHistory);
 window.addEventListener("focus", refreshLibraryWhenDue);
