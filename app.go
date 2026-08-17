@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-var version = "0.8.0"
+var version = "0.8.1"
 
 const (
 	maxCachedQueries = 512
@@ -353,7 +353,7 @@ func (a *application) pluginEnabled(name string) bool {
 }
 
 func (a *application) setPluginEnabled(name string, enabled bool) error {
-	if name != "wikimedia" && name != "calendar" && name != "sidebar" && name != "vim" && name != "commandPalette" && name != "pinterest" {
+	if name != "wikimedia" && name != "calendar" && name != "sidebar" && name != "vim" && name != "commandPalette" && name != "pinterest" && name != "canvas" {
 		return fmt.Errorf("unknown plugin: %s", name)
 	}
 	document := map[string]any{}

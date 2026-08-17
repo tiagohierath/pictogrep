@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.8.1 - 2026-08-17
+
+- The folder canvas is an optional plugin now, and off until you turn it on. It was an action on every folder menu for something most libraries never use. Turn it on under Official plugins.
+- In Portuguese it is no longer called "Abrir tela", which reads as "open screen" rather than naming the workspace it opens.
+
 ## 0.8.0 - 2026-08-17
 
 - Settings is written in plain language now. Groups say what they hold ("Your pictures", "Search", "Privacy" instead of "Browser" and "Search index"), and the descriptions no longer talk about search vectors or folder membership. Settings also shows how many folders Pictogrep reads and can add another one directly.

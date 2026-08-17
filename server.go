@@ -420,6 +420,7 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 			"calendar":  map[string]any{"enabled": s.app.pluginEnabled("calendar"), "name": "Calendar view", "description": "Browse local images grouped by when they were added."},
 			"sidebar":   map[string]any{"enabled": s.app.pluginEnabled("sidebar"), "name": "Sidebar", "description": "Drag images into collections from a quick side panel."},
 			"vim":       map[string]any{"enabled": s.app.pluginEnabled("vim"), "name": "Vim Mode", "description": "Use Vim-style keyboard navigation in the library and storyboard."},
+			"canvas":    map[string]any{"enabled": s.app.pluginEnabled("canvas"), "name": "Folder canvas", "description": "Arrange a folder's pictures freely on a flat workspace."},
 			"pinterest": map[string]any{
 				"enabled": s.app.pluginEnabled("pinterest"), "available": galleryDLError == nil,
 				"name": "Import from Pinterest", "description": "Import every image from a public Pinterest board.",

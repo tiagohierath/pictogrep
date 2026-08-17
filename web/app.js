@@ -1651,7 +1651,9 @@ function openFolderContextMenu(event, folder) {
   $("#folderContextName").title = folder.kind === "source" ? folder.value : folder.name;
   $("#folderContextOpen").onclick = () => openFolder(folder);
   $("#folderContextAdd").onclick = () => chooseImagesForFolder(folder);
-  $("#folderContextCanvas").onclick = () => {
+  const canvas = $("#folderContextCanvas");
+  canvas.hidden = !appState?.plugins?.canvas?.enabled;
+  canvas.onclick = () => {
     closeCardMenus();
     setFolderScope(folder);
     openFolderCanvas();
@@ -2015,6 +2017,7 @@ function renderState() {
   if (sidebarEnabled && !$("#pluginSidebar").hidden) renderSidebar();
   if (!sidebarEnabled) closeSidebar();
   $("#vimPluginToggle").checked = Boolean(appState.plugins?.vim?.enabled);
+  $("#canvasPluginToggle").checked = Boolean(appState.plugins?.canvas?.enabled);
   $("#commandPalettePluginToggle").checked = Boolean(appState.plugins?.commandPalette?.enabled);
   const pinterestEnabled = Boolean(appState.plugins?.pinterest?.enabled);
   $("#pinterestPluginToggle").checked = pinterestEnabled;
@@ -2680,6 +2683,23 @@ async function toggleVimPlugin() {
   }
 }
 
+async function toggleCanvasPlugin() {
+  const enabled = $("#canvasPluginToggle").checked;
+  try {
+    await request("/api/app/plugins", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name: "canvas", enabled}),
+    });
+    appState.plugins.canvas = {enabled};
+    renderState();
+    showMessage(t(enabled ? "plugins.canvas_enabled" : "plugins.canvas_disabled"));
+  } catch (error) {
+    $("#canvasPluginToggle").checked = !enabled;
+    showMessage(error.message, true);
+  }
+}
+
 async function toggleCommandPalettePlugin() {
   const enabled = $("#commandPalettePluginToggle").checked;
   try {
@@ -3283,6 +3303,7 @@ $("#calendarPluginToggle").onchange = toggleCalendarPlugin;
 $("#sidebarPluginToggle").onchange = toggleSidebarPlugin;
 $("#vimPluginToggle").onchange = toggleVimPlugin;
 $("#commandPalettePluginToggle").onchange = toggleCommandPalettePlugin;
+$("#canvasPluginToggle").onchange = toggleCanvasPlugin;
 $("#pinterestPluginToggle").onchange = togglePinterestPlugin;
 $("#pinterestAutoSyncToggle").onchange = async () => {
   const autoSync = $("#pinterestAutoSyncToggle").checked;

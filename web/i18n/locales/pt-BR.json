@@ -112,7 +112,7 @@
   "reindex.confirm": "Reconstruir tudo",
   "folder_menu.open": "Abrir pasta",
   "folder_menu.add": "Adicionar imagens aqui…",
-  "folder_menu.canvas": "Abrir tela",
+  "folder_menu.canvas": "Abrir área livre",
   "folder_menu.new_subfolder": "Nova subpasta…",
   "folder_menu.refresh": "Verificar novas imagens",
   "folder_menu.copy_path": "Copiar caminho da pasta",
@@ -343,7 +343,7 @@
   "delete.deleting": "Excluindo…",
   "delete.original_file": "Arquivo de imagem original",
   "delete.deleted": "{name} foi excluída.",
-  "canvas.close": "Fechar tela",
+  "canvas.close": "Fechar área livre",
   "canvas.hint": "Arraste imagens para organizar · Arraste o espaço vazio para mover · Role para ampliar",
   "canvas.saving": "Salvando…",
   "canvas.saved": "Salvo",
@@ -475,5 +475,9 @@
   "settings.folders_count": "{count} pastas, lidas onde estão. Nada é movido nem copiado.",
   "settings.folders_one": "1 pasta, lida onde está. Nada é movido nem copiado.",
   "settings.add_folder": "Adicionar uma pasta",
-  "settings.search_intro": "O Pictogrep olha cada imagem uma vez para que depois você possa encontrá-la só descrevendo o que lembra. Isso acontece no seu computador."
+  "settings.search_intro": "O Pictogrep olha cada imagem uma vez para que depois você possa encontrá-la só descrevendo o que lembra. Isso acontece no seu computador.",
+  "plugins.canvas": "Área livre da pasta",
+  "plugins.canvas_help": "Adiciona uma ação para espalhar as imagens de uma pasta em uma área livre e arrastá-las. Os arquivos nunca saem do lugar.",
+  "plugins.canvas_enabled": "Área livre da pasta ativada",
+  "plugins.canvas_disabled": "Área livre da pasta desativada"
 }
