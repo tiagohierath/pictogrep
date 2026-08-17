@@ -88,6 +88,7 @@ body[data-thumbnail-size="small"] .image-grid { columns: 160px; }
 body[data-thumbnail-size="large"] .image-grid { columns: 300px; }
 .image-grid.is-loading { columns: auto; }
 .grid-more { padding: 18px 0; color: #777; font-size: 13px; text-align: center; }
+.grid-retry { font-size: 13px; }
 .grid-sentinel { height: 1px; }
 .image-card { position: relative; width: 100%; margin: 0 0 18px; break-inside: avoid; background: #fff; }
 .image-card > img { display: block; width: 100%; height: auto; background: #eee; border-radius: 6px; cursor: pointer; }
@@ -487,4 +488,197 @@ kbd { padding: 2px 6px; border: 1px solid #bbb; border-bottom-width: 2px; border
 @media (prefers-reduced-motion: reduce) {
   .loading-image.is-slow-loading, img.is-revealing, .image-card-skeleton span,
   .viewer-picture.is-image-loading.is-slow-loading::before { animation: none; }
+}
+
+/* Onboarding.
+   The visual language comes from the Pictogrep mark: one-bit monochrome, a
+   bitmap wordmark, and a checkerboard ground. One screen, two ways in, and a
+   folder picker that reads real directories, so the promise underneath the
+   choices stays true. */
+
+.onboarding {
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(720px, calc(100vh - 24px));
+  padding: 0;
+  border: 1px solid #0d0d0d;
+  border-radius: 0;
+  background: #fff;
+  color: #0d0d0d;
+}
+.onboarding::backdrop { background: rgba(13, 13, 13, .78); }
+
+.onboarding-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 12px 0 22px;
+}
+.onboarding-dots { display: flex; gap: 5px; }
+.onboarding-dots i { width: 6px; height: 6px; box-shadow: inset 0 0 0 1px #0d0d0d; }
+.onboarding-dots i.is-current { background: #0d0d0d; }
+
+/* The language pair is the first thing on the screen for anyone who cannot read
+   the rest of it, so it sits in the chrome and stays quiet until it is wanted. */
+.onboarding-langs { display: flex; margin-left: auto; }
+.onboarding-langs button {
+  padding: 4px 9px;
+  border: 1px solid #e2e2e2;
+  background: #fff;
+  color: #8a8a8a;
+  font-family: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  font-size: 11px;
+  letter-spacing: .06em;
+}
+.onboarding-langs button + button { border-left: 0; }
+.onboarding-langs button:hover { color: #0d0d0d; }
+.onboarding-langs button.is-current { border-color: #0d0d0d; background: #0d0d0d; color: #fff; }
+
+.onboarding-close {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #8a8a8a;
+  font-size: 22px;
+  line-height: 1;
+}
+.onboarding-close:hover { color: #0d0d0d; }
+
+.onboarding-body { padding: 12px 30px 32px; overflow-y: auto; }
+.onboarding-step { display: flex; flex-direction: column; gap: 20px; }
+
+/* The one typographic gesture: a monospace display line echoing the bitmap
+   wordmark, so the mark's voice carries without shipping a font. */
+.onboarding-title {
+  margin: 8px 0 0;
+  font-family: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  font-size: clamp(20px, 5.4vw, 26px);
+  font-weight: 700;
+  letter-spacing: -.015em;
+  line-height: 1.18;
+}
+.onboarding-quiet { margin: 0; color: #6b6b6b; font-size: 13px; line-height: 1.5; }
+.onboarding-note {
+  margin: 0;
+  padding-top: 18px;
+  border-top: 1px solid #e8e8e8;
+  color: #6b6b6b;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+/* Small enough to read as a footnote, large enough to actually read. The dots
+   are separators, not decoration: four independent claims, no sentence. */
+.onboarding-creds {
+  margin: -6px 0 0;
+  color: #6b6b6b;
+  font-size: 12px;
+  line-height: 1.7;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.onboarding-choices { display: flex; flex-direction: column; gap: 8px; }
+.onboarding-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 19px 20px;
+  border: 1px solid #d8d8d8;
+  background: #fff;
+  font-size: 16px;
+  text-align: left;
+  transition: border-color .12s, background-color .12s;
+}
+.onboarding-choice:hover { border-color: #0d0d0d; background: #fafafa; }
+.onboarding-choice:first-child { border-color: #0d0d0d; }
+.onboarding-badge {
+  flex: none;
+  color: #7d8d99;
+  font-family: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+}
+
+.onboarding-go {
+  width: 100%;
+  padding: 15px;
+  border: 1px solid #0d0d0d;
+  background: #0d0d0d;
+  color: #fff;
+  font-size: 15px;
+}
+.onboarding-go[disabled] { border-color: #e2e2e2; background: #fff; color: #9a9a9a; }
+
+.onboarding-path { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.onboarding-up { flex: none; width: 30px; height: 30px; padding: 0; border: 1px solid #d8d8d8; background: #fff; }
+.onboarding-up:hover { border-color: #0d0d0d; }
+.onboarding-path-value {
+  overflow: hidden;
+  color: #6b6b6b;
+  font-family: ui-monospace, "DejaVu Sans Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+  white-space: nowrap;
+  direction: rtl;
+  text-overflow: ellipsis;
+}
+
+/* The checkerboard shows through an empty folder list, which is the same thing
+   every image tool draws where a picture is not there yet. */
+.onboarding-folders {
+  display: flex;
+  flex-direction: column;
+  min-height: 208px;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e2e2e2;
+  background: repeating-conic-gradient(#f5f5f5 0% 25%, #fff 0% 50%) 0 0 / 18px 18px;
+}
+.onboarding-folder {
+  padding: 12px 15px;
+  border: 0;
+  border-bottom: 1px solid #efefef;
+  background: #fff;
+  font-size: 14px;
+  text-align: left;
+}
+.onboarding-folder:hover { background: #f2f2f2; }
+.onboarding-folders .onboarding-quiet { padding: 15px; }
+
+.onboarding :focus-visible { outline: 2px solid #0d0d0d; outline-offset: 2px; }
+body.onboarding-open { overflow: hidden; }
+
+@media (max-width: 480px) {
+  .onboarding { width: 100vw; max-width: 100vw; height: 100vh; max-height: 100vh; border: 0; }
+  .onboarding-body { padding: 12px 20px 26px; }
+  .onboarding-folders { min-height: 160px; }
+}
+
+/* A background board check is quiet but never hidden, because anything
+   downloading has to be visible and has to be stoppable. */
+.auto-sync {
+  position: fixed;
+  z-index: 7;
+  left: 16px;
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  max-width: min(420px, calc(100vw - 32px));
+  padding: 10px 12px;
+  border: 1px solid #d8d8d8;
+  background: #fff;
+  color: #444;
+  font-size: 12px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, .1);
+}
+.auto-sync button { flex: none; padding: 4px 10px; border: 1px solid #999; background: #fff; font-size: 12px; }
+.auto-sync button[disabled] { color: #9a9a9a; border-color: #e2e2e2; }
+
+@media (max-width: 480px) {
+  .auto-sync { left: 10px; right: 10px; bottom: 10px; max-width: none; }
 }

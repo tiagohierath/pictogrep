@@ -104,8 +104,8 @@
 
     <section class="drawer-section" id="addSection" hidden>
       <h2 data-i18n="add.title">Add pictures</h2>
-      <label class="file-button"><span data-i18n="add.choose_images">Choose images</span><input id="imageFiles" type="file" accept="image/*" multiple hidden></label>
-      <label class="file-button"><span data-i18n="add.choose_folder">Choose a folder</span><input id="imageFolder" type="file" accept="image/*" webkitdirectory multiple hidden></label>
+      <button type="button" class="file-button" id="chooseFolder"><span data-i18n="add.choose_folder">Choose a folder</span><small data-i18n="add.choose_folder_help">Read a folder where it is. Nothing is moved or copied.</small></button>
+      <label class="file-button"><span data-i18n="add.choose_images">Copy images in</span><small data-i18n="add.choose_images_help">Saves the pictures you pick into Pictogrep's library.</small><input id="imageFiles" type="file" accept="image/*" multiple hidden></label>
     </section>
 
     <section class="drawer-section pinterest-import" id="pinterestSection" hidden>
@@ -140,28 +140,34 @@
       <div class="settings-group">
         <h2 data-i18n="settings.general">General</h2>
         <label class="settings-row"><span><strong data-i18n="settings.language">Language</strong><small data-i18n="settings.language_help">Choose the interface language.</small></span><select id="languageSetting"><option value="en" data-i18n="settings.english">English</option><option value="pt-BR">Português</option></select></label>
+        <div class="settings-action"><span><strong data-i18n="onboarding.menu">Setup guide</strong><small data-i18n="onboarding.menu_help">Open the first-run screen again to add another folder.</small></span><button type="button" id="showOnboarding" data-i18n="onboarding.menu_action">Open</button></div>
       </div>
       <div class="settings-group">
-        <h2 data-i18n="settings.browser">Browser</h2>
-        <label class="settings-row"><span><strong data-i18n="settings.thumbnail_size">Thumbnail size</strong><small data-i18n="settings.thumbnail_help">Changes the number of images shown in each row.</small></span><select id="thumbnailSizeSetting"><option value="small" data-i18n="settings.small">Small</option><option value="medium" data-i18n="settings.medium">Medium</option><option value="large" data-i18n="settings.large">Large</option></select></label>
-        <label class="settings-row"><span><strong data-i18n="settings.show_filenames">Show filenames</strong><small data-i18n="settings.show_filenames_help">Displays the file name below each image.</small></span><input type="checkbox" id="showFilenamesSetting"></label>
-        <label class="settings-row"><span><strong data-i18n="settings.home_order">Home view</strong><small data-i18n="settings.home_order_help">Choose what appears when you open your library.</small></span><select id="homeOrderSetting"><option value="random" data-i18n="settings.home_random">Fresh random mix</option><option value="recent" data-i18n="settings.home_recent">Newest pictures</option></select></label>
+        <h2 data-i18n="settings.pictures">Your pictures</h2>
+        <div class="settings-action"><span><strong data-i18n="settings.folders">Folders Pictogrep reads</strong><small id="sourceFolderSummary" data-i18n="settings.folders_help">Pictures are read where they are. Nothing is moved or copied.</small></span><button type="button" id="addSourceFolder" data-i18n="settings.add_folder">Add a folder</button></div>
+        <div class="settings-path"><strong data-i18n="settings.library_location">Where imported pictures are saved</strong><code id="libraryLocation"></code></div>
       </div>
       <div class="settings-group">
-        <h2 data-i18n="settings.search_index">Search index</h2>
+        <h2 data-i18n="settings.browser">Library view</h2>
+        <label class="settings-row"><span><strong data-i18n="settings.thumbnail_size">Picture size</strong><small data-i18n="settings.thumbnail_help">Bigger pictures mean fewer of them in each row.</small></span><select id="thumbnailSizeSetting"><option value="small" data-i18n="settings.small">Small</option><option value="medium" data-i18n="settings.medium">Medium</option><option value="large" data-i18n="settings.large">Large</option></select></label>
+        <label class="settings-row"><span><strong data-i18n="settings.show_filenames">Show filenames</strong><small data-i18n="settings.show_filenames_help">Puts each picture's file name under it.</small></span><input type="checkbox" id="showFilenamesSetting"></label>
+        <label class="settings-row"><span><strong data-i18n="settings.home_order">When you open Pictogrep</strong><small data-i18n="settings.home_order_help">What you see before searching for anything.</small></span><select id="homeOrderSetting"><option value="random" data-i18n="settings.home_random">A different mix every time</option><option value="recent" data-i18n="settings.home_recent">Newest pictures first</option></select></label>
+      </div>
+      <div class="settings-group">
+        <h2 data-i18n="settings.search_index">Search</h2>
+        <p class="field-help" data-i18n="settings.search_intro">Pictogrep looks at each picture once so you can find it by describing it. This happens on your computer.</p>
         <div class="index-settings-status" id="searchIndexStatus" aria-live="polite">
           <div><strong id="searchIndexStatusTitle" data-i18n="index.checking">Checking search index…</strong><small id="searchIndexStatusText"></small></div>
           <progress id="searchIndexProgress" value="0" max="1"></progress>
         </div>
-        <label class="settings-row"><span><strong data-i18n="settings.auto_index">Index new pictures automatically</strong><small data-i18n="settings.auto_index_help">Runs quietly in the background and processes only new or changed pictures.</small></span><input type="checkbox" id="automaticIndexingSetting"></label>
-        <div class="settings-action"><span><strong data-i18n="settings.check_index">Check for new pictures</strong><small data-i18n="settings.check_index_help">Refreshes folder membership, then indexes only what is missing.</small></span><button type="button" id="checkIndexNow" data-i18n="settings.check_now">Check now</button></div>
-        <div class="settings-action"><span><strong data-i18n="settings.rebuild_index">Rebuild search index</strong><small data-i18n="settings.rebuild_index_help">Discards every search vector and analyzes the full library again. Usually unnecessary.</small></span><button type="button" id="rebuildSearchIndex" data-i18n="settings.rebuild">Rebuild…</button></div>
+        <label class="settings-row"><span><strong data-i18n="settings.auto_index">Prepare new pictures automatically</strong><small data-i18n="settings.auto_index_help">Happens quietly in the background, and only for pictures Pictogrep has not seen yet.</small></span><input type="checkbox" id="automaticIndexingSetting"></label>
+        <div class="settings-action"><span><strong data-i18n="settings.check_index">Look for new pictures now</strong><small data-i18n="settings.check_index_help">Checks your folders for anything added or removed since last time.</small></span><button type="button" id="checkIndexNow" data-i18n="settings.check_now">Check now</button></div>
+        <div class="settings-action"><span><strong data-i18n="settings.rebuild_index">Start search over</strong><small data-i18n="settings.rebuild_index_help">Looks at every picture again from scratch. Takes a while, and you should not normally need it.</small></span><button type="button" id="rebuildSearchIndex" data-i18n="settings.rebuild">Start over…</button></div>
       </div>
       <div class="settings-group">
-        <h2 data-i18n="settings.data">Data & privacy</h2>
-        <div class="settings-fact"><span><strong data-i18n="settings.local_processing">Local processing</strong><small data-i18n="settings.local_processing_help">Image analysis stays on this device. Imported originals are never modified.</small></span><em data-i18n="settings.on">On</em></div>
-        <div class="settings-path"><strong data-i18n="settings.library_location">Library location</strong><code id="libraryLocation"></code></div>
-        <div class="settings-action"><span><strong data-i18n="settings.recent_searches">Recent searches</strong><small data-i18n="settings.recent_searches_help">Clear suggestions stored by this browser.</small></span><button type="button" id="clearRecentSearches" data-i18n="settings.clear">Clear</button></div>
+        <h2 data-i18n="settings.data">Privacy</h2>
+        <div class="settings-fact"><span><strong data-i18n="settings.local_processing">Everything stays on this computer</strong><small data-i18n="settings.local_processing_help">Your pictures are never uploaded, and the originals are never changed.</small></span><em data-i18n="settings.on">On</em></div>
+        <div class="settings-action"><span><strong data-i18n="settings.recent_searches">Recent searches</strong><small data-i18n="settings.recent_searches_help">Forget the searches this browser suggests back to you.</small></span><button type="button" id="clearRecentSearches" data-i18n="settings.clear">Clear</button></div>
       </div>
     </section>
 
@@ -175,6 +181,7 @@
         <label class="settings-row plugin-row"><span><strong data-i18n="plugins.vim">Vim Mode</strong><small data-i18n="plugins.vim_help">Use Vim-style keyboard navigation in the library and storyboard.</small></span><input type="checkbox" id="vimPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong data-i18n="plugins.command_palette">Command palette</strong><small data-i18n="plugins.command_palette_help">Open navigation and image search with Ctrl+K or Command+K.</small></span><input type="checkbox" id="commandPalettePluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.title">Import from Pinterest</strong><small data-i18n="plugins.pinterest_help">Enabled by default. Copy a public board into your library with the included downloader.</small></span><input type="checkbox" id="pinterestPluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.auto_sync">Auto-index from Pinterest</strong><small data-i18n="pinterest.auto_sync_help">Checks every board you have imported about once a week and adds whatever is new. Nothing is deleted.</small></span><input type="checkbox" id="pinterestAutoSyncToggle"></label>
       </div>
       <p class="field-help" data-i18n="plugins.help">Plugins add optional tools and image sources. Import plugins copy only the images you choose.</p>
     </section>
@@ -361,11 +368,33 @@
     <span class="import-progress-status" id="importProgressStatus" data-i18n="import.preparing">Preparing…</span>
   </aside>
 
+  <aside class="auto-sync" id="autoSyncStatus" role="status" aria-live="polite" hidden>
+    <span id="autoSyncText"></span>
+    <button type="button" id="autoSyncStop" data-i18n="pinterest.stop">Stop</button>
+  </aside>
+
   <div class="message" id="message" role="alert" aria-live="assertive" hidden>
     <span id="messageText"></span>
     <button type="button" id="closeMessage" aria-label="Dismiss notification" data-i18n-aria-label="app.dismiss_notification">×</button>
   </div>
+  <dialog class="onboarding folder-picker" id="folderPickerDialog" aria-label="Choose a folder" data-i18n-aria-label="add.choose_folder">
+    <header class="onboarding-header">
+      <button type="button" class="onboarding-close" id="folderPickerClose" aria-label="Close" data-i18n-aria-label="app.close">×</button>
+    </header>
+    <div class="onboarding-body"><h2 class="onboarding-title" data-i18n="add.choose_folder">Choose a folder</h2><div id="folderPickerBody"></div></div>
+  </dialog>
+
+  <dialog class="onboarding" id="onboardingDialog" aria-label="Set up Pictogrep" data-i18n-aria-label="onboarding.aria">
+    <header class="onboarding-header">
+      <span class="onboarding-dots" id="onboardingDots" role="img" hidden></span>
+      <span class="onboarding-langs" id="onboardingLangs" role="group" aria-label="Language" data-i18n-aria-label="settings.language"></span>
+      <button type="button" class="onboarding-close" id="onboardingClose" aria-label="Close setup" data-i18n-aria-label="onboarding.close">×</button>
+    </header>
+    <div class="onboarding-body" id="onboardingBody"></div>
+  </dialog>
+
   <script src="/i18n/i18n.js" defer></script>
+  <script src="/assets/onboarding.js" defer></script>
   <script src="/assets/app.js" defer></script>
 </body>
 </html>
