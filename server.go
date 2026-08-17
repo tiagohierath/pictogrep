@@ -41,6 +41,11 @@ type server struct {
 	remoteFetcher remoteImageFetcher
 	galleryDL     galleryDLRunner
 	pinterest     pinterestImport
+	// The automatic check reaches GitHub and can rewrite the running binary, so
+	// both halves are swappable and the tests never touch either.
+	checkUpdate func() (updateState, error)
+	applyUpdate func(updateState) error
+	updates     autoUpdater
 }
 
 type imageRecord struct {
@@ -62,7 +67,7 @@ func newServer(app *application) (*server, error) {
 	}
 	return &server{
 		app: app, practice: practice, remoteFetcher: downloadRemoteImage,
-		galleryDL: runGalleryDL,
+		galleryDL: runGalleryDL, checkUpdate: checkForUpdate, applyUpdate: installUpdate,
 	}, nil
 }
 
@@ -105,6 +110,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/app/settings/pinterest", s.savePinterestSettings)
 	mux.HandleFunc("POST /api/app/plugins/web/import", s.importWebSource)
 	mux.HandleFunc("POST /api/app/settings/web", s.saveWebSettings)
+	mux.HandleFunc("POST /api/app/settings/update", s.saveUpdateSettings)
 	mux.HandleFunc("GET /api/app/plugins/web/sources", s.appWebSources)
 	mux.HandleFunc("POST /api/app/plugins/web/sources", s.forgetWebSourceRequest)
 	mux.HandleFunc("POST /api/app/onboarding", s.saveOnboarding)
@@ -404,6 +410,7 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 		"ok": true, "version": version, "model": s.app.embeddingModel.ModelID, "pretrained": s.app.embeddingModel.Revision,
 		"semanticModel": s.app.embeddingModel.Key, "embeddingModel": s.app.embeddingModel,
 		"updateMethod": updateMethod(),
+		"update":       s.updateStatePayload(),
 		"onboarding":   s.app.onboardingSettings(),
 		"pinterest":    s.app.pinterestSettings(),
 		"web":          s.app.webSettings(),

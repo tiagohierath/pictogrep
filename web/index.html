@@ -170,6 +170,7 @@
         <h2 data-i18n="settings.general">General</h2>
         <label class="settings-row"><span><strong data-i18n="settings.language">Language</strong><small data-i18n="settings.language_help">Choose the interface language.</small></span><select id="languageSetting"><option value="en" data-i18n="settings.english">English</option><option value="pt-BR">Português</option></select></label>
         <div class="settings-action"><span><strong data-i18n="onboarding.menu">Setup guide</strong><small data-i18n="onboarding.menu_help">Open the first-run screen again to add another folder.</small></span><button type="button" id="showOnboarding" data-i18n="onboarding.menu_action">Open</button></div>
+        <label class="settings-row" id="autoUpdateRow"><span><strong data-i18n="update.auto">Keep Pictogrep up to date</strong><small id="autoUpdateHelp" data-i18n="update.auto_help">Checks for a new version a few times a day and installs it. The new version starts the next time you open Pictogrep.</small></span><input type="checkbox" id="autoUpdateToggle"></label>
       </div>
       <div class="settings-group">
         <h2 data-i18n="settings.pictures">Your pictures</h2>
@@ -241,6 +242,7 @@
       </dl>
       <div class="update-panel" id="updatePanel" aria-live="polite">
         <p id="updateStatus" data-i18n="update.on_demand">Updates are checked only when you ask.</p>
+        <p class="update-ready" id="updateReady" hidden></p>
         <button type="button" id="checkForUpdates" data-i18n="update.check">Check for updates</button>
         <button type="button" id="installUpdate" data-i18n="update.action" hidden>Update</button>
         <a id="downloadUpdate" target="_blank" rel="noopener" data-i18n="update.view_latest" hidden>View newest release</a>

@@ -167,6 +167,19 @@ func currentInstallationChannel() installationChannel {
 			Hint: "Pictogrep can install it after you press Update.",
 		}
 	}
+	// A binary somebody built and dropped in their own bin directory is just as
+	// safe to replace as one the installer put there, and requiring the
+	// installer's marker file left those installations with no way to update at
+	// all: no button, and an automatic check that could never act. What matters
+	// is that no package manager owns this copy and that the directory is
+	// really writable, which is settled by writing to it rather than by reading
+	// permission bits.
+	if runtime.GOOS == "linux" && currentPackageManager() == "" && executableIsReplaceable() {
+		return installationChannel{
+			Action: "replace", Method: "Standalone binary",
+			Hint: "Pictogrep can install it after you press Update.",
+		}
+	}
 	if manager := currentPackageManager(); manager != "" {
 		hint := "Update through your system package manager when the package is available."
 		if manager == "Nix" {
@@ -275,8 +288,38 @@ func installedByScript() bool {
 	return err == nil && marked == executable
 }
 
+// executableIsReplaceable proves the running binary can be swapped out, by
+// creating and removing a file beside it exactly the way the update does. A
+// read-only /nix/store path, a root-owned /usr/bin, or a directory that has
+// gone away all fail here instead of failing halfway through an update.
+func executableIsReplaceable() bool {
+	executable, err := os.Executable()
+	if err != nil {
+		return false
+	}
+	executable, err = filepath.EvalSymlinks(executable)
+	if err != nil {
+		return false
+	}
+	info, err := os.Stat(executable)
+	if err != nil || !info.Mode().IsRegular() {
+		return false
+	}
+	probe, err := os.CreateTemp(filepath.Dir(executable), ".pictogrep-probe-*")
+	if err != nil {
+		return false
+	}
+	name := probe.Name()
+	_ = probe.Close()
+	_ = os.Remove(name)
+	return true
+}
+
 func installUpdate(state updateState) error {
-	if runtime.GOOS != "linux" || state.Action != "replace" || state.AssetURL == "" || state.AssetSHA256 == "" || !installedByScript() {
+	if runtime.GOOS != "linux" || state.Action != "replace" || state.AssetURL == "" || state.AssetSHA256 == "" {
+		return fmt.Errorf("this installation must be updated from the releases page")
+	}
+	if !installedByScript() && !(currentPackageManager() == "" && executableIsReplaceable()) {
 		return fmt.Errorf("this installation must be updated from the releases page")
 	}
 	response, err := updateHTTPClient.Get(state.AssetURL)

@@ -521,5 +521,10 @@
   "web.auto_running_count": "Conferindo {board} atrás de novidades · {count} até agora",
   "web.auto_added": "{count} novas imagens de {board}",
   "web.enabled": "Importar da web está ativado. Abra Plugins oficiais para seguir um site.",
-  "web.disabled": "Importar da web está desativado. Você pode ativar de novo em Plugins oficiais."
+  "web.disabled": "Importar da web está desativado. Você pode ativar de novo em Plugins oficiais.",
+  "update.auto": "Manter o Pictogrep atualizado",
+  "update.auto_help": "Procura uma versão nova algumas vezes por dia e instala. A nova versão começa a valer na próxima vez que você abrir o Pictogrep.",
+  "update.auto_managed": "Neste sistema o Pictogrep é instalado por {method}, então as atualizações vêm de lá. O Pictogrep ainda avisa quando existe uma versão nova.",
+  "update.installed_restart": "O Pictogrep {version} está instalado. Feche e abra o Pictogrep para começar a usar.",
+  "update.automatic": "O Pictogrep procura atualizações sozinho e instala."
 }

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.8.4 - 2026-08-17
+
+- Pictogrep keeps itself up to date. It knew how to install an update and never once offered to: the check ran only when somebody opened About and pressed a button, so an installation sat on the version it was installed with until its owner went looking. It now checks a few times a day on its own, installs what it finds, and the new version starts the next time you open Pictogrep. It can be turned off under Settings.
+- A Pictogrep somebody built themselves, or copied into their own bin directory, can be updated. Only an installation carrying the installer's marker file counted before, which left every other standalone binary with no way to update at all: no button, and nothing automatic either.
+- Nothing is ever written over a copy a package manager owns. A Nix or system package is still updated from there, and Pictogrep only says when a newer version exists.
+
 ## 0.8.3 - 2026-08-17
 
 - Import from web, under Official plugins below the Pinterest import. Paste an artist's gallery, profile, or tag page from any site the included downloader supports, and choose either or both of two things: download all past images, which takes a whole gallery in one go, or download all from now, which checks the page daily and adds only new work the way a feed reader does. Pinterest was never the only place art lives, and following an artist used to mean remembering to go look.

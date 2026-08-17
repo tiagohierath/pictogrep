@@ -2047,6 +2047,8 @@ function renderState() {
   $("#webReadiness").hidden = webAvailable;
   $("#webImportButton").disabled = !webAvailable || downloaderBusy();
 
+  renderAutoUpdate();
+
   const options = $("#tagOptions");
   options.replaceChildren(...appState.tags.map(tag => {
     const option = document.createElement("option");
@@ -3344,9 +3346,51 @@ function clearRecentSearchHistory() {
   setTimeout(() => { button.textContent = t("settings.clear"); }, 1400);
 }
 
+// The automatic check runs in Pictogrep, so the window only reports what it
+// already found. An update it has installed is waiting for the next launch,
+// which is the one thing worth interrupting anybody about.
+function renderAutoUpdate() {
+  const update = appState?.update || {};
+  const toggle = $("#autoUpdateToggle");
+  if (toggle) {
+    toggle.checked = update.autoUpdate !== false;
+    // An installation somebody else owns, like a Nix or system package, is not
+    // Pictogrep's to replace. It still says when a new version exists.
+    toggle.disabled = update.canSelfUpdate === false;
+    $("#autoUpdateHelp").textContent = update.canSelfUpdate === false
+      ? t("update.auto_managed", {method: appState?.updateMethod || ""})
+      : t("update.auto_help");
+  }
+  // The line above the button describes how updates arrive here. A manual
+  // check owns it while it runs, so this only writes the resting state.
+  const status = $("#updateStatus");
+  if (status && !status.dataset.manual) {
+    status.className = "";
+    status.textContent = update.canSelfUpdate === false
+      ? t("update.on_demand")
+      : t(update.autoUpdate === false ? "update.on_demand" : "update.automatic");
+  }
+  const ready = $("#updateReady");
+  if (!ready) return;
+  if (update.installedVersion) {
+    ready.className = "update-ready success";
+    ready.textContent = t("update.installed_restart", {version: update.installedVersion});
+    ready.hidden = false;
+    return;
+  }
+  if (update.available && update.latestVersion) {
+    ready.className = "update-ready";
+    ready.textContent = t("update.available", {version: update.latestVersion});
+    ready.hidden = false;
+    return;
+  }
+  ready.hidden = true;
+}
+
 async function checkForUpdates() {
   const button = $("#checkForUpdates");
   const status = $("#updateStatus");
+  status.dataset.manual = "1";
   button.disabled = true;
   button.textContent = t("update.checking");
   status.className = "";
@@ -3478,6 +3522,20 @@ $("#pinterestAutoSyncToggle").onchange = async () => {
     renderFollowedBoards();
   } catch (error) {
     $("#pinterestAutoSyncToggle").checked = !autoSync;
+    showMessage(error.message, true);
+  }
+};
+$("#autoUpdateToggle").onchange = async () => {
+  const autoUpdate = $("#autoUpdateToggle").checked;
+  try {
+    await request("/api/app/settings/update", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({autoUpdate}),
+    });
+    await refreshState();
+  } catch (error) {
+    $("#autoUpdateToggle").checked = !autoUpdate;
     showMessage(error.message, true);
   }
 };

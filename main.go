@@ -246,6 +246,7 @@ func serve(app *application, args []string) error {
 	syncCtx, stopSync := context.WithCancel(context.Background())
 	defer stopSync()
 	go handler.watchPinterestBoards(syncCtx)
+	go handler.watchForUpdates(syncCtx)
 	shutdown := func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()

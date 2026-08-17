@@ -521,5 +521,10 @@
   "web.auto_running_count": "Checking {board} for new work · {count} so far",
   "web.auto_added": "Added {count} new pictures from {board}",
   "web.enabled": "Web import is on. Open Official plugins to follow a website.",
-  "web.disabled": "Web import is off. You can turn it on again from Official plugins."
+  "web.disabled": "Web import is off. You can turn it on again from Official plugins.",
+  "update.auto": "Keep Pictogrep up to date",
+  "update.auto_help": "Checks for a new version a few times a day and installs it. The new version starts the next time you open Pictogrep.",
+  "update.auto_managed": "{method} installs Pictogrep on this system, so updates come from there. Pictogrep will still say when a new version exists.",
+  "update.installed_restart": "Pictogrep {version} is installed. Close and open Pictogrep to start using it.",
+  "update.automatic": "Pictogrep checks for updates on its own and installs them."
 }

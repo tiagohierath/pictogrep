@@ -36,3 +36,5 @@ collections/
 /bin/pictogrep
 /pictogrep
 /pictogrep-local
+/pictogrep.exe
+/pictogrep-*.exe
