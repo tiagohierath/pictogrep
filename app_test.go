@@ -21,15 +21,24 @@ func writeTestPNG(t *testing.T, path string) {
 		t.Fatal(err)
 	}
 	picture := image.NewRGBA(image.Rect(0, 0, 32, 24))
-	var tint uint8
+	// Two fixtures must never come out byte for byte identical, because the
+	// library deduplicates exact copies on purpose and would drop one of them.
+	// An eight bit tint collided about once in every 256 runs, since temporary
+	// directory names are random, which is what made canvas and folder tests
+	// fail for no reason anybody could reproduce.
+	var tint uint64 = 14695981039346656037
 	for _, value := range []byte(path) {
-		tint = tint*31 + value
+		tint = (tint ^ uint64(value)) * 1099511628211
 	}
 	for y := 0; y < 24; y++ {
 		for x := 0; x < 32; x++ {
-			picture.Set(x, y, color.RGBA{R: 64 + tint/3, G: 96 + tint/4, B: 112 + tint/5, A: 255})
+			picture.Set(x, y, color.RGBA{R: 64 + uint8(tint)/3, G: 96 + uint8(tint>>8)/4, B: 112 + uint8(tint>>16)/5, A: 255})
 		}
 	}
+	// The full hash goes into a corner pixel so paths that happen to agree on
+	// those three channels still produce different files.
+	picture.Set(0, 0, color.RGBA{R: uint8(tint >> 24), G: uint8(tint >> 32), B: uint8(tint >> 40), A: 255})
+	picture.Set(1, 0, color.RGBA{R: uint8(tint >> 48), G: uint8(tint >> 56), B: uint8(len(path)), A: 255})
 	if err := png.Encode(file, picture); err != nil {
 		t.Fatal(err)
 	}
