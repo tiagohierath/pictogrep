@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.8.5 - 2026-08-17
+
+- The installer no longer refuses to install Pictogrep when the picture downloader it bundles cannot run. That downloader is an ordinary dynamically linked program, which NixOS and other systems without the usual loader will not start, and failing over it meant those systems could not install or update Pictogrep at all. Pictogrep is installed either way now, and says so: imports use a gallery-dl already on the system if there is one, and name where to get it if there is not.
+
 ## 0.8.4 - 2026-08-17
 
 - Pictogrep keeps itself up to date. It knew how to install an update and never once offered to: the check ran only when somebody opened About and pressed a button, so an installation sat on the version it was installed with until its owner went looking. It now checks a few times a day on its own, installs what it finds, and the new version starts the next time you open Pictogrep. It can be turned off under Settings.

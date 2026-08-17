@@ -108,9 +108,17 @@ fi
 
 chmod 755 "$TEMP_DIR/pictogrep"
 "$TEMP_DIR/pictogrep" version >/dev/null || fail "the downloaded binary could not run on this system"
+# The bundled downloader is for importing pictures, not for running Pictogrep,
+# so a system that cannot run it gets Pictogrep anyway. It is an ordinary
+# dynamically linked program, which NixOS and other distributions without the
+# usual loader refuse to start, and refusing to install over that left those
+# systems with no way to install or update at all.
+HELPER=""
 if [ -f "$TEMP_DIR/gallery-dl" ]; then
   chmod 755 "$TEMP_DIR/gallery-dl"
-  "$TEMP_DIR/gallery-dl" --version >/dev/null || fail "the included Pinterest downloader could not run on this system"
+  if "$TEMP_DIR/gallery-dl" --version >/dev/null 2>&1; then
+    HELPER="$TEMP_DIR/gallery-dl"
+  fi
 fi
 mkdir -p "$BIN_DIR"
 BIN_DIR=$(CDPATH= cd -- "$BIN_DIR" && pwd)
@@ -118,8 +126,8 @@ TARGET="$BIN_DIR/pictogrep"
 HELPER_TARGET="$BIN_DIR/pictogrep-gallery-dl"
 mv "$TEMP_DIR/pictogrep" "$TARGET.new"
 mv "$TARGET.new" "$TARGET"
-if [ -f "$TEMP_DIR/gallery-dl" ]; then
-  mv "$TEMP_DIR/gallery-dl" "$HELPER_TARGET.new"
+if [ -n "$HELPER" ]; then
+  mv "$HELPER" "$HELPER_TARGET.new"
   mv "$HELPER_TARGET.new" "$HELPER_TARGET"
 fi
 printf '%s\n' "$TARGET" > "$TARGET.install-sh"
@@ -127,6 +135,16 @@ printf '%s\n' "$TARGET" > "$TARGET.install-sh"
 "$TARGET" install-desktop
 
 say "Installed Pictogrep: $TARGET"
+if [ -z "$HELPER" ]; then
+  if command -v gallery-dl >/dev/null 2>&1; then
+    say "The included picture downloader does not run on this system, so imports"
+    say "will use the gallery-dl already installed here."
+  else
+    say "The included picture downloader does not run on this system. Everything"
+    say "else works. To import from Pinterest or the web, install gallery-dl:"
+    say "  https://github.com/mikf/gallery-dl"
+  fi
+fi
 say "You can launch it from your applications menu."
 case ":$PATH:" in
   *":$BIN_DIR:"*) say "Or run: pictogrep" ;;

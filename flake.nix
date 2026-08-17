@@ -12,7 +12,7 @@
       packages = forAllSystems (pkgs:
         let
           # Keep in step with `var version` in app.go; a Go test guards the pair.
-          version = "0.8.4";
+          version = "0.8.5";
           desktopItem = pkgs.makeDesktopItem {
             name = "pictogrep";
             desktopName = "Pictogrep";
