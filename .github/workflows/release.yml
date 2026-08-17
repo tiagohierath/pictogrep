@@ -9,6 +9,9 @@ permissions:
 
 jobs:
   linux:
+    # Runs after Windows on purpose. GitHub lists release assets in upload
+    # order, and the Windows installer is what most people came for.
+    needs: windows
     strategy:
       matrix:
         include:
@@ -181,3 +184,42 @@ jobs:
       - uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: dist/pictogrep-windows-x86_64-setup.exe
+
+  notes:
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - name: Write release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          VERSION="${TAG#v}"
+          BASE="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}"
+          {
+            echo "## Download"
+            echo
+            echo "**Windows** — [pictogrep-windows-x86_64-setup.exe](${BASE}/pictogrep-windows-x86_64-setup.exe)"
+            echo "Double-click the installer, then open Pictogrep from the Start menu."
+            echo
+            echo "**Linux, Intel or AMD** — [pictogrep-linux-x86_64.tar.gz](${BASE}/pictogrep-linux-x86_64.tar.gz)"
+            echo "**Linux, ARM** — [pictogrep-linux-arm64.tar.gz](${BASE}/pictogrep-linux-arm64.tar.gz)"
+            echo "Extract the archive and run \`pictogrep\`. Nothing else is needed."
+            echo
+            echo "The remaining files on this page are the bare binaries Pictogrep downloads when it updates itself, and their checksums. You do not need to click them."
+            echo
+            echo "## What changed"
+            echo
+            awk -v version="## ${VERSION} " '
+              index($0, version) == 1 { inside = 1; next }
+              inside && /^## / { exit }
+              inside { print }
+            ' CHANGELOG.md
+          } > notes.md
+          gh release edit "$TAG" --notes-file notes.md
