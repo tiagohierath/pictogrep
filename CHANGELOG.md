@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.8.0 - 2026-08-17
+
+- Settings is written in plain language now. Groups say what they hold ("Your pictures", "Search", "Privacy" instead of "Browser" and "Search index"), and the descriptions no longer talk about search vectors or folder membership. Settings also shows how many folders Pictogrep reads and can add another one directly.
+- Pinterest boards you import are now kept up to date. Pictogrep re-checks each imported board about once a week and adds only what is new, because a board people keep pinning to used to drift out of date silently. Nothing is ever deleted, and it can be turned off under "Keep imported boards up to date".
+- An automatic board check says what it is doing at the bottom of the screen and can be stopped there. It deliberately does not open the import panel, because nobody asked for it.
 - The library keeps loading as you scroll instead of stopping at the first batch. Pictogrep used to render one fixed set of pictures and that was the end of the page, so most of a big library was unreachable without searching for it. Pages are drawn one at a time as you get near the bottom, and a random view keeps the same shuffle across pages, so nothing repeats and nothing is skipped.
 - Similar images under an open picture also keep loading as you scroll further down the ranking.
 - Going to the Folders tab and back no longer reshuffles what you were looking at. The pictures you left on screen are still there.
@@ -9,6 +14,12 @@
 - Folders can be merged by dragging one onto another. There is no dialog and nothing to name: the merged folder keeps the name of the folder you dragged.
 - Right-clicking a folder can delete it, after a confirmation. Only the folder goes away; the pictures stay where they live on disk.
 - The welcome screen now offers importing a Pinterest board, which turns the plugin on for you. It stays optional.
+- Deleting or merging a folder no longer leaves the library showing it. The pictures you were looking at stayed on screen under the old folder's name, scrolling kept asking for more of a folder that was gone, and the whole thing looked like the delete had failed.
+- Deleting a picture no longer rearranges the rest of the library. The grid used to be thrown away and rebuilt, which dealt a random view a completely new order and put you back at the top of it. Only the deleted picture leaves now; everything else stays where it was, including how far down you had scrolled.
+- Adding a picture to a folder keeps the shuffle and the pages you had already scrolled through, instead of starting the library over.
+- A first run now opens with one screen asking where your pictures are, offering a folder or a Pinterest board, with the language switch right there so the question can be read before it is answered. It is reachable later from Settings.
+- Choosing a folder finally means what it says. Every previous way of adding a folder copied its pictures into Pictogrep's own library, which is not what "choose a folder" sounds like and not what people expected. The new picker walks your disk and indexes the folder where it already sits, moving and copying nothing.
+- One page of pictures that fails to load no longer ends the scroll for good. It used to put the rest of the library out of reach until you searched or changed folders, and the only sign was an error that disappeared after a few seconds. The place is kept, the footer says what went wrong, and either the retry button or scrolling again picks it back up. Similar pictures under an open picture recover the same way.
 
 ## 0.7.5 - 2026-08-15
 
