@@ -183,8 +183,8 @@ body.show-filenames .image-filename { display: block; }
 .drawer-header { display: flex; align-items: center; justify-content: space-between; height: 72px; padding: 0 22px; border-bottom: 1px solid #ddd; }
 .drawer.page { width: 100vw; max-width: none; border-left: 0; background: #f4f4f4; }
 .drawer.page .drawer-header { position: sticky; z-index: 2; top: 0; background: #fff; }
-.drawer.page .drawer-actions, .drawer.page > .drawer-section:not(#settingsSection):not(#pluginsSection):not(#pinterestSection) { display: none; }
-.drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #pinterestSection:not([hidden]) { width: min(760px, calc(100% - 32px)); margin: 32px auto; padding: 30px 34px; border: 1px solid #d8d8d8; border-radius: 6px; background: #fff; }
+.drawer.page .drawer-actions, .drawer.page > .drawer-section:not(#settingsSection):not(#pluginsSection):not(#pinterestSection):not(#webSection) { display: none; }
+.drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #pinterestSection:not([hidden]), .drawer.page #webSection:not([hidden]) { width: min(760px, calc(100% - 32px)); margin: 32px auto; padding: 30px 34px; border: 1px solid #d8d8d8; border-radius: 6px; background: #fff; }
 .drawer-actions { display: block; border-bottom: 1px solid #ccc; }
 .drawer-actions a, .drawer-actions button { display: flex; justify-content: space-between; padding: 14px 22px; border: 0; border-bottom: 1px solid #eee; background: #fff; color: #171717; text-align: left; text-decoration: none; font-size: 14px; }
 .drawer-actions a:hover, .drawer-actions button:hover { background: #f5f5f5; }
@@ -259,6 +259,8 @@ body.show-filenames .image-filename { display: block; }
 .page-intro { margin: -4px 0 20px !important; }
 .plugin-row input[type="checkbox"] { flex: none; width: 18px; height: 18px; }
 .pinterest-import { --pinterest: #bd081c; --pinterest-soft: #fff5f6; }
+/* The web importer borrows Pinterest's panel, not its brand. */
+#webSection { --pinterest: #222; --pinterest-soft: #f4f4f4; }
 .pinterest-heading { margin-bottom: 18px; }
 .pinterest-heading h2 { margin: 0 0 5px; font-size: 20px; }
 .pinterest-heading p { margin: 0; color: #5d5d5d; font-size: 12px; line-height: 1.5; }
@@ -454,7 +456,7 @@ kbd { padding: 2px 6px; border: 1px solid #bbb; border-bottom-width: 2px; border
 @media (max-width: 650px) {
   .app-header { height: 60px; padding: 0 12px; }
   .plugin-sidebar { top: 60px; }
-  .drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #pinterestSection:not([hidden]) { width: calc(100% - 20px); margin: 10px auto; padding: 22px 16px; }
+  .drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #pinterestSection:not([hidden]), .drawer.page #webSection:not([hidden]) { width: calc(100% - 20px); margin: 10px auto; padding: 22px 16px; }
   .main-content { width: calc(100% - 24px); padding-top: 90px; }
   .search { margin-bottom: 30px; }
   .image-grid { columns: 150px; column-gap: 10px; }

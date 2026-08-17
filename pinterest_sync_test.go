@@ -143,7 +143,7 @@ func TestFailedAutoSyncDoesNotRetryImmediately(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler.galleryDL = func(context.Context, string, string) error {
+	handler.galleryDL = func(context.Context, galleryDLRequest) error {
 		return context.DeadlineExceeded
 	}
 	board := trackedBoard{URL: "https://www.pinterest.com/someone/board/", Mode: "board"}
@@ -173,7 +173,7 @@ func TestAutomaticSyncCanBeStopped(t *testing.T) {
 	}
 	running := make(chan struct{})
 	stopped := make(chan error, 1)
-	handler.galleryDL = func(ctx context.Context, _ string, _ string) error {
+	handler.galleryDL = func(ctx context.Context, _ galleryDLRequest) error {
 		close(running)
 		<-ctx.Done()
 		stopped <- ctx.Err()

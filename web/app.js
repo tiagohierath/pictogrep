@@ -39,6 +39,9 @@ let quietTextWarmup = false;
 let foregroundTextRequests = 0;
 let pinterestRunning = false;
 let pinterestWatching = false;
+// Pinterest and web imports are the same downloader. Either one running means
+// neither panel may start another.
+function downloaderBusy() { return pinterestRunning || webImportRunning; }
 let lastPinterestFolder = "";
 let queryPrimeTimer = null;
 let currentViewerItem = null;
@@ -590,6 +593,7 @@ function closeMenu() {
 function showMenuHome() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#webSection").hidden = true;
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
   $("#aboutSection").hidden = true;
@@ -2028,7 +2032,20 @@ function renderState() {
   if (!pinterestEnabled) $("#pinterestSection").hidden = true;
   const pinterestAvailable = appState.plugins?.pinterest?.available !== false;
   $("#pinterestReadiness").hidden = pinterestAvailable;
-  $("#pinterestImportButton").disabled = !pinterestAvailable || pinterestRunning;
+  // One downloader serves both importers, so a run started in either panel has
+  // to keep both Start buttons down. Reading only this panel's flag let a
+  // second click through, and the 409 it earned wiped the progress it was
+  // reporting on.
+  $("#pinterestImportButton").disabled = !pinterestAvailable || downloaderBusy();
+  const webEnabled = Boolean(appState.plugins?.web?.enabled);
+  const webAvailable = appState.plugins?.web?.available !== false;
+  $("#webPluginToggle").checked = webEnabled;
+  $("#webAutoSyncToggle").checked = appState.web?.autoSync !== false;
+  $("#webAutoSyncToggle").disabled = !webEnabled;
+  $("#webImportRow").hidden = !webEnabled;
+  if (!webEnabled) $("#webSection").hidden = true;
+  $("#webReadiness").hidden = webAvailable;
+  $("#webImportButton").disabled = !webAvailable || downloaderBusy();
 
   const options = $("#tagOptions");
   options.replaceChildren(...appState.tags.map(tag => {
@@ -2555,6 +2572,7 @@ async function saveTag(event) {
 async function loadBoards() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#webSection").hidden = true;
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
   $("#aboutSection").hidden = true;
@@ -2586,6 +2604,7 @@ async function loadBoards() {
 function showAbout() {
 	$("#addSection").hidden = true;
 	$("#pinterestSection").hidden = true;
+	$("#webSection").hidden = true;
 	$("#settingsSection").hidden = true;
 	$("#pluginsSection").hidden = true;
   $("#boardsSection").hidden = true;
@@ -2598,6 +2617,7 @@ function showAbout() {
 function showSettings() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#webSection").hidden = true;
   $("#boardsSection").hidden = true;
   $("#aboutSection").hidden = true;
   $("#pluginsSection").hidden = true;
@@ -2609,12 +2629,14 @@ function showSettings() {
 function showPlugins() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#webSection").hidden = true;
   $("#boardsSection").hidden = true;
   $("#aboutSection").hidden = true;
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = false;
   renderState();
   renderFollowedBoards();
+  renderFollowedWebSources();
   openMenu(t("menu.plugins"));
 }
 
@@ -2847,6 +2869,7 @@ async function togglePinterestPlugin() {
     appState.plugins.pinterest = {...appState.plugins.pinterest, enabled};
     renderState();
     renderFollowedBoards();
+    renderFollowedWebSources();
     showMessage(t(enabled ? "pinterest.enabled" : "pinterest.disabled"));
   } catch (error) {
     $("#pinterestPluginToggle").checked = !enabled;
@@ -2871,6 +2894,7 @@ function showPinterestImport() {
   $("#aboutSection").hidden = true;
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
+  $("#webSection").hidden = true;
   $("#pinterestSection").hidden = false;
   openMenu(t("pinterest.drawer_title"));
   if (!pinterestRunning) $("#pinterestBoardURL").focus();
@@ -3025,6 +3049,12 @@ async function watchPinterestImport() {
       } catch (error) {
         if (++failures > 5) { showPinterestFailure(error.message); return; }
       }
+      // The web panel shares this downloader, so a job that belongs to it is
+      // not this panel's to report.
+      if (status && status.kind === "web") {
+        clearPinterestWorking();
+        return;
+      }
       if (status && status.state !== "running") {
         if (status.state === "done") await showPinterestResult(status.result || {});
         else if (status.state === "cancelled") await showPinterestStopped(status.result);
@@ -3041,7 +3071,9 @@ async function watchPinterestImport() {
 }
 
 async function resumePinterestImport() {
-  if (appState.plugins?.pinterest?.enabled === false) return;
+  // Either panel may have started what is running, so this bows out only when
+  // both importers are off.
+  if (appState.plugins?.pinterest?.enabled === false && appState.plugins?.web?.enabled === false) return;
   try {
     const status = await request("/api/app/plugins/pinterest/import");
     if (status.state !== "running") return;
@@ -3051,6 +3083,14 @@ async function resumePinterestImport() {
     if (status.automatic) {
       showAutoSyncStatus(status);
       watchAutomaticPinterestSync();
+      return;
+    }
+    // Both panels share one downloader, so a running job has to go back to the
+    // panel that started it. Without this a followed website reported itself as
+    // a Pinterest board, down to the "import another board" wording.
+    if (status.kind === "web") {
+      showWebWorking(status);
+      watchWebImport();
       return;
     }
     showPinterestWorking(status);
@@ -3065,9 +3105,10 @@ async function resumePinterestImport() {
 function showAutoSyncStatus(status) {
   const strip = $("#autoSyncStatus");
   const done = Number(status.done || 0);
+  const prefix = status.kind === "web" ? "web" : "pinterest";
   $("#autoSyncText").textContent = done
-    ? t("pinterest.auto_running_count", {board: status.board || "", count: done})
-    : t("pinterest.auto_running", {board: status.board || ""});
+    ? t(prefix + ".auto_running_count", {board: status.board || "", count: done})
+    : t(prefix + ".auto_running", {board: status.board || ""});
   $("#autoSyncStop").disabled = Boolean(status.stopping);
   if (status.stopping) $("#autoSyncText").textContent = t("pinterest.stopping");
   strip.hidden = false;
@@ -3094,7 +3135,7 @@ async function watchAutomaticPinterestSync() {
         hideAutoSyncStatus();
         const added = Number(status.result?.saved || 0);
         if (added > 0) {
-          showMessage(t("pinterest.auto_added", {count: added, board: status.board || ""}));
+          showMessage(t((status.kind === "web" ? "web" : "pinterest") + ".auto_added", {count: added, board: status.board || ""}));
           await refreshAfterImport(!$("#imagesPanel").hidden);
         }
         return;
@@ -3448,6 +3489,7 @@ $("#showAdd").onclick = () => {
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#webSection").hidden = true;
   $("#addSection").hidden = !$("#addSection").hidden;
 };
 $("#emptyAddImages").onclick = () => {
@@ -3456,6 +3498,7 @@ $("#emptyAddImages").onclick = () => {
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#webSection").hidden = true;
   $("#addSection").hidden = false;
   openMenu();
 };
@@ -3846,6 +3889,278 @@ window.PictogrepApp = {
     headers: {"Content-Type": "application/json"},
     body: JSON.stringify({completed: true}),
   }),
+};
+
+
+// Import from web
+//
+// One downloader serves both importers, so a running board import and a running
+// website import are the same job. The panel that started one watches it; the
+// other one just stays disabled until it is free.
+
+let webImportRunning = false;
+let webImportWatching = false;
+let lastWebFolder = "";
+
+function showWebImport() {
+  $("#boardsSection").hidden = true;
+  $("#aboutSection").hidden = true;
+  $("#settingsSection").hidden = true;
+  $("#pluginsSection").hidden = true;
+  $("#pinterestSection").hidden = true;
+  $("#webSection").hidden = false;
+  openMenu(t("web.title"));
+  renderFollowedWebSources();
+  if (!webImportRunning) $("#webSourceURL").focus();
+}
+
+async function fetchFollowedWebSources() {
+  if (!appState?.plugins?.web?.enabled) return [];
+  try {
+    return (await request("/api/app/plugins/web/sources")).sources || [];
+  } catch (_) {
+    return [];
+  }
+}
+
+// The same list is useful in two places: while deciding whether to follow a new
+// site, and later in settings when deciding to stop.
+async function renderFollowedWebSources() {
+  const sources = await fetchFollowedWebSources();
+  const summary = $("#webSourceSummary");
+  if (summary) summary.hidden = Boolean(sources.length) || !appState?.plugins?.web?.enabled;
+  ["#webSourceList", "#webSectionSourceList"].forEach(selector => {
+    const list = $(selector);
+    if (!list) return;
+    if (!sources.length) {
+      list.replaceChildren();
+      list.hidden = true;
+      return;
+    }
+    list.replaceChildren(...sources.map(source => followedWebSourceRow(source)));
+    list.hidden = false;
+  });
+}
+
+function followedWebSourceRow(source) {
+  const row = document.createElement("div");
+  row.className = "followed-board";
+  const text = document.createElement("span");
+  const name = document.createElement("strong");
+  name.textContent = source.name || source.url;
+  name.title = source.url;
+  const when = document.createElement("small");
+  const folder = source.folder ? t("web.into_folder", {folder: source.folder}) : "";
+  when.textContent = folder ? folder + " \u00b7 " + lastCheckedLabel(source.lastSyncAt) : lastCheckedLabel(source.lastSyncAt);
+  text.append(name, when);
+  const stop = document.createElement("button");
+  stop.type = "button";
+  stop.textContent = t("pinterest.unfollow");
+  stop.onclick = async () => {
+    stop.disabled = true;
+    try {
+      await request("/api/app/plugins/web/sources", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({forget: source.url}),
+      });
+      showMessage(t("web.unfollowed", {site: source.name || source.url}));
+      await renderFollowedWebSources();
+    } catch (error) {
+      stop.disabled = false;
+      showMessage(error.message, true);
+    }
+  };
+  row.append(text, stop);
+  return row;
+}
+
+async function startWebImport(event) {
+  event.preventDefault();
+  if (webImportRunning) return;
+  const backfill = $("#webBackfill").checked;
+  const follow = $("#webFollow").checked;
+  if (!backfill && !follow) {
+    showWebFailure(t("web.pick_one"));
+    return;
+  }
+  const rawURL = $("#webSourceURL").value.trim();
+  let parsedURL = null;
+  try { parsedURL = new URL(rawURL); } catch (_) {}
+  if (!parsedURL || !/^https?:$/.test(parsedURL.protocol)) {
+    showWebFailure(t("web.invalid_help"));
+    $("#webSourceURL").focus();
+    return;
+  }
+  $("#webImportResult").hidden = true;
+  showWebWorking();
+  let started = null;
+  try {
+    started = await request("/api/app/plugins/web/import", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        url: rawURL,
+        folder: $("#webSourceFolder").value.trim(),
+        backfill,
+        follow,
+      }),
+    });
+  } catch (error) {
+    showWebFailure(error.status === 409 ? t("web.already_running") : error.message);
+    return;
+  }
+  lastWebFolder = "";
+  showMessage(t("web.handed_off", {site: started.board}), false, false, 10);
+  watchWebImport();
+}
+
+function showWebWorking(status) {
+  webImportRunning = true;
+  const title = $("#webWorkingTitle");
+  if (status && status.stopping) title.textContent = t("pinterest.stopping");
+  else if (status && status.phase === "importing") title.textContent = t("pinterest.progress_importing", {count: status.done, total: status.total});
+  else if (status && status.done) title.textContent = t("pinterest.progress_downloading", {count: status.done});
+  else title.textContent = t("web.downloading");
+  $("#webImportButton").disabled = true;
+  $("#webImportButton").textContent = t("web.downloading");
+  $("#webCancelImport").hidden = false;
+  $("#webWorking").hidden = false;
+  $("#webImportForm").querySelectorAll("input").forEach(input => { input.disabled = true; });
+}
+
+function clearWebWorking() {
+  webImportRunning = false;
+  $("#webWorking").hidden = true;
+  $("#webCancelImport").hidden = true;
+  $("#webImportButton").disabled = false;
+  $("#webImportButton").textContent = t("web.start");
+  $("#webImportForm").querySelectorAll("input").forEach(input => { input.disabled = false; });
+}
+
+function showWebFailure(message) {
+  clearWebWorking();
+  $("#webResultIcon").textContent = "!";
+  $("#webResultTitle").textContent = t("web.failed_title");
+  $("#webResultDetails").textContent = message;
+  $("#webOpenFolder").hidden = true;
+  $("#webImportResult").classList.add("error");
+  $("#webImportResult").hidden = false;
+}
+
+async function showWebResult(result, cancelled) {
+  clearWebWorking();
+  if (result.imported || result.linked) await refreshAfterImport(true);
+  const details = [t("pinterest.result_added", {count: result.imported || 0})];
+  if (result.skipped) details.push(t("pinterest.result_skipped", {count: result.skipped}));
+  if (result.failed) details.push(t("pinterest.result_failed", {count: result.failed}));
+  lastWebFolder = result.folder || "";
+  $("#webResultIcon").textContent = cancelled ? "\u00d7" : (result.failed ? "!" : "\u2713");
+  $("#webResultTitle").textContent = cancelled
+    ? t("pinterest.cancelled")
+    : t(result.failed ? "pinterest.result_partial" : "web.result_success", {board: result.board, site: result.board});
+  $("#webResultDetails").textContent = details.join(" \u00b7 ");
+  $("#webOpenFolder").hidden = !lastWebFolder;
+  $("#webImportResult").classList.toggle("error", Boolean(cancelled || result.failed));
+  $("#webImportResult").hidden = false;
+  await renderFollowedWebSources();
+}
+
+// The download runs in Pictogrep, not in this window, so closing the panel or
+// the tab leaves it going. Whatever window is open next picks the result up.
+async function watchWebImport() {
+  if (webImportWatching) return;
+  webImportWatching = true;
+  let failures = 0;
+  try {
+    for (;;) {
+      let status = null;
+      try {
+        status = await request("/api/app/plugins/pinterest/import");
+        failures = 0;
+      } catch (error) {
+        if (++failures > 5) { showWebFailure(error.message); return; }
+      }
+      // An automatic board check can start in the gap between this download
+      // finishing and the next poll. Reporting that job here would put a
+      // board's result in the web panel, so a job that is not ours ends the
+      // watch instead.
+      if (status && status.state === "running" && status.kind !== "web") {
+        clearWebWorking();
+        return;
+      }
+      if (status && status.state !== "running") {
+        if (status.kind && status.kind !== "web") { clearWebWorking(); return; }
+        if (status.state === "done") await showWebResult(status.result || {}, false);
+        else if (status.state === "cancelled") await showWebResult(status.result || {}, true);
+        else if (status.state === "error") showWebFailure(status.error || t("web.failed_title"));
+        else clearWebWorking();
+        return;
+      }
+      if (status) showWebWorking(status);
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+  } finally {
+    webImportWatching = false;
+  }
+}
+
+async function toggleWebPlugin() {
+  const enabled = $("#webPluginToggle").checked;
+  try {
+    await request("/api/app/plugins", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name: "web", enabled}),
+    });
+    appState.plugins.web = {...appState.plugins.web, enabled};
+    renderState();
+    renderFollowedWebSources();
+    showMessage(t(enabled ? "web.enabled" : "web.disabled"));
+  } catch (error) {
+    $("#webPluginToggle").checked = !enabled;
+    showMessage(error.message, true);
+  }
+}
+
+$("#webPluginToggle").onchange = toggleWebPlugin;
+$("#webAutoSyncToggle").onchange = async () => {
+  const autoSync = $("#webAutoSyncToggle").checked;
+  try {
+    await request("/api/app/settings/web", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({autoSync}),
+    });
+    await refreshState();
+    renderFollowedWebSources();
+  } catch (error) {
+    $("#webAutoSyncToggle").checked = !autoSync;
+    showMessage(error.message, true);
+  }
+};
+$("#showWebImport").onclick = showWebImport;
+$("#webImportForm").onsubmit = startWebImport;
+$("#webCancelImport").onclick = async () => {
+  $("#webCancelImport").disabled = true;
+  try {
+    await request("/api/app/plugins/pinterest/import", {method: "DELETE"});
+  } catch (error) {
+    showMessage(error.message, true);
+  } finally {
+    $("#webCancelImport").disabled = false;
+  }
+};
+$("#webOpenFolder").onclick = () => {
+  if (!lastWebFolder) return;
+  closeMenu();
+  openFolder({kind: "tag", value: lastWebFolder, name: lastWebFolder});
+};
+$("#webImportAnother").onclick = () => {
+  $("#webImportResult").hidden = true;
+  $("#webSourceURL").value = "";
+  $("#webSourceFolder").value = "";
+  $("#webSourceURL").focus();
 };
 
 window.addEventListener("popstate", syncViewerFromHistory);

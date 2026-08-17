@@ -136,6 +136,35 @@
       </form>
     </section>
 
+    <section class="drawer-section pinterest-import" id="webSection" hidden>
+      <header class="pinterest-heading">
+        <h2 data-i18n="web.title">Import from web</h2>
+        <p data-i18n="web.intro">Paste an artist's gallery, profile, or tag page. Pictogrep downloads the images into a folder.</p>
+      </header>
+      <div class="pinterest-readiness unavailable" id="webReadiness" role="status" hidden>
+        <span class="pinterest-readiness-dot" aria-hidden="true"></span>
+        <span><strong data-i18n="web.missing_title">The downloader is missing</strong><small data-i18n="pinterest.missing_help">Reinstall Pictogrep, or install gallery-dl, before importing.</small></span>
+      </div>
+      <form id="webImportForm">
+        <label class="pinterest-url"><span data-i18n="web.page_link">Page link</span><input id="webSourceURL" name="url" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://www.deviantart.com/artist/gallery" required><small data-i18n="web.page_help">Works with most art sites, including DeviantArt, Tumblr, ArtStation, Bluesky and Danbooru.</small></label>
+        <label class="pinterest-url"><span data-i18n="web.folder">Folder name</span><input id="webSourceFolder" name="folder" type="text" spellcheck="false" autocomplete="off"><small data-i18n="web.folder_help">Leave it empty to name the folder after the page.</small></label>
+        <fieldset class="pinterest-options">
+          <legend data-i18n="web.what_to_download">What to download</legend>
+          <label class="pinterest-choice"><input type="checkbox" id="webBackfill" checked><span><strong data-i18n="web.backfill">Download all past images</strong><small data-i18n="web.backfill_help">Takes everything already posted. Good for saving a whole gallery or board.</small></span></label>
+          <label class="pinterest-choice"><input type="checkbox" id="webFollow"><span><strong data-i18n="web.follow">Download all from now</strong><small data-i18n="web.follow_help">Checks the page daily and adds only new work, the way a feed reader does. Grabs the latest few to start.</small></span></label>
+        </fieldset>
+        <div class="pinterest-actions"><button type="submit" id="webImportButton" data-i18n="web.start">Start</button><button type="button" id="webCancelImport" data-i18n="app.cancel" hidden>Cancel</button></div>
+        <div class="pinterest-working" id="webWorking" role="status" aria-live="polite" hidden>
+          <span class="pinterest-spinner" aria-hidden="true"></span><span><strong id="webWorkingTitle" data-i18n="web.downloading">Downloading…</strong><small id="webWorkingHelp" data-i18n="pinterest.keeps_running">This keeps running if you close the panel.</small></span>
+        </div>
+        <section class="pinterest-result" id="webImportResult" role="status" aria-live="polite" hidden>
+          <span class="pinterest-result-icon" id="webResultIcon" aria-hidden="true">✓</span>
+          <div><strong id="webResultTitle"></strong><p id="webResultDetails"></p><div class="pinterest-result-actions"><button type="button" id="webOpenFolder" data-i18n="pinterest.view_folder" hidden>View folder</button><button type="button" id="webImportAnother" data-i18n="pinterest.import_another">Import another</button></div></div>
+        </section>
+      </form>
+      <div class="followed-boards" id="webSectionSourceList" hidden></div>
+    </section>
+
     <section class="drawer-section settings" id="settingsSection" hidden>
       <div class="settings-group">
         <h2 data-i18n="settings.general">General</h2>
@@ -185,6 +214,11 @@
         <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.title">Import from Pinterest</strong><small data-i18n="plugins.pinterest_help">Enabled by default. Copy a public board into your library with the included downloader.</small></span><input type="checkbox" id="pinterestPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.auto_sync">Keep imported boards up to date</strong><small data-i18n="pinterest.auto_sync_help">Checks the boards you have already imported about once a week and adds only what is new. Nothing is ever deleted.</small></span><input type="checkbox" id="pinterestAutoSyncToggle"></label>
         <div class="followed-boards" id="pinterestBoardList" hidden></div>
+        <label class="settings-row plugin-row"><span><strong data-i18n="web.title">Import from web</strong><small data-i18n="web.plugin_help">Enabled by default. Download a gallery from any site the included downloader supports.</small></span><input type="checkbox" id="webPluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong data-i18n="web.auto_sync">Keep followed websites up to date</strong><small data-i18n="web.auto_sync_help">Checks each website you follow about once a day and adds only new work. Nothing is ever deleted.</small></span><input type="checkbox" id="webAutoSyncToggle"></label>
+        <div class="settings-action" id="webImportRow"><span><strong data-i18n="web.open_panel">Follow a website</strong><small data-i18n="web.settings_help">Paste an artist's gallery, profile, or tag page to download it or follow it.</small></span><button type="button" id="showWebImport" data-i18n="web.open">Open</button></div>
+        <p class="field-help" id="webSourceSummary" data-i18n="web.none_followed" hidden>You are not following any websites yet.</p>
+        <div class="followed-boards" id="webSourceList" hidden></div>
       </div>
       <p class="field-help" data-i18n="plugins.help">Plugins add optional tools and image sources. Import plugins copy only the images you choose.</p>
     </section>

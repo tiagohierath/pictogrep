@@ -201,7 +201,7 @@ func (s *server) syncDueBoards(ctx context.Context, now time.Time) bool {
 		// stop the downloader with it, the same way stopping a manual import
 		// does, or gallery-dl keeps running against a folder that is going away.
 		runCtx, cancel := context.WithCancel(ctx)
-		if !s.pinterest.startAutomatic(pinterestBoardName(boardURL), cancel) {
+		if !s.pinterest.startAutomatic(pinterestBoardName(boardURL), "pinterest", cancel) {
 			cancel()
 			return false
 		}
@@ -232,7 +232,12 @@ func (s *server) watchPinterestBoards(ctx context.Context) {
 				defer guard(func(err error) {
 					log.Printf("pinterest-sync warning: %v", err)
 				})
-				s.syncDueBoards(ctx, now)
+				// A board and a followed website share one downloader, so a pass
+				// that already started a board leaves the websites for the next
+				// one rather than queueing behind it.
+				if !s.syncDueBoards(ctx, now) {
+					s.syncDueWebSources(ctx, now)
+				}
 			}()
 			timer.Reset(pinterestSyncCheck)
 		}

@@ -16,7 +16,7 @@ import (
 )
 
 func TestGalleryDLArgumentsApplyDownloadLimits(t *testing.T) {
-	arguments := galleryDLArguments("https://www.pinterest.com/artist/board/", t.TempDir())
+	arguments := galleryDLArguments(galleryDLRequest{URL: "https://www.pinterest.com/artist/board/", Directory: t.TempDir()})
 	joined := strings.Join(arguments, " ")
 	for _, expected := range []string{
 		"--config-ignore", "--no-input", "--range 1-5001",
@@ -93,7 +93,7 @@ func TestPinterestDownloadUsageIgnoresFilesRenamedMidWalk(t *testing.T) {
 }
 
 func TestGalleryDLArgumentsSkipVideoDownloads(t *testing.T) {
-	arguments := galleryDLArguments("https://www.pinterest.com/artist/board/", t.TempDir())
+	arguments := galleryDLArguments(galleryDLRequest{URL: "https://www.pinterest.com/artist/board/", Directory: t.TempDir()})
 	filter := ""
 	for index, argument := range arguments {
 		if argument == "--filter" && index+1 < len(arguments) {
@@ -183,7 +183,7 @@ func TestPinterestImportIsOptionalAndValidatesBeforeGalleryDL(t *testing.T) {
 		t.Fatal(err)
 	}
 	ran := false
-	handler.galleryDL = func(context.Context, string, string) error {
+	handler.galleryDL = func(context.Context, galleryDLRequest) error {
 		ran = true
 		return nil
 	}
@@ -228,14 +228,14 @@ func TestPinterestImportUsesGalleryDLAndSkipsExistingBytes(t *testing.T) {
 		t.Fatal(err)
 	}
 	picture := testRemotePNG(t)
-	handler.galleryDL = func(_ context.Context, raw, directory string) error {
-		if raw != "https://www.pinterest.com/artist/film-references/" {
-			return fmt.Errorf("gallery-dl received unexpected URL: %s", raw)
+	handler.galleryDL = func(_ context.Context, download galleryDLRequest) error {
+		if download.URL != "https://www.pinterest.com/artist/film-references/" {
+			return fmt.Errorf("gallery-dl received unexpected URL: %s", download.URL)
 		}
-		if err := os.WriteFile(filepath.Join(directory, "one.png"), picture, 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(download.Directory, "one.png"), picture, 0o644); err != nil {
 			return err
 		}
-		return os.WriteFile(filepath.Join(directory, "two.png"), picture, 0o644)
+		return os.WriteFile(filepath.Join(download.Directory, "two.png"), picture, 0o644)
 	}
 	routes := handler.routes()
 	response := postPinterestImport(t, routes, map[string]any{
@@ -274,8 +274,8 @@ func TestPinterestOriginalModeKeepsGalleryDLFilename(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler.galleryDL = func(_ context.Context, _ string, directory string) error {
-		return os.WriteFile(filepath.Join(directory, "Original Camera Name.png"), testRemotePNG(t), 0o644)
+	handler.galleryDL = func(_ context.Context, download galleryDLRequest) error {
+		return os.WriteFile(filepath.Join(download.Directory, "Original Camera Name.png"), testRemotePNG(t), 0o644)
 	}
 	routes := handler.routes()
 	response := postPinterestImport(t, routes, map[string]any{
@@ -307,12 +307,12 @@ func TestPinterestBoardLinksExistingDuplicateOnce(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler.galleryDL = func(_ context.Context, _ string, directory string) error {
+	handler.galleryDL = func(_ context.Context, download galleryDLRequest) error {
 		data, readErr := os.ReadFile(existing)
 		if readErr != nil {
 			return readErr
 		}
-		return os.WriteFile(filepath.Join(directory, "duplicate.png"), data, 0o644)
+		return os.WriteFile(filepath.Join(download.Directory, "duplicate.png"), data, 0o644)
 	}
 	routes := handler.routes()
 	response := postPinterestImport(t, routes, map[string]any{
@@ -343,9 +343,9 @@ func TestPinterestImportKeepsDownloadingAfterTheWindowCloses(t *testing.T) {
 	}
 	picture := testRemotePNG(t)
 	release := make(chan struct{})
-	handler.galleryDL = func(_ context.Context, _ string, directory string) error {
+	handler.galleryDL = func(_ context.Context, download galleryDLRequest) error {
 		<-release
-		return os.WriteFile(filepath.Join(directory, "late.png"), picture, 0o644)
+		return os.WriteFile(filepath.Join(download.Directory, "late.png"), picture, 0o644)
 	}
 	routes := handler.routes()
 
@@ -386,8 +386,8 @@ func TestStoppingAPinterestImportKeepsWhatAlreadyDownloaded(t *testing.T) {
 	}
 	picture := testRemotePNG(t)
 	downloading := make(chan struct{})
-	handler.galleryDL = func(ctx context.Context, _ string, directory string) error {
-		if err := os.WriteFile(filepath.Join(directory, "arrived.png"), picture, 0o644); err != nil {
+	handler.galleryDL = func(ctx context.Context, download galleryDLRequest) error {
+		if err := os.WriteFile(filepath.Join(download.Directory, "arrived.png"), picture, 0o644); err != nil {
 			return err
 		}
 		close(downloading)
@@ -427,7 +427,7 @@ func TestPinterestImportReportsProgressWhileItRuns(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler.pinterest.start("film references", func() {})
+	handler.pinterest.start("film references", "pinterest", func() {})
 	handler.pinterest.progress("downloading", 128, 0)
 	status := handler.pinterest.snapshot()
 	if status["state"] != "running" || status["phase"] != "downloading" || status["done"] != 128 {
@@ -623,7 +623,7 @@ func TestUnusableBoardFolderNameIsRefusedBeforeDownloading(t *testing.T) {
 		t.Fatal(err)
 	}
 	ran := false
-	handler.galleryDL = func(context.Context, string, string) error {
+	handler.galleryDL = func(context.Context, galleryDLRequest) error {
 		ran = true
 		return nil
 	}
@@ -646,7 +646,7 @@ func TestUnusableBoardFolderNameIsRefusedBeforeDownloading(t *testing.T) {
 
 func TestStoppingIsVisibleWhileTheImportFinishesUp(t *testing.T) {
 	job := &pinterestImport{}
-	if !job.start("film references", func() {}) {
+	if !job.start("film references", "pinterest", func() {}) {
 		t.Fatal("a fresh import refused to start")
 	}
 	if _, stopping := job.snapshot()["stopping"]; stopping {

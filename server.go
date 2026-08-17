@@ -103,6 +103,10 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/app/folders/forget", s.forgetFolder)
 	mux.HandleFunc("GET /api/app/plugins/pinterest/boards", s.appPinterestBoards)
 	mux.HandleFunc("POST /api/app/settings/pinterest", s.savePinterestSettings)
+	mux.HandleFunc("POST /api/app/plugins/web/import", s.importWebSource)
+	mux.HandleFunc("POST /api/app/settings/web", s.saveWebSettings)
+	mux.HandleFunc("GET /api/app/plugins/web/sources", s.appWebSources)
+	mux.HandleFunc("POST /api/app/plugins/web/sources", s.forgetWebSourceRequest)
 	mux.HandleFunc("POST /api/app/onboarding", s.saveOnboarding)
 	mux.HandleFunc("POST /api/app/upload", s.appUpload)
 	mux.HandleFunc("POST /api/app/import-url", s.importImageURL)
@@ -402,6 +406,7 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 		"updateMethod": updateMethod(),
 		"onboarding":   s.app.onboardingSettings(),
 		"pinterest":    s.app.pinterestSettings(),
+		"web":          s.app.webSettings(),
 		"index":        index, "indexJob": job, "sources": sources, "tags": tags,
 		"searchIndex": map[string]any{
 			"automatic": indexing.Automatic, "indexed": len(paths) - len(missing),
@@ -425,6 +430,10 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 			"pinterest": map[string]any{
 				"enabled": s.app.pluginEnabled("pinterest"), "available": galleryDLError == nil,
 				"name": "Import from Pinterest", "description": "Import every image from a public Pinterest board.",
+			},
+			"web": map[string]any{
+				"enabled": s.app.pluginEnabled("web"), "available": galleryDLError == nil,
+				"name": "Import from web", "description": "Download a gallery from any supported site, and follow artists for new work.",
 			},
 			"commandPalette": map[string]any{
 				"enabled": s.app.pluginEnabled("commandPalette"), "name": "Command palette",

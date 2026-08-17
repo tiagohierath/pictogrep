@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-var version = "0.8.2"
+var version = "0.8.3"
 
 const (
 	maxCachedQueries = 512
@@ -332,9 +332,9 @@ func (a *application) saveIndexingSettings(settings indexingSettings) error {
 }
 
 func (a *application) pluginEnabled(name string) bool {
-	// Pinterest import ships with release installations and is ready on first
-	// launch, while remaining an ordinary plugin that users can turn off.
-	defaultEnabled := name == "pinterest"
+	// The two importers ship with release installations and are ready on first
+	// launch, while remaining ordinary plugins that users can turn off.
+	defaultEnabled := name == "pinterest" || name == "web"
 	data, err := os.ReadFile(a.configPath)
 	if err != nil {
 		return defaultEnabled
@@ -353,7 +353,7 @@ func (a *application) pluginEnabled(name string) bool {
 }
 
 func (a *application) setPluginEnabled(name string, enabled bool) error {
-	if name != "wikimedia" && name != "calendar" && name != "sidebar" && name != "vim" && name != "commandPalette" && name != "pinterest" && name != "canvas" {
+	if name != "wikimedia" && name != "calendar" && name != "sidebar" && name != "vim" && name != "commandPalette" && name != "pinterest" && name != "web" && name != "canvas" {
 		return fmt.Errorf("unknown plugin: %s", name)
 	}
 	document := map[string]any{}

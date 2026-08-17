@@ -25,14 +25,58 @@ const (
 	pinterestUsageInterval    = 2 * time.Second
 )
 
-type galleryDLRunner func(context.Context, string, string) error
+// A download is described rather than passed as a row of strings, because the
+// pieces kept multiplying: where it goes, how much of it to take, and what it
+// already has.
+type galleryDLRequest struct {
+	// URL is the board, gallery, profile, or tag page to download.
+	URL string
+	// Directory is the temporary folder the files land in.
+	Directory string
+	// Limit is how many of the newest items to take, counted the way the site
+	// orders them. Zero means the whole thing, which is what importing a board
+	// has always done; following a site asks for the latest few instead.
+	Limit int
+	// Archive, when set, is a file gallery-dl uses to remember what it has
+	// already fetched, so a site checked every day downloads only new work
+	// instead of pulling the same newest few over and over.
+	Archive string
+}
+
+type galleryDLRunner func(context.Context, galleryDLRequest) error
+
+// galleryImport is one run of the downloader followed by an import into the
+// library. Pinterest boards and followed websites differ only in these fields.
+type galleryImport struct {
+	// Source is the address being downloaded, and Name is what to call it in
+	// results and progress.
+	Source string
+	Name   string
+	// Folder is a collection name already cleaned by collectionName, or empty
+	// to drop the pictures straight into the library.
+	Folder string
+	// Archive is passed through to the downloader. See galleryDLRequest.
+	Archive string
+	Limit   int
+	// LinkDuplicates adds a picture already in the library to Folder instead of
+	// counting it as skipped, so the folder mirrors the page it came from.
+	LinkDuplicates bool
+	// AllowEmpty makes a download that found nothing a successful no-op. A
+	// re-check of a followed site that has posted nothing new is the ordinary
+	// case, not a failure.
+	AllowEmpty bool
+}
 
 // A board takes minutes to download, so the import outlives the request that
 // starts it. Closing the panel, the tab, or the whole browser leaves it running,
 // and the window that comes back asks for the result.
 type pinterestImport struct {
-	mu        sync.Mutex
-	state     string
+	mu    sync.Mutex
+	state string
+	// kind says which panel started this, "pinterest" or "web". One downloader
+	// serves both, so without it a window that comes back to a running job
+	// reports a followed website as a Pinterest board.
+	kind      string
 	phase     string
 	done      int
 	total     int
@@ -52,13 +96,13 @@ func (job *pinterestImport) progress(phase string, done, total int) {
 	job.phase, job.done, job.total = phase, done, total
 }
 
-func (job *pinterestImport) start(board string, cancel context.CancelFunc) bool {
+func (job *pinterestImport) start(board, kind string, cancel context.CancelFunc) bool {
 	job.mu.Lock()
 	defer job.mu.Unlock()
 	if job.state == "running" {
 		return false
 	}
-	job.state, job.board = "running", board
+	job.state, job.board, job.kind = "running", board, kind
 	job.phase, job.done, job.total = "downloading", 0, 0
 	job.result, job.failed, job.cancel, job.cancelled = nil, "", cancel, false
 	job.automatic = false
@@ -67,8 +111,8 @@ func (job *pinterestImport) start(board string, cancel context.CancelFunc) bool 
 
 // A weekly check nobody asked for should not look like an import somebody
 // started. The flag rides along so the interface can stay quiet about it.
-func (job *pinterestImport) startAutomatic(board string, cancel context.CancelFunc) bool {
-	if !job.start(board, cancel) {
+func (job *pinterestImport) startAutomatic(board, kind string, cancel context.CancelFunc) bool {
+	if !job.start(board, kind, cancel) {
 		return false
 	}
 	job.mu.Lock()
@@ -121,7 +165,7 @@ func (job *pinterestImport) snapshot() map[string]any {
 		state = "idle"
 	}
 	payload := map[string]any{
-		"ok": true, "state": state, "board": job.board,
+		"ok": true, "state": state, "board": job.board, "kind": job.kind,
 		"phase": job.phase, "done": job.done, "total": job.total,
 		"automatic": job.automatic,
 	}
@@ -176,7 +220,7 @@ func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 	// Deliberately not the request context: the download has to survive the
 	// window that asked for it.
 	ctx, cancel := context.WithCancel(context.Background())
-	if !s.pinterest.start(pinterestBoardName(boardURL), cancel) {
+	if !s.pinterest.start(pinterestBoardName(boardURL), "pinterest", cancel) {
 		cancel()
 		sendError(w, http.StatusConflict, fmt.Errorf("a Pinterest import is already running"))
 		return
@@ -219,9 +263,34 @@ func (s *server) cancelPinterestImport(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode string, skipExisting bool) (map[string]any, error) {
-	downloadDir, err := os.MkdirTemp("", "pictogrep-pinterest-")
+	boardName := pinterestBoardName(boardURL)
+	folder := ""
+	if mode == "board" {
+		name, err := collectionName(boardName)
+		if err != nil {
+			return nil, fmt.Errorf("Pinterest board name cannot be used as a folder")
+		}
+		folder = name
+	}
+	result, err := s.runGalleryImport(ctx, galleryImport{
+		Source: boardURL.String(), Name: boardName, Folder: folder,
+		LinkDuplicates: !skipExisting,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("could not prepare Pinterest import")
+		return nil, err
+	}
+	result["boardUrl"] = boardURL.String()
+	return result, nil
+}
+
+// runGalleryImport downloads a gallery with gallery-dl and moves what arrives
+// into the library, optionally collecting it in a folder. Pinterest boards and
+// followed websites are the same job with a different address, so they share
+// this instead of drifting apart.
+func (s *server) runGalleryImport(ctx context.Context, options galleryImport) (map[string]any, error) {
+	downloadDir, err := os.MkdirTemp("", "pictogrep-download-")
+	if err != nil {
+		return nil, fmt.Errorf("could not prepare this download")
 	}
 	defer os.RemoveAll(downloadDir)
 
@@ -243,7 +312,9 @@ func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode
 			}
 		}
 	}()
-	downloadErr := s.galleryDL(ctx, boardURL.String(), downloadDir)
+	downloadErr := s.galleryDL(ctx, galleryDLRequest{
+		URL: options.Source, Directory: downloadDir, Limit: options.Limit, Archive: options.Archive,
+	})
 	// Waiting for the sampler keeps a late tick from reporting a download that
 	// has already finished, or worse, one that belongs to the next import.
 	close(sampled)
@@ -261,15 +332,12 @@ func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode
 		}
 		images = nil
 	}
-
-	boardName := pinterestBoardName(boardURL)
-	folder := ""
-	if mode == "board" {
-		folder, err = collectionName(boardName)
-		if err != nil {
-			return nil, fmt.Errorf("Pinterest board name cannot be used as a folder")
-		}
+	if len(images) == 0 && !options.AllowEmpty && ctx.Err() == nil {
+		return nil, fmt.Errorf("gallery-dl did not find any images it could download at this address")
 	}
+
+	folder := options.Folder
+
 	batch := s.app.newImportBatch()
 	defer batch.commit(s.app)
 	collectionPaths := []string{}
@@ -287,7 +355,7 @@ func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode
 		file, openErr := os.Open(imagePath)
 		if openErr != nil {
 			failed++
-			lastError = "could not read a downloaded Pinterest image"
+			lastError = "could not read a downloaded image"
 			continue
 		}
 		result, _, saveErr := s.saveImportedImageWithOptions(
@@ -302,7 +370,7 @@ func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode
 		}
 		if duplicate, _ := result["duplicate"].(bool); duplicate {
 			path, _ := result["path"].(string)
-			if folder != "" && !skipExisting && !collectionSet[path] {
+			if folder != "" && options.LinkDuplicates && !collectionSet[path] {
 				collectionSet[path] = true
 				collectionPaths = append(collectionPaths, path)
 				linked++
@@ -327,27 +395,27 @@ func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode
 	if folder != "" && len(images) > 0 {
 		directory := filepath.Join(s.app.tagsDir, folder)
 		if err := os.MkdirAll(directory, 0o755); err != nil {
-			return nil, fmt.Errorf("could not create Pinterest board folder: %v", err)
+			return nil, fmt.Errorf("could not create the folder for this import: %v", err)
 		}
 		if err := writeTagManifest(directory, collectionPaths); err != nil {
-			return nil, fmt.Errorf("could not organize Pinterest board folder: %v", err)
+			return nil, fmt.Errorf("could not organize the folder for this import: %v", err)
 		}
 	}
 	return map[string]any{
-		"ok": true, "board": boardName, "boardUrl": boardURL.String(), "folder": folder,
+		"ok": true, "board": options.Name, "sourceUrl": options.Source, "folder": folder,
 		"total": len(images), "imported": imported, "skipped": skipped,
 		"linked": linked, "failed": failed, "lastError": lastError,
 	}, nil
 }
 
-func runGalleryDL(ctx context.Context, boardURL, directory string) error {
+func runGalleryDL(ctx context.Context, download galleryDLRequest) error {
 	binary, err := galleryDLBinary()
 	if err != nil {
-		return importError(http.StatusServiceUnavailable, "gallery-dl is required for Pinterest imports; install gallery-dl and restart Pictogrep")
+		return importError(http.StatusServiceUnavailable, "gallery-dl is required for downloads; install gallery-dl and restart Pictogrep")
 	}
 	downloadContext, cancel := context.WithTimeout(ctx, pinterestDownloadTimeout)
 	defer cancel()
-	command := exec.CommandContext(downloadContext, binary, galleryDLArguments(boardURL, directory)...)
+	command := exec.CommandContext(downloadContext, binary, galleryDLArguments(download)...)
 	command.Cancel = func() error {
 		killProcessGroup(command)
 		return nil
@@ -375,46 +443,58 @@ func runGalleryDL(ctx context.Context, boardURL, directory string) error {
 				return nil
 			}
 			if errors.Is(ctx.Err(), context.Canceled) {
-				return importError(http.StatusRequestTimeout, "Pinterest import was cancelled")
+				return importError(http.StatusRequestTimeout, "the download was cancelled")
 			}
 			if errors.Is(downloadContext.Err(), context.DeadlineExceeded) {
-				return importError(http.StatusRequestTimeout, "Pinterest import exceeded the 30 minute limit")
+				return importError(http.StatusRequestTimeout, "the download exceeded the 30 minute limit")
 			}
 			detail := output.String()
 			if detail == "" {
 				detail = err.Error()
 			}
-			return importError(http.StatusBadGateway, "gallery-dl could not download this Pinterest board: %s", detail)
+			return importError(http.StatusBadGateway, "gallery-dl could not download this address: %s", detail)
 		case <-ticker.C:
-			files, bytes, usageErr := pinterestDownloadUsage(directory)
+			files, bytes, usageErr := pinterestDownloadUsage(download.Directory)
 			if usageErr != nil {
 				cancel()
 				<-done
-				return importError(http.StatusBadGateway, "could not monitor Pinterest download: %v", usageErr)
+				return importError(http.StatusBadGateway, "could not monitor this download: %v", usageErr)
 			}
 			if files > maxPinterestImages+1 || bytes > maxPinterestDownloadBytes {
 				cancel()
 				<-done
-				return importError(http.StatusRequestEntityTooLarge, "Pinterest board exceeds the safe download limit")
+				return importError(http.StatusRequestEntityTooLarge, "this address holds more than Pictogrep can safely download at once")
 			}
 		case <-downloadContext.Done():
 			<-done
 			if errors.Is(ctx.Err(), context.Canceled) {
-				return importError(http.StatusRequestTimeout, "Pinterest import was cancelled")
+				return importError(http.StatusRequestTimeout, "the download was cancelled")
 			}
-			return importError(http.StatusRequestTimeout, "Pinterest import exceeded the 30 minute limit")
+			return importError(http.StatusRequestTimeout, "the download exceeded the 30 minute limit")
 		}
 	}
 }
 
-func galleryDLArguments(boardURL, directory string) []string {
-	return []string{
+// A limit of zero downloads everything the address holds. Following a site asks
+// for a small range instead, so a first check does not pull an artist's entire
+// back catalogue before it starts watching for new work.
+func galleryDLArguments(download galleryDLRequest) []string {
+	limit := download.Limit
+	if limit <= 0 || limit > maxPinterestImages {
+		limit = maxPinterestImages
+	}
+	arguments := []string{
 		"--config-ignore", "--no-input",
-		"--range", "1-" + strconv.Itoa(maxPinterestImages+1),
+		"--range", "1-" + strconv.Itoa(limit+1),
 		"--filesize-max", strconv.FormatInt(maxUploadBytes, 10),
 		"--filter", galleryDLImageFilter(),
-		"-D", directory, "-f", "/O", boardURL,
 	}
+	// The archive is what turns a daily re-check into a cheap one: gallery-dl
+	// still walks the newest few, and downloads only the ones it has not seen.
+	if download.Archive != "" {
+		arguments = append(arguments, "--download-archive", download.Archive)
+	}
+	return append(arguments, "-D", download.Directory, "-f", "/O", download.URL)
 }
 
 // Boards mix pins with Idea Pin videos that Pictogrep can never import. Asking
@@ -583,15 +663,12 @@ func pinterestDownloadedImages(root string) ([]string, error) {
 		}
 		images = append(images, path)
 		if len(images) > maxPinterestImages {
-			return fmt.Errorf("Pinterest board is too large to import safely (limit %d images)", maxPinterestImages)
+			return fmt.Errorf("this address holds too many images to import safely (limit %d)", maxPinterestImages)
 		}
 		return nil
 	})
 	if err != nil {
 		return nil, fmt.Errorf("could not read gallery-dl downloads: %v", err)
-	}
-	if len(images) == 0 {
-		return nil, fmt.Errorf("gallery-dl did not find any supported images on this public board")
 	}
 	sort.Strings(images)
 	return images, nil

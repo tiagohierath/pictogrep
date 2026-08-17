@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.8.3 - 2026-08-17
+
+- Import from web, under Official plugins below the Pinterest import. Paste an artist's gallery, profile, or tag page from any site the included downloader supports, and choose either or both of two things: download all past images, which takes a whole gallery in one go, or download all from now, which checks the page daily and adds only new work the way a feed reader does. Pinterest was never the only place art lives, and following an artist used to mean remembering to go look.
+- Websites you follow are listed with the folder each one fills, both in the import panel and under Official plugins, and any one of them can be dropped on its own.
+- Following websites has its own switch, separate from the Pinterest one, so turning boards off no longer quietly stops every artist you follow.
+- A followed website remembers what it has already downloaded, so a daily check fetches only new work instead of pulling the same newest few every time. A check that finds nothing new is not reported as a failure, because that is the ordinary case.
+- A picture a followed page has that is already somewhere in your library is listed in that page's folder instead of being left out of it, so the folder mirrors the page. The file is never stored twice.
+
 ## 0.8.2 - 2026-08-17
 
 - Boards Pictogrep keeps up to date are listed under Official plugins, each one able to be dropped on its own. Turning the whole feature off was the only way to stop following a board, so one board you no longer wanted meant giving up the ones you did.
