@@ -480,7 +480,7 @@ func TestPinterestUIContainsRequestedOptionalImportForm(t *testing.T) {
 	for _, required := range []string{
 		`id="pinterestPluginToggle"`, `id="pinterestSection"`,
 		`Import from Pinterest`, `Board link`, `value="original"`, `value="board" checked`,
-		`id="pinterestSkipExisting" type="checkbox" checked`, `id="pinterestImportButton" data-i18n="pinterest.download_all">Download all`,
+		`id="pinterestSkipExisting" type="checkbox" checked`, `id="pinterestImportButton" class="primary" data-i18n="pinterest.download_all">Download all`,
 		`Use it again anytime from Menu → Import from Pinterest`,
 	} {
 		if !bytes.Contains(index, []byte(required)) {

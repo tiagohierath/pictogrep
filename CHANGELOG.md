@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- The interface is one interface. Spacing, type sizes, greys, corners and control heights now come from a single set of values instead of being decided again in every panel, so a dialog, a settings row and an import panel are built from the same parts. Nothing moved; things that were meant to match now do.
+- One button. Every button in the app is the same shape and size, with exactly two variations: the one action a panel is about is filled dark, and anything that deletes a file is filled red. Buttons used to differ by a pixel or two of padding and three shades of border depending on which panel they landed in.
+- One dialog. Every dialog has the same width step, padding, heading size and action row, with Cancel and the main action always in the same place. The create-folder dialog no longer has its own oversized centred heading.
+- One word for each thing. A file you can look at is a picture everywhere, not an image in half the app; a group you put pictures in is a folder, never a collection or a tag; board means a Pinterest board and nothing else; and what happens before a picture is searchable is called preparing rather than indexing, so Settings, the search bar, the dialogs and the status line stop describing the same operation three ways. The Portuguese interface got the same pass, including telling a Pinterest board apart from your own folders.
+- Small print got readable. The smallest text in the app was 9 and 10 pixels in places, mostly on phones, and is now 11 at minimum.
+
 ## 0.8.5 - 2026-08-17
 
 - The installer no longer refuses to install Pictogrep when the picture downloader it bundles cannot run. That downloader is an ordinary dynamically linked program, which NixOS and other systems without the usual loader will not start, and failing over it meant those systems could not install or update Pictogrep at all. Pictogrep is installed either way now, and says so: imports use a gallery-dl already on the system if there is one, and name where to get it if there is not.

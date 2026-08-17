@@ -29,7 +29,7 @@
     </form>
 
     <div class="tabs" role="tablist" aria-label="Library view" data-i18n-aria-label="tabs.library_view">
-      <button class="active" id="imagesTab" role="tab" aria-selected="true"><span data-i18n="tabs.local_images">Local images</span> <span id="imageCount"></span></button>
+      <button class="active" id="imagesTab" role="tab" aria-selected="true"><span data-i18n="tabs.local_images">Pictures</span> <span id="imageCount"></span></button>
       <button id="commonsTab" role="tab" aria-selected="false" data-i18n="tabs.commons" hidden>Wikimedia Commons</button>
       <button id="calendarTab" role="tab" aria-selected="false" data-i18n="tabs.calendar" hidden>Calendar</button>
       <button id="foldersTab" role="tab" aria-selected="false" data-i18n="tabs.folders">Folders</button>
@@ -52,20 +52,20 @@
           <li><div><strong data-i18n="empty.search_title">Search your pictures</strong><span data-i18n="empty.search_text">Describe what you remember in the search box.</span></div></li>
           <li><div><strong data-i18n="empty.organize_title">Organize what you find</strong><span data-i18n="empty.organize_text">Put pictures into folders and build storyboards.</span></div></li>
         </ol>
-        <button id="emptyAddImages" data-i18n="empty.choose_action">Choose pictures or folder</button>
+        <button id="emptyAddImages" class="primary" data-i18n="empty.choose_action">Add pictures</button>
         <p class="empty-alternative"><button type="button" class="link-button" id="emptyPinterest" data-i18n="empty.pinterest_action">Or import a Pinterest board</button><span class="empty-alternative-help" data-i18n="empty.pinterest_help">Optional. Pictogrep downloads a public board into your library.</span></p>
       </div>
     </section>
 
     <section id="calendarPanel" aria-labelledby="calendarTab" hidden>
       <div id="calendarGroups" aria-live="polite"></div>
-      <div class="empty" id="calendarEmpty" hidden><h2 data-i18n="calendar.empty">No images for this month</h2><p data-i18n="calendar.empty_help">Try another month, or clear the search.</p></div>
+      <div class="empty" id="calendarEmpty" hidden><h2 data-i18n="calendar.empty">No pictures for this month</h2><p data-i18n="calendar.empty_help">Try another month, or clear the search.</p></div>
     </section>
 
     <section id="commonsPanel" aria-labelledby="commonsTab" hidden>
       <div class="plugin-toolbar"><button type="button" id="shuffleCommons" data-i18n="commons.random">Show random</button></div>
       <div class="image-grid" id="commonsGrid" aria-live="polite"></div>
-      <div class="empty" id="commonsEmpty"><h2 data-i18n="commons.empty">No Commons images available</h2><p data-i18n="commons.empty_help">Try another random set or search for something.</p></div>
+      <div class="empty" id="commonsEmpty"><h2 data-i18n="commons.empty">No Commons pictures available</h2><p data-i18n="commons.empty_help">Try another random set or search for something.</p></div>
     </section>
 
     <section id="foldersPanel" aria-labelledby="foldersTab" hidden>
@@ -78,7 +78,7 @@
   <aside class="plugin-sidebar" id="pluginSidebar" aria-label="Pictogrep sidebar" data-i18n-aria-label="sidebar.aria_label" aria-hidden="true" hidden>
     <div class="plugin-sidebar-header"><strong data-i18n="sidebar.title">Library sidebar</strong><button id="closeSidebar" aria-label="Close sidebar" data-i18n-aria-label="app.close_sidebar">×</button></div>
     <label class="sidebar-search"><span>⌕</span><input id="sidebarSearch" type="search" placeholder="Search" data-i18n-placeholder="search.action"></label>
-    <section class="sidebar-section"><h2 data-i18n="sidebar.collections">Collections</h2><div id="sidebarCollections" class="sidebar-list"></div></section>
+    <section class="sidebar-section"><h2 data-i18n="sidebar.collections">Folders</h2><div id="sidebarCollections" class="sidebar-list"></div></section>
     <section class="sidebar-section"><h2 data-i18n="sidebar.smart">Smart</h2><div class="sidebar-list">
       <button class="sidebar-item" data-smart="recent">◷ <span data-i18n="sidebar.recent">Recently added</span></button>
       <button class="sidebar-item" data-smart="unsorted">✦ <span data-i18n="sidebar.unsorted">Unsorted</span></button>
@@ -94,10 +94,10 @@
 
     <nav class="drawer-actions">
       <a href="/practice" data-i18n="menu.open_storyboard">Open storyboard</a>
-      <button id="showBoards"><span data-i18n="menu.saved_boards">Saved boards</span> <span id="boardCount"></span></button>
-      <button id="showAdd" data-i18n="menu.add_pictures">Add pictures or folder</button>
+      <button id="showBoards"><span data-i18n="menu.saved_boards">Saved storyboards</span> <span id="boardCount"></span></button>
+      <button id="showAdd" data-i18n="menu.add_pictures">Add pictures</button>
       <button id="showPinterest" data-i18n="pinterest.title" hidden>Import from Pinterest</button>
-      <button id="showPlugins" data-i18n="menu.plugins">Official plugins</button>
+      <button id="showPlugins" data-i18n="menu.plugins">Plugins</button>
       <button id="showSettings" data-i18n="settings.title">Settings</button>
       <button id="showAbout" data-i18n="menu.about">About</button>
     </nav>
@@ -105,13 +105,13 @@
     <section class="drawer-section" id="addSection" hidden>
       <h2 data-i18n="add.title">Add pictures</h2>
       <button type="button" class="file-button" id="chooseFolder"><span data-i18n="add.choose_folder">Choose a folder</span><small data-i18n="add.choose_folder_help">Read a folder where it is. Nothing is moved or copied.</small></button>
-      <label class="file-button"><span data-i18n="add.choose_images">Copy images in</span><small data-i18n="add.choose_images_help">Saves the pictures you pick into Pictogrep's library.</small><input id="imageFiles" type="file" accept="image/*" multiple hidden></label>
+      <label class="file-button"><span data-i18n="add.choose_images">Copy pictures in</span><small data-i18n="add.choose_images_help">Saves the pictures you pick into Pictogrep's library.</small><input id="imageFiles" type="file" accept="image/*" multiple hidden></label>
     </section>
 
     <section class="drawer-section pinterest-import" id="pinterestSection" hidden>
       <header class="pinterest-heading">
         <h2 data-i18n="pinterest.title">Import from Pinterest</h2>
-        <p data-i18n="pinterest.intro">Paste a public board link and Pictogrep will download all its images.</p>
+        <p data-i18n="pinterest.intro">Paste a public board link and Pictogrep downloads all its pictures.</p>
       </header>
       <div class="pinterest-readiness unavailable" id="pinterestReadiness" role="status" hidden>
         <span class="pinterest-readiness-dot" aria-hidden="true"></span>
@@ -120,12 +120,12 @@
       <form id="pinterestImportForm">
         <label class="pinterest-url"><span data-i18n="pinterest.board_link">Board link</span><input id="pinterestBoardURL" name="url" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://www.pinterest.com/user/board/" required><small data-i18n="pinterest.public_help">Public boards work without signing in.</small></label>
         <fieldset class="pinterest-options">
-          <legend data-i18n="pinterest.save_images">Save images</legend>
+          <legend data-i18n="pinterest.save_images">Save pictures</legend>
           <label class="pinterest-choice"><input type="radio" name="pinterestMode" value="board" checked><span><strong data-i18n="pinterest.board_folder">In a board folder</strong><small data-i18n="pinterest.recommended">Recommended</small></span></label>
           <label class="pinterest-choice"><input type="radio" name="pinterestMode" value="original"><span><strong data-i18n="pinterest.library_direct">Directly in my library</strong><small data-i18n="pinterest.keep_names">Keep downloaded filenames</small></span></label>
         </fieldset>
-        <label class="pinterest-skip"><input id="pinterestSkipExisting" type="checkbox" checked><span><strong data-i18n="pinterest.skip_existing">Skip images already in my library</strong><small data-i18n="pinterest.duplicates_help">Exact duplicates are kept only once.</small></span></label>
-        <div class="pinterest-actions"><button type="submit" id="pinterestImportButton" data-i18n="pinterest.download_all">Download all</button><button type="button" id="pinterestCancelImport" data-i18n="app.cancel" hidden>Cancel</button></div>
+        <label class="pinterest-skip"><input id="pinterestSkipExisting" type="checkbox" checked><span><strong data-i18n="pinterest.skip_existing">Skip pictures already in my library</strong><small data-i18n="pinterest.duplicates_help">Exact duplicates are kept only once.</small></span></label>
+        <div class="pinterest-actions"><button type="submit" id="pinterestImportButton" class="primary" data-i18n="pinterest.download_all">Download all</button><button type="button" id="pinterestCancelImport" data-i18n="app.cancel" hidden>Cancel</button></div>
         <div class="pinterest-working" id="pinterestWorking" role="status" aria-live="polite" hidden>
           <span class="pinterest-spinner" aria-hidden="true"></span><span><strong id="pinterestWorkingTitle" data-i18n="pinterest.downloading_board">Downloading board…</strong><small id="pinterestWorkingHelp" data-i18n="pinterest.large_board_help">Large boards can take a few minutes.</small></span>
         </div>
@@ -139,7 +139,7 @@
     <section class="drawer-section pinterest-import" id="webSection" hidden>
       <header class="pinterest-heading">
         <h2 data-i18n="web.title">Import from web</h2>
-        <p data-i18n="web.intro">Paste an artist's gallery, profile, or tag page. Pictogrep downloads the images into a folder.</p>
+        <p data-i18n="web.intro">Paste an artist's gallery, profile, or tag page. Pictogrep downloads the pictures into a folder.</p>
       </header>
       <div class="pinterest-readiness unavailable" id="webReadiness" role="status" hidden>
         <span class="pinterest-readiness-dot" aria-hidden="true"></span>
@@ -150,10 +150,10 @@
         <label class="pinterest-url"><span data-i18n="web.folder">Folder name</span><input id="webSourceFolder" name="folder" type="text" spellcheck="false" autocomplete="off"><small data-i18n="web.folder_help">Leave it empty to name the folder after the page.</small></label>
         <fieldset class="pinterest-options">
           <legend data-i18n="web.what_to_download">What to download</legend>
-          <label class="pinterest-choice"><input type="checkbox" id="webBackfill" checked><span><strong data-i18n="web.backfill">Download all past images</strong><small data-i18n="web.backfill_help">Takes everything already posted. Good for saving a whole gallery or board.</small></span></label>
+          <label class="pinterest-choice"><input type="checkbox" id="webBackfill" checked><span><strong data-i18n="web.backfill">Download all past pictures</strong><small data-i18n="web.backfill_help">Takes everything already posted. Good for saving a whole gallery.</small></span></label>
           <label class="pinterest-choice"><input type="checkbox" id="webFollow"><span><strong data-i18n="web.follow">Download all from now</strong><small data-i18n="web.follow_help">Checks the page daily and adds only new work, the way a feed reader does. Grabs the latest few to start.</small></span></label>
         </fieldset>
-        <div class="pinterest-actions"><button type="submit" id="webImportButton" data-i18n="web.start">Start</button><button type="button" id="webCancelImport" data-i18n="app.cancel" hidden>Cancel</button></div>
+        <div class="pinterest-actions"><button type="submit" id="webImportButton" class="primary" data-i18n="web.start">Start</button><button type="button" id="webCancelImport" data-i18n="app.cancel" hidden>Cancel</button></div>
         <div class="pinterest-working" id="webWorking" role="status" aria-live="polite" hidden>
           <span class="pinterest-spinner" aria-hidden="true"></span><span><strong id="webWorkingTitle" data-i18n="web.downloading">Downloading…</strong><small id="webWorkingHelp" data-i18n="pinterest.keeps_running">This keeps running if you close the panel.</small></span>
         </div>
@@ -186,14 +186,14 @@
       </div>
       <div class="settings-group">
         <h2 data-i18n="settings.search_index">Search</h2>
-        <p class="field-help" data-i18n="settings.search_intro">Pictogrep looks at each picture once so you can find it by describing it. This happens on your computer.</p>
+        <p class="field-help" data-i18n="settings.search_intro">Pictogrep looks at each picture once, so you can find it later just by describing what you remember. This happens on your computer.</p>
         <div class="index-settings-status" id="searchIndexStatus" aria-live="polite">
-          <div><strong id="searchIndexStatusTitle" data-i18n="index.checking">Checking search index…</strong><small id="searchIndexStatusText"></small></div>
+          <div><strong id="searchIndexStatusTitle" data-i18n="index.checking">Checking your pictures…</strong><small id="searchIndexStatusText"></small></div>
           <progress id="searchIndexProgress" value="0" max="1"></progress>
         </div>
         <label class="settings-row"><span><strong data-i18n="settings.auto_index">Prepare new pictures automatically</strong><small data-i18n="settings.auto_index_help">Happens quietly in the background, and only for pictures Pictogrep has not seen yet.</small></span><input type="checkbox" id="automaticIndexingSetting"></label>
         <div class="settings-action"><span><strong data-i18n="settings.check_index">Look for new pictures now</strong><small data-i18n="settings.check_index_help">Checks your folders for anything added or removed since last time.</small></span><button type="button" id="checkIndexNow" data-i18n="settings.check_now">Check now</button></div>
-        <div class="settings-action"><span><strong data-i18n="settings.rebuild_index">Start search over</strong><small data-i18n="settings.rebuild_index_help">Looks at every picture again from scratch. Takes a while, and you should not normally need it.</small></span><button type="button" id="rebuildSearchIndex" data-i18n="settings.rebuild">Start over…</button></div>
+        <div class="settings-action"><span><strong data-i18n="settings.rebuild_index">Prepare every picture again</strong><small data-i18n="settings.rebuild_index_help">Goes through the whole library from scratch. It takes a while, and you should not normally need it.</small></span><button type="button" id="rebuildSearchIndex" data-i18n="settings.rebuild">Prepare again…</button></div>
       </div>
       <div class="settings-group">
         <h2 data-i18n="settings.data">Privacy</h2>
@@ -203,31 +203,31 @@
     </section>
 
     <section class="drawer-section settings" id="pluginsSection" hidden>
-      <h2 data-i18n="plugins.title">Available plugins</h2>
+      <h2 data-i18n="plugins.title">Plugins</h2>
       <p class="page-intro" data-i18n="plugins.intro">Extra features made and maintained for Pictogrep. You are always in control of which ones stay on.</p>
       <div class="settings-list">
-        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.wikimedia">Wikimedia Commons</strong><small data-i18n="plugins.wikimedia_help">Browse random Commons images or search for something specific.</small></span><input type="checkbox" id="wikimediaPluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.calendar">Calendar view</strong><small data-i18n="plugins.calendar_help">Browse local images grouped by date and month.</small></span><input type="checkbox" id="calendarPluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.sidebar">Sidebar</strong><small data-i18n="plugins.sidebar_help">Drag images into collections from a quick side panel.</small></span><input type="checkbox" id="sidebarPluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.wikimedia">Wikimedia Commons</strong><small data-i18n="plugins.wikimedia_help">Browse random Commons pictures or search for something specific.</small></span><input type="checkbox" id="wikimediaPluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.calendar">Calendar view</strong><small data-i18n="plugins.calendar_help">Browse your pictures grouped by date and month.</small></span><input type="checkbox" id="calendarPluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.sidebar">Sidebar</strong><small data-i18n="plugins.sidebar_help">Drag pictures into folders from a quick side panel.</small></span><input type="checkbox" id="sidebarPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong data-i18n="plugins.vim">Vim Mode</strong><small data-i18n="plugins.vim_help">Use Vim-style keyboard navigation in the library and storyboard.</small></span><input type="checkbox" id="vimPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong data-i18n="plugins.canvas">Folder canvas</strong><small data-i18n="plugins.canvas_help">Adds an action for spreading a folder's pictures out on a flat workspace and dragging them around. The files never move.</small></span><input type="checkbox" id="canvasPluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.command_palette">Command palette</strong><small data-i18n="plugins.command_palette_help">Open navigation and image search with Ctrl+K or Command+K.</small></span><input type="checkbox" id="commandPalettePluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.title">Import from Pinterest</strong><small data-i18n="plugins.pinterest_help">Enabled by default. Copy a public board into your library with the included downloader.</small></span><input type="checkbox" id="pinterestPluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.command_palette">Command palette</strong><small data-i18n="plugins.command_palette_help">Open navigation and picture search with Ctrl+K or Command+K.</small></span><input type="checkbox" id="commandPalettePluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.title">Import from Pinterest</strong><small data-i18n="plugins.pinterest_help">On by default. Copy a public board into your library with the included downloader.</small></span><input type="checkbox" id="pinterestPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.auto_sync">Keep imported boards up to date</strong><small data-i18n="pinterest.auto_sync_help">Checks the boards you have already imported about once a week and adds only what is new. Nothing is ever deleted.</small></span><input type="checkbox" id="pinterestAutoSyncToggle"></label>
         <div class="followed-boards" id="pinterestBoardList" hidden></div>
-        <label class="settings-row plugin-row"><span><strong data-i18n="web.title">Import from web</strong><small data-i18n="web.plugin_help">Enabled by default. Download a gallery from any site the included downloader supports.</small></span><input type="checkbox" id="webPluginToggle"></label>
+        <label class="settings-row plugin-row"><span><strong data-i18n="web.title">Import from web</strong><small data-i18n="web.plugin_help">On by default. Download a gallery from any site the included downloader supports.</small></span><input type="checkbox" id="webPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong data-i18n="web.auto_sync">Keep followed websites up to date</strong><small data-i18n="web.auto_sync_help">Checks each website you follow about once a day and adds only new work. Nothing is ever deleted.</small></span><input type="checkbox" id="webAutoSyncToggle"></label>
         <div class="settings-action" id="webImportRow"><span><strong data-i18n="web.open_panel">Follow a website</strong><small data-i18n="web.settings_help">Paste an artist's gallery, profile, or tag page to download it or follow it.</small></span><button type="button" id="showWebImport" data-i18n="web.open">Open</button></div>
         <p class="field-help" id="webSourceSummary" data-i18n="web.none_followed" hidden>You are not following any websites yet.</p>
         <div class="followed-boards" id="webSourceList" hidden></div>
       </div>
-      <p class="field-help" data-i18n="plugins.help">Plugins add optional tools and image sources. Import plugins copy only the images you choose.</p>
+      <p class="field-help" data-i18n="plugins.help">Plugins add optional tools and picture sources. Import plugins copy only the pictures you choose.</p>
     </section>
 
     <section class="drawer-section" id="boardsSection" hidden>
-      <div class="section-title"><h2 data-i18n="boards.title">Saved boards</h2><a href="/practice" data-i18n="boards.new">New</a></div>
+      <div class="section-title"><h2 data-i18n="boards.title">Saved storyboards</h2><a href="/practice" data-i18n="boards.new">New</a></div>
       <div class="board-list" id="boardList"></div>
-      <p id="boardsEmpty" data-i18n="boards.empty" hidden>No boards saved yet.</p>
+      <p id="boardsEmpty" data-i18n="boards.empty" hidden>No storyboards saved yet.</p>
     </section>
 
     <section class="drawer-section about-section" id="aboutSection" hidden>
@@ -265,7 +265,7 @@
       <datalist id="tagOptions"></datalist>
       <div class="tag-choices" id="tagChoices" aria-label="Existing folders" data-i18n-aria-label="tag_dialog.existing"></div>
       <input id="tagImageId" type="hidden">
-      <div class="dialog-actions"><button type="button" id="cancelTag" data-i18n="app.cancel">Cancel</button><button type="submit" data-i18n="app.add">Add</button></div>
+      <div class="dialog-actions"><button type="button" id="cancelTag" data-i18n="app.cancel">Cancel</button><button type="submit" class="primary" data-i18n="app.add">Add</button></div>
     </form>
   </dialog>
 
@@ -278,10 +278,10 @@
       <select id="newFolderParent"><option value="" data-i18n="folders.top_level">Top level</option></select>
       <label class="field-label" for="newFolderPrompt" data-i18n="folder_dialog.fill">Fill from search (optional)</label>
       <input id="newFolderPrompt" placeholder="e.g. cats" data-i18n-placeholder="folder_dialog.search_example" autocomplete="off">
-      <p class="field-help" data-i18n="folder_dialog.fill_help">Adds the 50 closest pictures from your search index.</p>
+      <p class="field-help" data-i18n="folder_dialog.fill_help">Adds the 50 closest pictures Pictogrep has already prepared.</p>
       <label class="field-label" for="newFolderFiles" data-i18n="folder_dialog.pictures">Pictures (optional)</label>
       <input id="newFolderFiles" type="file" accept="image/*" multiple>
-      <div class="dialog-actions"><button type="button" id="cancelFolder" data-i18n="app.cancel">Cancel</button><button type="submit" data-i18n="app.create">Create</button></div>
+      <div class="dialog-actions"><button type="button" id="cancelFolder" data-i18n="app.cancel">Cancel</button><button type="submit" class="primary" data-i18n="app.create">Create</button></div>
     </form>
   </dialog>
 
@@ -289,21 +289,21 @@
     <form id="deleteFolderForm">
       <h2 data-i18n="folders.delete">Delete folder</h2>
       <p id="deleteFolderText"></p>
-      <div class="dialog-actions"><button type="button" id="cancelDeleteFolder" data-i18n="folders.delete_cancel">Cancel</button><button type="submit" data-i18n="folders.delete">Delete folder</button></div>
+      <div class="dialog-actions"><button type="button" id="cancelDeleteFolder" data-i18n="folders.delete_cancel">Cancel</button><button type="submit" class="danger" data-i18n="folders.delete">Delete folder</button></div>
     </form>
   </dialog>
 
   <dialog id="reindexDialog">
     <form id="reindexForm">
-      <h2 data-i18n="reindex.title">Rebuild the full search index?</h2>
-      <p data-i18n="reindex.text">Pictogrep will discard the existing search vectors and analyze every picture again. Use this only to repair the index; new pictures are indexed automatically.</p>
-      <div class="dialog-actions"><button type="button" id="cancelReindex" data-i18n="app.cancel">Cancel</button><button type="submit" data-i18n="reindex.confirm">Rebuild everything</button></div>
+      <h2 data-i18n="reindex.title">Prepare every picture again?</h2>
+      <p data-i18n="reindex.text">Pictogrep goes through your whole library from scratch. Use this only to repair search; new pictures are prepared automatically.</p>
+      <div class="dialog-actions"><button type="button" id="cancelReindex" data-i18n="app.cancel">Cancel</button><button type="submit" class="primary" data-i18n="reindex.confirm">Prepare again</button></div>
     </form>
   </dialog>
 
   <dialog class="command-palette" id="commandPaletteDialog" aria-labelledby="commandPaletteTitle">
     <h2 class="sr-only" id="commandPaletteTitle" data-i18n="command.title">Command palette</h2>
-    <label class="command-palette-search"><span aria-hidden>⌕</span><input id="commandPaletteQuery" type="text" placeholder="Search images or type a command" data-i18n-placeholder="command.placeholder" autocomplete="off" spellcheck="false" aria-label="Search images or type a command" data-i18n-aria-label="command.placeholder"></label>
+    <label class="command-palette-search"><span aria-hidden>⌕</span><input id="commandPaletteQuery" type="text" placeholder="Search pictures or type a command" data-i18n-placeholder="command.placeholder" autocomplete="off" spellcheck="false" aria-label="Search pictures or type a command" data-i18n-aria-label="command.placeholder"></label>
     <div class="command-palette-list" id="commandPaletteList" role="listbox" aria-label="Commands" data-i18n-aria-label="command.commands"></div>
     <p class="command-palette-hint" data-i18n="command.hint">↑↓ choose · Enter run · Esc close</p>
   </dialog>
@@ -312,9 +312,9 @@
     <h2 data-i18n="shortcuts.title">Keyboard shortcuts</h2>
     <div class="shortcut-list">
       <div><kbd>/</kbd><span data-i18n="shortcuts.focus_search">Focus search</span></div>
-      <div><kbd>Ctrl</kbd> + <kbd>V</kbd><span data-i18n="shortcuts.paste_image">Paste an image</span></div>
-      <div><kbd>↑</kbd> <kbd>↓</kbd><span data-i18n="shortcuts.move_images">Move through images</span></div>
-      <div><kbd>Enter</kbd><span data-i18n="shortcuts.open_image">Open the focused image</span></div>
+      <div><kbd>Ctrl</kbd> + <kbd>V</kbd><span data-i18n="shortcuts.paste_image">Paste a picture</span></div>
+      <div><kbd>↑</kbd> <kbd>↓</kbd><span data-i18n="shortcuts.move_images">Move through pictures</span></div>
+      <div><kbd>Enter</kbd><span data-i18n="shortcuts.open_image">Open the focused picture</span></div>
       <div><kbd>Esc</kbd><span data-i18n="shortcuts.close_ui">Close menus and dialogs</span></div>
       <div><kbd>?</kbd><span data-i18n="shortcuts.show">Show these shortcuts</span></div>
     </div>
@@ -324,29 +324,29 @@
 
   <dialog class="delete-image-dialog" id="deleteImageDialog">
     <form id="deleteImageForm">
-      <h2 data-i18n="delete.title">Delete this image?</h2>
+      <h2 data-i18n="delete.title">Delete this picture?</h2>
       <p><strong id="deleteImageName"></strong></p>
       <code id="deleteImagePath"></code>
       <p class="delete-warning" data-i18n="delete.warning">This permanently deletes the original file from disk. It cannot be undone.</p>
-      <div class="dialog-actions"><button type="button" id="cancelDeleteImage" data-i18n="app.cancel">Cancel</button><button type="submit" class="confirm-delete" data-i18n="delete.confirm">Delete permanently</button></div>
+      <div class="dialog-actions"><button type="button" id="cancelDeleteImage" data-i18n="app.cancel">Cancel</button><button type="submit" class="confirm-delete danger" data-i18n="delete.confirm">Delete permanently</button></div>
     </form>
   </dialog>
 
   <dialog class="image-viewer" id="imageViewer">
-    <button id="closeViewer" aria-label="Close image" data-i18n-aria-label="viewer.close">×</button>
+    <button id="closeViewer" aria-label="Close picture" data-i18n-aria-label="viewer.close">×</button>
     <div class="viewer-picture">
-      <button type="button" class="viewer-nav viewer-previous" id="viewerPrevious" aria-label="Previous image" data-i18n-aria-label="viewer.previous">‹</button>
+      <button type="button" class="viewer-nav viewer-previous" id="viewerPrevious" aria-label="Previous picture" data-i18n-aria-label="viewer.previous">‹</button>
       <img id="viewerImage" alt="">
-      <button type="button" class="viewer-nav viewer-next" id="viewerNext" aria-label="Next image" data-i18n-aria-label="viewer.next">›</button>
+      <button type="button" class="viewer-nav viewer-next" id="viewerNext" aria-label="Next picture" data-i18n-aria-label="viewer.next">›</button>
       <span class="viewer-position" id="viewerPosition"></span>
     </div>
     <div class="viewer-details">
       <section class="viewer-tags" aria-labelledby="viewerTagsTitle">
-        <div class="viewer-section-heading"><h2 id="viewerTagsTitle" data-i18n="viewer.tags">Tags</h2><button type="button" id="showOriginal" class="viewer-original-button" data-i18n="viewer.show_original" hidden>Show original</button></div>
+        <div class="viewer-section-heading"><h2 id="viewerTagsTitle" data-i18n="viewer.tags">Folders</h2><button type="button" id="showOriginal" class="viewer-original-button" data-i18n="viewer.show_original" hidden>Show original</button></div>
         <div id="viewerTagsList"></div>
       </section>
       <section class="related-images" aria-labelledby="relatedTitle">
-        <h2 id="relatedTitle" data-i18n="viewer.similar">Similar images</h2>
+        <h2 id="relatedTitle" data-i18n="viewer.similar">Similar pictures</h2>
         <p id="relatedStatus" data-i18n="viewer.finding_similar">Finding similar pictures…</p>
         <div class="related-grid" id="relatedGrid"></div>
         <div class="grid-more" id="relatedMore" hidden data-i18n="state.loading_more">Loading more pictures…</div>
@@ -366,11 +366,11 @@
 
   <div class="card-menu cursor-menu" id="imageContextMenu" hidden>
     <span class="card-menu-name" id="contextImageName"></span>
-    <button type="button" id="contextOpenImage" data-i18n="context.open_image">Open image</button>
-    <a id="contextDownloadImage" download data-i18n="image.save_as">Save image as…</a>
+    <button type="button" id="contextOpenImage" data-i18n="context.open_image">Open picture</button>
+    <a id="contextDownloadImage" download data-i18n="image.save_as">Save picture as…</a>
     <a id="contextDraw" data-i18n="image.draw">Draw</a>
-    <button type="button" id="contextAddFolder" data-i18n="context.add_folder">Add to folder / tag…</button>
-    <button type="button" class="menu-danger" id="contextDeleteImage" data-i18n="image.delete">Delete file…</button>
+    <button type="button" id="contextAddFolder" data-i18n="context.add_folder">Add to folder…</button>
+    <button type="button" class="menu-danger" id="contextDeleteImage" data-i18n="image.delete">Delete picture…</button>
   </div>
 
   <div class="card-menu cursor-menu" id="commonsContextMenu" hidden>
@@ -395,13 +395,13 @@
   <div class="drop-overlay" id="dropOverlay" aria-hidden="true" hidden>
     <div class="drop-overlay-card">
       <span class="drop-icon">↓</span>
-      <strong data-i18n="import.drop">Drop to add image</strong>
+      <strong data-i18n="import.drop">Drop to add a picture</strong>
       <span id="dropDestination" data-i18n="import.library">Pictogrep library</span>
     </div>
   </div>
 
   <aside class="import-progress" id="importProgress" role="status" aria-live="polite" hidden>
-    <div class="import-progress-heading"><strong id="importProgressTitle" data-i18n="import.adding_one">Adding image</strong><button type="button" id="closeImportProgress" aria-label="Dismiss import status" data-i18n-aria-label="import.dismiss" hidden>×</button></div>
+    <div class="import-progress-heading"><strong id="importProgressTitle" data-i18n="import.adding_one">Adding a picture</strong><button type="button" id="closeImportProgress" aria-label="Dismiss import status" data-i18n-aria-label="import.dismiss" hidden>×</button></div>
     <span class="import-progress-name" id="importProgressName"></span>
     <progress id="importProgressBar" max="100"></progress>
     <span class="import-progress-status" id="importProgressStatus" data-i18n="import.preparing">Preparing…</span>
