@@ -329,6 +329,21 @@
 
 .is-phone .search-draft input::placeholder { color: var(--m3-on-surface-variant); }
 
+/* The search input is not a field. The shell around it is the field: it holds
+   the tint, the pill, and the height. Every other text input on a phone gets a
+   filled bed with a line under it, and the search box was getting that too, so
+   there was a rounded, tinted, underlined box sitting inside a rounded tinted
+   pill. Two boxes, one on top of the other, which is exactly what it looked
+   like. */
+.is-phone .search-draft input[type="text"],
+.is-phone .search-draft input[type="text"]:focus {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
 /* The submit button is the trailing icon of the search bar rather than a
    separate control next to it, which is where Material puts search actions
    and what lets the whole thing read as one 56dp pill. */
@@ -494,9 +509,15 @@
   position: absolute;
   right: 4px;
   top: 4px;
+  display: grid;
   width: 32px;
+  min-width: 0;
   height: 32px;
+  min-height: 0;
+  place-items: center;
+  padding: 0;
   border-radius: 50%;
+  line-height: 1;
   background: rgb(0 0 0 / .45);
   color: #fff;
 }
@@ -674,6 +695,28 @@
   gap: 16px;
   align-items: center;
 }
+
+/* The row reserves one column for the control and 18px was right for a
+   checkbox. A Material switch is 52px, so it hung out of its column and lay
+   across the words it belongs to: the label read "...ip pictures already in my
+   library" with the switch parked on the missing letters. */
+.is-phone .pinterest-skip {
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+}
+
+/* One colour per screen. This panel is Pinterest red on purpose, and the
+   switch was the app's indigo sitting in the middle of it. */
+.is-phone .pinterest-skip input[type="checkbox"]:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* A panel open over the library is not somewhere to add pictures from, and the
+   floating button was hovering over the import form, one thumb-width from
+   "Download all". */
+.is-phone #drawer.open ~ .m3-fab { display: none; }
 
 /* ------------------------------------------------------------------ *
  * 10. The menu, as a full screen sheet
