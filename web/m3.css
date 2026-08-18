@@ -189,7 +189,6 @@
    nothing has to walk the DOM tagging elements as they appear: a control added
    by any part of the app is already correct. */
 .is-phone button,
-.is-phone .m3-nav-item,
 .is-phone .drawer-actions a,
 .is-phone .card-menu a,
 .is-phone .card-menu button {
@@ -199,7 +198,6 @@
 }
 
 .is-phone button::after,
-.is-phone .m3-nav-item::after,
 .is-phone .drawer-actions a::after,
 .is-phone .card-menu a::after,
 .is-phone .card-menu button::after {
@@ -214,7 +212,6 @@
 }
 
 .is-phone button:active::after,
-.is-phone .m3-nav-item:active::after,
 .is-phone .drawer-actions a:active::after,
 .is-phone .card-menu a:active::after,
 .is-phone .card-menu button:active::after { opacity: .12; }
@@ -278,7 +275,29 @@
   color: var(--m3-on-surface-variant);
 }
 
-.is-phone .app-header button svg { width: 24px; height: 24px; }
+/* Icons are drawn by CSS rather than swapped into the element, because the
+   translator rewrites the text content of anything carrying data-i18n on every
+   language load. An icon put there by JavaScript is an icon that disappears
+   the moment the page finishes starting up. Masked so they inherit colour. */
+.is-phone #menuButton { font-size: 0; }
+
+.is-phone #menuButton::before,
+.is-phone .search > button[type="submit"]::before {
+  width: 24px;
+  height: 24px;
+  background: currentColor;
+  content: "";
+  -webkit-mask: var(--m3-icon) center / 24px 24px no-repeat;
+  mask: var(--m3-icon) center / 24px 24px no-repeat;
+}
+
+.is-phone #menuButton {
+  --m3-icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>');
+}
+
+.is-phone .search > button[type="submit"] {
+  --m3-icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>');
+}
 
 /* ------------------------------------------------------------------ *
  * 4. Search bar
@@ -370,7 +389,10 @@
 }
 
 .is-phone .m3-nav-item {
+  position: relative;
   display: flex;
+  overflow: hidden;
+  border-radius: 0;
   min-width: 0;
   flex: 1;
   flex-direction: column;
@@ -398,8 +420,8 @@
 
 .is-phone .m3-nav-icon svg { width: 24px; height: 24px; }
 
-.is-phone .m3-nav-item[aria-selected="true"] { color: var(--m3-on-surface); }
-.is-phone .m3-nav-item[aria-selected="true"] .m3-nav-icon { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); }
+.is-phone .m3-nav-item[aria-current="page"] { color: var(--m3-on-surface); }
+.is-phone .m3-nav-item[aria-current="page"] .m3-nav-icon { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); }
 
 .is-phone .m3-nav-label {
   max-width: 100%;
@@ -767,4 +789,11 @@
   height: 4px;
   border-radius: 2px;
   accent-color: var(--m3-primary);
+}
+
+/* Pressed, the indicator appears under the thumb before the tab has switched,
+   which is the difference between a navigation bar that feels wired up and one
+   that feels like it is thinking about it. */
+.is-phone .m3-nav-item:active .m3-nav-icon {
+  background: color-mix(in srgb, var(--m3-on-surface) 12%, transparent);
 }

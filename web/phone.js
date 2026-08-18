@@ -21,8 +21,6 @@
   // Material Symbols as paths rather than a font, because a font is a few
   // hundred kilobytes to draw six shapes.
   const ICONS = {
-    search: "M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z",
-    more: "M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
     pictures: "M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4l2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z",
     folders: "M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z",
     boards: "M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z",
@@ -43,14 +41,6 @@
   }
 
   const $ = selector => document.querySelector(selector);
-
-  /** Swaps a button's text for an icon, keeping whatever it says for readers. */
-  function iconise(element, name) {
-    if (!element) return;
-    if (!element.getAttribute("aria-label")) element.setAttribute("aria-label", element.textContent.trim());
-    element.textContent = "";
-    element.append(icon(name));
-  }
 
   // --- ripple ------------------------------------------------------------
 
@@ -103,7 +93,6 @@
 
   const nav = document.createElement("nav");
   nav.className = "m3-nav";
-  nav.setAttribute("role", "tablist");
   document.body.append(nav);
 
   function label(tab) {
@@ -122,7 +111,6 @@
       const item = document.createElement("button");
       item.type = "button";
       item.className = "m3-nav-item";
-      item.setAttribute("role", "tab");
       item.dataset.for = tab;
       const bed = document.createElement("span");
       bed.className = "m3-nav-icon";
@@ -159,43 +147,38 @@
   function syncNav() {
     nav.querySelectorAll("[data-for]").forEach(item => {
       const tab = $(item.dataset.for);
-      item.setAttribute("aria-selected", tab?.getAttribute("aria-selected") ?? "false");
+      const open = tab?.getAttribute("aria-selected") === "true";
+      open ? item.setAttribute("aria-current", "page") : item.removeAttribute("aria-current");
     });
   }
 
-  /**
-   * Everything this file draws from a translated string, drawn again.
+  buildNav();
+
+  /*
+   * The tab strip stays the single source of truth, so it is watched rather
+   * than second-guessed. Three different things happen to it and all three
+   * matter here: a plugin turns a tab on or off, switching panels rewrites
+   * aria-selected, and the translator rewrites every label when the language
+   * loads. That last one is why this is not a listener on some language event:
+   * translation finishes whenever its fetch comes back, which may be before or
+   * after this file runs, and a race that leaves the wrong words in the
+   * navigation bar would be invisible until someone switched to Portuguese.
    *
-   * The search button carries data-i18n, so every pass of the translator puts
-   * the word "Search" back where the icon was and the bar loses it. Rather
-   * than fight over that element, the decoration is simply reapplied after any
-   * pass, which also catches the destination labels changing language.
+   * Watching text as well as attributes is only affordable because the subtree
+   * is four buttons. Nothing else in this file observes the document.
    */
-  function decorate() {
-    iconise($("#menuButton"), "more");
-    iconise($(".search > button[type='submit']"), "search");
-    buildNav();
-  }
-
-  decorate();
-
-  const i18n = window.PictogrepI18n;
-  if (i18n?.apply) {
-    const translate = i18n.apply;
-    i18n.apply = function (...args) {
-      const result = translate.apply(this, args);
-      decorate();
-      return result;
-    };
-  }
-
-  // Plugins hide and show tabs long after this runs, and switching panels only
-  // rewrites aria-selected, so both are watched rather than assumed.
   const tabStrip = $(".tabs");
   if (tabStrip) {
     new MutationObserver(records => {
-      records.some(record => record.attributeName === "hidden") ? buildNav() : syncNav();
-    }).observe(tabStrip, {attributes: true, subtree: true, attributeFilter: ["hidden", "aria-selected"]});
+      const relabelled = records.some(record => record.attributeName !== "aria-selected");
+      relabelled ? buildNav() : syncNav();
+    }).observe(tabStrip, {
+      attributes: true,
+      attributeFilter: ["hidden", "aria-selected"],
+      characterData: true,
+      childList: true,
+      subtree: true,
+    });
   }
 
   // --- floating action button --------------------------------------------
@@ -210,6 +193,7 @@
     fab.type = "button";
     fab.className = "m3-fab";
     fab.setAttribute("aria-label", $("[data-i18n='add.choose_images']")?.textContent.trim() || "Add pictures");
+    fab.dataset.i18nAriaLabel = "add.choose_images";
     fab.append(icon("add"));
     fab.onclick = () => picker.click();
     document.body.append(fab);
