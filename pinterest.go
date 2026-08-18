@@ -610,12 +610,41 @@ func validatePinterestBoardURL(raw string) (*url.URL, error) {
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return nil, fmt.Errorf("Pinterest board URLs must use HTTP or HTTPS")
 	}
-	if parsed.Port() != "" || !pinterestHost(parsed.Hostname()) {
+	if parsed.Port() != "" {
 		return nil, fmt.Errorf("paste a URL from Pinterest")
 	}
 	parts := pinterestPathParts(parsed.Path)
+
+	// The link a phone gives you. Pinterest's own share sheet hands out
+	// pin.it/SHORTCODE and nothing else, so refusing it refused the only
+	// address most people ever have. Where it points is not knowable from the
+	// text, so it passes through untouched and the downloader follows it.
+	if pinterestShortHost(parsed.Hostname()) {
+		if len(parts) != 1 {
+			return nil, fmt.Errorf("that pin.it link is missing its code")
+		}
+		parsed.Scheme = "https"
+		parsed.Host = strings.ToLower(parsed.Hostname())
+		parsed.RawQuery = ""
+		parsed.Fragment = ""
+		return parsed, nil
+	}
+
+	if !pinterestHost(parsed.Hostname()) {
+		return nil, fmt.Errorf("paste a URL from Pinterest")
+	}
+	// A single pin is a legitimate thing to want, and it is what a pin.it link
+	// usually turns out to be.
+	if len(parts) == 2 && parts[0] == "pin" {
+		parsed.Scheme = "https"
+		parsed.Host = strings.ToLower(parsed.Hostname())
+		parsed.Path = "/pin/" + parts[1] + "/"
+		parsed.RawQuery = ""
+		parsed.Fragment = ""
+		return parsed, nil
+	}
 	if len(parts) < 2 || parts[0] == "pin" || parts[0] == "ideas" || parts[0] == "search" {
-		return nil, fmt.Errorf("paste a Pinterest board URL, not a Pin or profile URL")
+		return nil, fmt.Errorf("paste a Pinterest board or pin address, or a pin.it link")
 	}
 	parsed.Scheme = "https"
 	parsed.Host = strings.ToLower(parsed.Hostname())
@@ -623,6 +652,12 @@ func validatePinterestBoardURL(raw string) (*url.URL, error) {
 	parsed.RawQuery = ""
 	parsed.Fragment = ""
 	return parsed, nil
+}
+
+// pin.it, which is Pinterest's own link shortener and shares none of the
+// pinterest.com shape.
+func pinterestShortHost(host string) bool {
+	return strings.ToLower(strings.TrimSuffix(host, ".")) == "pin.it"
 }
 
 func pinterestHost(host string) bool {
@@ -655,6 +690,12 @@ func pinterestPathParts(value string) []string {
 
 func pinterestBoardName(boardURL *url.URL) string {
 	parts := pinterestPathParts(boardURL.Path)
+	// A shortened link, or a single pin: nothing in the address says what it
+	// is called, and the folder is named after what it turns out to be only
+	// once it has been followed.
+	if pinterestShortHost(boardURL.Hostname()) || (len(parts) == 2 && parts[0] == "pin") {
+		return "Pinterest"
+	}
 	if len(parts) < 2 {
 		return "Pinterest board"
 	}

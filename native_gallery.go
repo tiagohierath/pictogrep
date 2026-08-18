@@ -208,16 +208,35 @@ func pinterestResource(ctx context.Context, site *url.URL, resource string, opti
 
 // pinterestBoardImages lists every picture on a public board.
 func pinterestBoardImages(ctx context.Context, board *url.URL, limit int) ([]nativeGalleryImage, error) {
-	// A pin.it link is a redirect and carries no board in its own path, so it
-	// has to be followed before anything can be read out of the address.
-	if strings.EqualFold(board.Hostname(), "pin.it") {
-		if _, final, err := fetchTextFrom(ctx, board, nil); err == nil {
-			board = final
+	// A pin.it link is a redirect and carries nothing in its own path, so it
+	// has to be followed before anything can be read out of the address. It
+	// goes through api.pinterest.com and lands on a pin, or sometimes a board.
+	shortened := strings.EqualFold(board.Hostname(), "pin.it")
+	if shortened {
+		_, final, err := fetchTextFrom(ctx, board, nil)
+		if err != nil {
+			return nil, importError(http.StatusBadGateway,
+				"that pin.it link could not be opened: %v", err)
 		}
+		board = final
 	}
 
 	parts := strings.FieldsFunc(board.Path, func(r rune) bool { return r == '/' })
+	// Where a pin.it link usually lands: one picture, not a board. Sharing a
+	// single pin from the Pinterest app is the commonest thing anyone does on a
+	// phone, so it has to mean "save this picture" rather than an error.
+	if len(parts) == 2 && parts[0] == "pin" {
+		return pinterestSinglePin(ctx, board, parts[1])
+	}
 	if len(parts) < 2 {
+		// A shortened link that resolved to the front page: expired, or never
+		// valid. Saying "that is a profile" would send the user looking for a
+		// mistake they did not make.
+		if shortened {
+			return nil, importError(http.StatusBadRequest,
+				"that pin.it link does not lead anywhere any more. Open the pin in Pinterest and "+
+					"share it again, or paste the board's own address.")
+		}
 		return nil, importError(http.StatusBadRequest,
 			"that is a Pinterest profile, not a board. Open the board you want and copy its address, "+
 				"which looks like pinterest.com/someone/a-board/.")
@@ -277,6 +296,34 @@ func pinterestBoardImages(ctx context.Context, board *url.URL, limit int) ([]nat
 		images = images[:limit]
 	}
 	return images, nil
+}
+
+// pinterestSinglePin reads one pin.
+func pinterestSinglePin(ctx context.Context, site *url.URL, id string) ([]nativeGalleryImage, error) {
+	body, err := pinterestResource(ctx, site, "PinResource", map[string]any{
+		"id": id, "field_set_key": "detailed",
+	})
+	var answered siteStatus
+	if errors.As(err, &answered) && answered.code == http.StatusNotFound {
+		return nil, importError(http.StatusBadRequest, "that pin does not exist any more")
+	}
+	if err != nil {
+		return nil, importError(http.StatusBadGateway, "Pinterest would not open that pin: %v", err)
+	}
+	var answer struct {
+		ResourceResponse struct {
+			Data json.RawMessage `json:"data"`
+		} `json:"resource_response"`
+	}
+	if err := json.Unmarshal([]byte(body), &answer); err != nil {
+		return nil, importError(http.StatusBadGateway, "Pinterest sent a pin Pictogrep could not read")
+	}
+	image, ok := pinterestPinImage(answer.ResourceResponse.Data, site)
+	if !ok {
+		return nil, importError(http.StatusBadRequest,
+			"there is no picture on that pin. Video pins and idea pins cannot be saved.")
+	}
+	return []nativeGalleryImage{image}, nil
 }
 
 // pinterestBoardPage asks for one page of a board the way the site's own

@@ -2282,7 +2282,13 @@ async function uploadFiles(files, options = {}) {
   if (!images.length) return showMessage(t("import.choose_supported"), true);
   const destination = options.destination || activeImportDestination();
   const showLibrary = options.showLibrary ?? !$("#imagesPanel").hidden;
-  if (options.openMenu !== false) openMenu();
+  // Only if it was already open. On a desktop this flow starts inside the
+  // drawer, so it stays put. On a phone it starts at the floating button, and
+  // opening the menu there threw a full-screen panel over the library at the
+  // exact moment the new pictures landed in it: they were imported, they were
+  // rendered, and the user was looking at a menu. The import progress panel is
+  // its own element and shows either way.
+  if (options.openMenu !== false && $("#drawer").classList.contains("open")) openMenu();
   beginImportProgress(images.length, destination);
   let saved = 0;
   let duplicates = 0;

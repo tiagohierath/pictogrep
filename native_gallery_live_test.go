@@ -55,3 +55,36 @@ func TestLivePinterestBoardStillReads(t *testing.T) {
 	}
 	t.Logf("read %d pictures from a live board, first: %s", len(images), images[0].URL)
 }
+
+// One pin, which is what a phone's share sheet hands over: Pinterest's app
+// shares pin.it/CODE, and that code resolves to a single pin far more often
+// than to a board.
+func TestLivePinterestSinglePinStillReads(t *testing.T) {
+	if os.Getenv("PICTOGREP_LIVE") == "" {
+		t.Skip("set PICTOGREP_LIVE=1 to run this against the real Pinterest")
+	}
+	board, err := url.Parse("https://www.pinterest.com/pinterest/official-news/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// A pin id read off a live board, so this does not rot the way a hardcoded
+	// one would when somebody deletes their pin.
+	found, err := pinterestBoardImages(context.Background(), board, 1)
+	if err != nil || len(found) == 0 {
+		t.Fatalf("could not get a pin id to test with: %v", err)
+	}
+	id := strings.TrimPrefix(found[0].ID, "pinterest:")
+
+	address, err := url.Parse("https://www.pinterest.com/pin/" + id + "/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	images, err := nativeGalleryImages(context.Background(), address, 10)
+	if err != nil {
+		t.Fatalf("reading a single pin failed: %v", err)
+	}
+	if len(images) != 1 || !strings.HasPrefix(images[0].URL, "http") {
+		t.Fatalf("a pin address gave %+v", images)
+	}
+	t.Logf("pin %s is %s", id, images[0].URL)
+}

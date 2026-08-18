@@ -130,6 +130,11 @@ func TestPinterestBoardURLValidation(t *testing.T) {
 	valid := []string{
 		"https://www.pinterest.com/artist/film-reference/",
 		"https://br.pinterest.com/artist/film-reference/?invite_code=secret#pins",
+		// The two a phone produces. Pinterest's own share sheet hands out
+		// pin.it links and nothing else, and they usually resolve to a single
+		// pin, so refusing either refused the only address most people have.
+		"https://pin.it/AbCd123",
+		"https://pinterest.com/pin/123456/",
 	}
 	for _, raw := range valid {
 		parsed, err := validatePinterestBoardURL(raw)
@@ -144,8 +149,8 @@ func TestPinterestBoardURLValidation(t *testing.T) {
 	for _, raw := range []string{
 		"https://example.com/artist/board/",
 		"https://pinterest.com/artist/",
-		"https://pinterest.com/pin/123456/",
-		"https://pin.it/AbCd123",
+		"https://pin.it/",
+		"https://pin.it/too/many/parts",
 		"file:///tmp/board",
 		"https://user:password@pinterest.com/artist/board/",
 		"https://pinterest.com:8443/artist/board/",
