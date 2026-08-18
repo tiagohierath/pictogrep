@@ -486,6 +486,12 @@
 .is-phone .card-menu { top: 44px; }
 
 .is-phone .card-menu-button {
+  /* Said again here because the ripple rule above, ".is-phone button", sets
+     position: relative and outranks a plain ".card-menu-button" on
+     specificity. Without this the button leaves the corner of the picture,
+     falls into normal flow, and lands under the card as a grey pill. Any other
+     button that is positioned by a single class needs the same treatment. */
+  position: absolute;
   right: 4px;
   top: 4px;
   width: 32px;
