@@ -1834,20 +1834,12 @@ func (s *server) thumbnail(w http.ResponseWriter, r *http.Request) {
 		s.image(w, r)
 		return
 	}
-	source, _, decodeErr := image.Decode(file)
+	thumbnail, decodeErr := renderPreview(file, config, maximum)
 	_ = file.Close()
 	if decodeErr != nil {
 		s.image(w, r)
 		return
 	}
-	bounds := source.Bounds()
-	width, height := bounds.Dx(), bounds.Dy()
-	if width > maximum || height > maximum {
-		scale := math.Min(float64(maximum)/float64(width), float64(maximum)/float64(height))
-		width = max(1, int(float64(width)*scale))
-		height = max(1, int(float64(height)*scale))
-	}
-	thumbnail := resizePreview(source, width, height)
 	output, err := os.CreateTemp(s.app.thumbnailDir, "thumbnail-*.tmp")
 	if err != nil {
 		s.image(w, r)
@@ -1876,9 +1868,90 @@ func (s *server) thumbnail(w http.ResponseWriter, r *http.Request) {
 // That keeps diagonal edges and fine details smooth even when a large original
 // is reduced to a grid-sized preview. Transparent pixels are composited onto
 // white because the preview cache is JPEG; the original is never changed.
-func resizePreview(source image.Image, width, height int) *image.RGBA64 {
+// How many pixels may be held in decoded form at once, across every request.
+//
+// Decoding costs memory in proportion to the picture, not to the thumbnail
+// coming out of it, and a browser opens six connections to fill a screen of
+// thumbnails. Six simultaneous decodes at the 25 megapixel ceiling is more
+// memory than a phone lends a process before killing it, and on Android this
+// process dying is the app dying, because the server is a child of the app.
+//
+// 32 megapixels is roughly 48 MB of JPEG planes or 128 MB of RGBA, which a
+// phone can hold while the rest of the app is running.
+const previewPixelBudget = 32_000_000
+
+// A budget rather than a count, because what runs the process out of memory is
+// area. One 24 megapixel picture and eight small ones cost the same to admit
+// under a counting semaphore, and nothing like the same to decode.
+type pixelBudget struct {
+	mu    sync.Mutex
+	room  *sync.Cond
+	limit int64
+	spent int64
+}
+
+func newPixelBudget(limit int64) *pixelBudget {
+	budget := &pixelBudget{limit: limit}
+	budget.room = sync.NewCond(&budget.mu)
+	return budget
+}
+
+func (b *pixelBudget) acquire(pixels int64) {
+	pixels = max(pixels, 1)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	// b.spent > 0 is what keeps a picture larger than the whole budget from
+	// waiting forever: it goes through on its own once nothing else is
+	// running, rather than becoming a thumbnail that can never be made.
+	for b.spent > 0 && b.spent+pixels > b.limit {
+		b.room.Wait()
+	}
+	b.spent += pixels
+}
+
+func (b *pixelBudget) release(pixels int64) {
+	pixels = max(pixels, 1)
+	b.mu.Lock()
+	b.spent = max(b.spent-pixels, 0)
+	b.mu.Unlock()
+	b.room.Broadcast()
+}
+
+var previewBudget = newPixelBudget(previewPixelBudget)
+
+// renderPreview decodes one picture and shrinks it, holding a share of the
+// decode budget for exactly as long as the full sized image is in memory.
+func renderPreview(file io.Reader, config image.Config, maximum int) (*image.RGBA, error) {
+	pixels := int64(config.Width) * int64(config.Height)
+	previewBudget.acquire(pixels)
+	defer previewBudget.release(pixels)
+
+	source, _, err := image.Decode(file)
+	if err != nil {
+		return nil, err
+	}
 	bounds := source.Bounds()
-	target := image.NewRGBA64(image.Rect(0, 0, width, height))
+	width, height := bounds.Dx(), bounds.Dy()
+	if width > maximum || height > maximum {
+		scale := math.Min(float64(maximum)/float64(width), float64(maximum)/float64(height))
+		width = max(1, int(float64(width)*scale))
+		height = max(1, int(float64(height)*scale))
+	}
+	return resizePreview(source, width, height), nil
+}
+
+// eight converts one 16 bit channel to the 8 bits a JPEG can actually carry.
+func eight(value float64) uint8 {
+	return uint8(min(255, math.Round(value/257)))
+}
+
+func resizePreview(source image.Image, width, height int) *image.RGBA {
+	bounds := source.Bounds()
+	// RGBA rather than RGBA64: this is encoded straight to JPEG, which is eight
+	// bits a channel, so the extra byte per channel was carried through the
+	// whole resize and thrown away at the end. Halves the picture held in
+	// memory while it is being written.
+	target := image.NewRGBA(image.Rect(0, 0, width, height))
 	scaleX := float64(bounds.Dx()) / float64(width)
 	scaleY := float64(bounds.Dy()) / float64(height)
 	for y := 0; y < height; y++ {
@@ -1904,7 +1977,7 @@ func resizePreview(source image.Image, width, height int) *image.RGBA64 {
 			r := min(65535.0, blend(r00, r10, r01, r11)+65535-a)
 			g := min(65535.0, blend(g00, g10, g01, g11)+65535-a)
 			b := min(65535.0, blend(b00, b10, b01, b11)+65535-a)
-			target.SetRGBA64(x, y, color.RGBA64{R: uint16(r), G: uint16(g), B: uint16(b), A: 65535})
+			target.SetRGBA(x, y, color.RGBA{R: eight(r), G: eight(g), B: eight(b), A: 255})
 		}
 	}
 	return target

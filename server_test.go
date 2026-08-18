@@ -1376,3 +1376,58 @@ func TestTheImageIndexDiesWithTheLibraryItWasBuiltFrom(t *testing.T) {
 		t.Errorf("a picture added after the index was built is missing: %q, %v", path, found)
 	}
 }
+
+// The decode budget is the only thing standing between a screen of thumbnails
+// and a phone killing the server for using too much memory, so it has to admit
+// work in the right order and, above all, never wedge.
+func TestTheDecodeBudgetLetsBigPicturesThroughWithoutDeadlocking(t *testing.T) {
+	done := make(chan string, 3)
+
+	budget := newPixelBudget(10)
+
+	// A picture larger than the entire budget still has to be decodable, or it
+	// is a thumbnail that can never be made. It waits for an empty budget and
+	// then runs alone.
+	budget.acquire(100)
+	go func() {
+		budget.release(100)
+		done <- "huge"
+	}()
+	if got := <-done; got != "huge" {
+		t.Fatalf("unexpected order: %s", got)
+	}
+
+	// Two that fit together do not wait for each other.
+	budget.acquire(4)
+	budget.acquire(4)
+	budget.release(4)
+	budget.release(4)
+
+	// One that does not fit waits until there is room, rather than proceeding
+	// and blowing the ceiling the budget exists to hold.
+	budget.acquire(8)
+	waiting := make(chan struct{})
+	go func() {
+		close(waiting)
+		budget.acquire(8) // does not fit alongside the 8 already out
+		done <- "second"
+		budget.release(8)
+	}()
+	<-waiting
+
+	select {
+	case got := <-done:
+		t.Fatalf("%s was let through while the budget was full", got)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	budget.release(8)
+	select {
+	case got := <-done:
+		if got != "second" {
+			t.Fatalf("unexpected waiter: %s", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("releasing the budget did not wake the picture waiting for it")
+	}
+}
