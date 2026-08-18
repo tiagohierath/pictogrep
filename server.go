@@ -26,6 +26,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -281,12 +282,65 @@ func sendError(w http.ResponseWriter, status int, err error) {
 	sendJSON(w, status, map[string]any{"ok": false, "error": err.Error()})
 }
 
+// The page, built once rather than read and rewritten per request.
+var homePage = sync.OnceValues(func() ([]byte, error) {
+	data, err := embeddedFiles.ReadFile("web/index.html")
+	if err != nil {
+		return nil, err
+	}
+	return phoneShell(data), nil
+})
+
+// phoneShell turns the shared page into the Android one.
+//
+// On a phone the interface is Material 3, which is a different stylesheet and
+// a little furniture the desktop has no use for. Which one to serve is decided
+// here, in the markup, rather than by JavaScript adding a class once the first
+// state request comes back: by then the desktop layout has already been
+// painted, and every launch of the app starts with a visible lurch out of it.
+//
+// runsOnPhone is a build constant, so the desktop binary compiles this away to
+// a page that is byte for byte the file on disk.
+func phoneShell(page []byte) []byte {
+	if !runsOnPhone {
+		return page
+	}
+	return rewriteForPhone(page)
+}
+
+// Split out from phoneShell so a test can run it on any build. On the desktop
+// one, runsOnPhone is false and phoneShell alone would never reach this.
+func rewriteForPhone(page []byte) []byte {
+	for _, swap := range []struct{ from, to string }{
+		{`<html lang="en">`, `<html lang="en" class="is-phone">`},
+		{
+			`<link rel="stylesheet" href="/assets/app.css">`,
+			`<link rel="stylesheet" href="/assets/app.css">` + "\n" +
+				`  <link rel="stylesheet" href="/assets/m3.css">`,
+		},
+		{
+			`<script src="/assets/app.js" defer></script>`,
+			`<script src="/assets/app.js" defer></script>` + "\n" +
+				`  <script src="/assets/phone.js" defer></script>`,
+		},
+	} {
+		if !bytes.Contains(page, []byte(swap.from)) {
+			// The page is embedded at build time, so a miss here is a change to
+			// index.html that silently drops the phone interface. Loud, and in
+			// front of a test, rather than a launch that looks like the desktop.
+			panic("phoneShell: index.html no longer contains " + swap.from)
+		}
+		page = bytes.Replace(page, []byte(swap.from), []byte(swap.to), 1)
+	}
+	return page
+}
+
 func (s *server) home(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
 		return
 	}
-	data, err := embeddedFiles.ReadFile("web/index.html")
+	data, err := homePage()
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return

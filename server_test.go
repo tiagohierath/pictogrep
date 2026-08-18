@@ -1296,3 +1296,33 @@ func TestCanvasPluginIsOffUntilEnabled(t *testing.T) {
 		t.Fatal("the canvas did not stay enabled")
 	}
 }
+
+// The phone interface is wired into the page by rewriting it, so the strings
+// being rewritten are load-bearing. Edit index.html without knowing that and
+// the Android build loses Material 3 in silence: the app still works, still
+// serves, and simply looks like the desktop again.
+func TestTheAndroidPageGetsItsOwnInterface(t *testing.T) {
+	page, err := embeddedFiles.ReadFile("web/index.html")
+	if err != nil {
+		t.Fatalf("reading the page: %v", err)
+	}
+
+	phone := string(rewriteForPhone(page))
+	for _, want := range []string{
+		`<html lang="en" class="is-phone">`,
+		`href="/assets/m3.css"`,
+		`src="/assets/phone.js"`,
+	} {
+		if !strings.Contains(phone, want) {
+			t.Errorf("the phone page is missing %s", want)
+		}
+	}
+
+	// Once each, and the desktop page untouched by any of it.
+	if n := strings.Count(phone, "/assets/m3.css"); n != 1 {
+		t.Errorf("the stylesheet is linked %d times, want 1", n)
+	}
+	if strings.Contains(string(page), "is-phone") {
+		t.Error("index.html names the phone class itself, so the rewrite is not the only way in")
+	}
+}
