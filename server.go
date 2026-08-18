@@ -70,7 +70,7 @@ func newServer(app *application) (*server, error) {
 	}
 	return &server{
 		app: app, practice: practice, remoteFetcher: downloadRemoteImage,
-		galleryDL: runGalleryDL, checkUpdate: checkForUpdate, applyUpdate: installUpdate,
+		galleryDL: downloadGallery, checkUpdate: checkForUpdate, applyUpdate: installUpdate,
 	}, nil
 }
 
@@ -508,7 +508,16 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 	if len(paths) > 0 {
 		index = map[string]any{"count": len(paths), "sources": sources, "due": false, "maintenance_due": false, "duplicates": 0}
 	}
+	// Whether downloading works at all, which used to mean "is gallery-dl
+	// installed". It is now always true: where gallery-dl is missing, which is
+	// every phone, the built-in downloader answers for Pinterest boards and
+	// ordinary picture pages instead. The name is reported so the interface can
+	// say which one is running rather than implying the whole catalogue.
 	_, galleryDLError := galleryDLBinary()
+	downloader := "built-in"
+	if galleryDLError == nil {
+		downloader = "gallery-dl"
+	}
 	sendJSON(w, 200, map[string]any{
 		"ok": true, "version": version, "model": s.app.embeddingModel.ModelID, "pretrained": s.app.embeddingModel.Revision,
 		"semanticModel": s.app.embeddingModel.Key, "embeddingModel": s.app.embeddingModel,
@@ -539,11 +548,11 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 			"vim":       map[string]any{"enabled": s.app.pluginEnabled("vim"), "name": "Vim Mode", "description": "Use Vim-style keyboard navigation in the library and storyboard."},
 			"canvas":    map[string]any{"enabled": s.app.pluginEnabled("canvas"), "name": "Folder canvas", "description": "Arrange a folder's pictures freely on a flat workspace."},
 			"pinterest": map[string]any{
-				"enabled": s.app.pluginEnabled("pinterest"), "available": galleryDLError == nil,
+				"enabled": s.app.pluginEnabled("pinterest"), "available": true, "downloader": downloader,
 				"name": "Import from Pinterest", "description": "Import every image from a public Pinterest board.",
 			},
 			"web": map[string]any{
-				"enabled": s.app.pluginEnabled("web"), "available": galleryDLError == nil,
+				"enabled": s.app.pluginEnabled("web"), "available": true, "downloader": downloader,
 				"name": "Import from web", "description": "Download a gallery from any supported site, and follow artists for new work.",
 			},
 			"commandPalette": map[string]any{

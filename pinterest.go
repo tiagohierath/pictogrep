@@ -333,7 +333,7 @@ func (s *server) runGalleryImport(ctx context.Context, options galleryImport) (m
 		images = nil
 	}
 	if len(images) == 0 && !options.AllowEmpty && ctx.Err() == nil {
-		return nil, fmt.Errorf("gallery-dl did not find any images it could download at this address")
+		return nil, fmt.Errorf("nothing at that address could be downloaded as a picture")
 	}
 
 	folder := options.Folder
@@ -406,6 +406,18 @@ func (s *server) runGalleryImport(ctx context.Context, options galleryImport) (m
 		"total": len(images), "imported": imported, "skipped": skipped,
 		"linked": linked, "failed": failed, "lastError": lastError,
 	}, nil
+}
+
+// downloadGallery is the downloader the server runs with. gallery-dl handles
+// hundreds of sites and knows how to log in to them, so where it is installed
+// it stays the answer. Where it is not, which is every phone and any desktop
+// without Python, the native downloader takes Pinterest boards and ordinary
+// pages rather than the whole feature being missing. See native_gallery.go.
+func downloadGallery(ctx context.Context, download galleryDLRequest) error {
+	if _, err := galleryDLBinary(); err != nil {
+		return runNativeGallery(ctx, download)
+	}
+	return runGalleryDL(ctx, download)
 }
 
 func runGalleryDL(ctx context.Context, download galleryDLRequest) error {
