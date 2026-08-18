@@ -84,9 +84,13 @@ type application struct {
 	thumbnailDir       string
 	embeddingModel     embeddingModel
 
-	mu         sync.RWMutex
-	canvasMu   sync.Mutex
-	paths      []string
+	mu       sync.RWMutex
+	canvasMu sync.Mutex
+	// Assign through setPaths, never directly. See the comment there.
+	paths []string
+	// Bumped by every replacement of paths, so a cache built from the library
+	// can tell in one integer comparison whether it is out of date.
+	edits      uint64
 	sources    []string
 	job        jobState
 	embeddings map[string]embeddingRecord
@@ -437,7 +441,7 @@ func (a *application) removeDuplicateImportedFiles() int {
 		seen[digest] = path
 		kept = append(kept, path)
 	}
-	a.paths = kept
+	a.setPaths(kept)
 	return removed
 }
 
@@ -897,11 +901,11 @@ func (a *application) loadLibrary() error {
 		}
 	}
 	state.Images = safeImagePaths(existingUniquePaths(state.Images))
-	a.paths = state.Images
+	a.setPaths(state.Images)
 	a.sources = existingUniqueDirectories(state.Sources)
 	if len(a.paths) == 0 {
 		paths, _ := scanImages(a.libraryDir)
-		a.paths = paths
+		a.setPaths(paths)
 	}
 	return nil
 }
@@ -1003,6 +1007,25 @@ func (a *application) snapshot() (paths, sources []string, job jobState) {
 	return append([]string(nil), a.paths...), append([]string(nil), a.sources...), a.job
 }
 
+// setPaths replaces the library. Everything derived from the list of pictures
+// is invalidated by the counter it bumps, so assign a.paths through here and
+// nowhere else: a direct assignment leaves the id lookup in server.go pointing
+// at pictures that have been removed, which reaches the user as a thumbnail
+// for the wrong file. The caller holds a.mu.
+func (a *application) setPaths(paths []string) {
+	a.paths = paths
+	a.edits++
+}
+
+// libraryVersion is how a cache asks "is what I built still true" without
+// copying the whole library to find out. Cheap enough to call on every request
+// for a thumbnail, which is what calls it.
+func (a *application) libraryVersion() uint64 {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.edits
+}
+
 func (a *application) indexing() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
@@ -1018,7 +1041,7 @@ func (a *application) addPath(path string) int {
 			return index
 		}
 	}
-	a.paths = append(a.paths, path)
+	a.setPaths(append(a.paths, path))
 	_ = a.saveLibraryLocked()
 	return len(a.paths) - 1
 }
@@ -1043,7 +1066,7 @@ func (a *application) addPaths(paths []string) int {
 			continue
 		}
 		known[path] = true
-		a.paths = append(a.paths, path)
+		a.setPaths(append(a.paths, path))
 		added++
 	}
 	if added > 0 {
@@ -1062,7 +1085,7 @@ func (a *application) removePath(path string) error {
 			kept = append(kept, existing)
 		}
 	}
-	a.paths = kept
+	a.setPaths(kept)
 	_, hadEmbedding := a.embeddings[path]
 	delete(a.embeddings, path)
 	if err := a.saveLibraryLocked(); err != nil {
@@ -1078,7 +1101,7 @@ func (a *application) replaceLibrary(sources, paths []string) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.sources = uniqueStrings(sources)
-	a.paths = existingUniquePaths(paths)
+	a.setPaths(existingUniquePaths(paths))
 	return a.saveLibraryLocked()
 }
 
@@ -1170,7 +1193,7 @@ func (a *application) refreshLibrary(root string) (libraryRefresh, error) {
 		}
 	}
 	sort.Strings(paths)
-	a.paths = paths
+	a.setPaths(paths)
 	if err := a.saveLibraryLocked(); err != nil {
 		return libraryRefresh{}, err
 	}

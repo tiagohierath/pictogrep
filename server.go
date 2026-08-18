@@ -47,6 +47,8 @@ type server struct {
 	checkUpdate func() (updateState, error)
 	applyUpdate func(updateState) error
 	updates     autoUpdater
+	// Rebuilt from the library whenever it changes. See imageIndex.
+	index imageIndex
 }
 
 type imageRecord struct {
@@ -454,17 +456,44 @@ func stableImageID(path string) string {
 	return hashHex(sum[:])
 }
 
+// The id to path index, and the library version it was built from.
+//
+// Turning an id back into a path used to mean hashing every path in the
+// library, on every request. A screen of sixty thumbnails over a twenty
+// thousand picture library is 1.2 million SHA-256 sums and 1.2 million copies
+// of the path list, for sixty answers. On a desktop that is a warm fan; on a
+// phone it is the reason scrolling stutters.
+//
+// Built once per change to the library instead, and thrown away by a counter
+// rather than a timer, so it cannot serve a picture that has been removed.
+type imageIndex struct {
+	mu      sync.Mutex
+	version uint64
+	built   bool
+	byID    map[string]string
+}
+
 func (s *server) imagePathByID(id string) (string, bool) {
 	if len(id) != sha256.Size*2 {
 		return "", false
 	}
-	paths, _, _ := s.app.snapshot()
-	for _, path := range paths {
-		if stableImageID(path) == id {
-			return path, true
+
+	version := s.app.libraryVersion()
+
+	s.index.mu.Lock()
+	defer s.index.mu.Unlock()
+	if !s.index.built || s.index.version != version {
+		// snapshot copies the library, which is exactly why this is here and
+		// not on the path every request takes.
+		paths, _, _ := s.app.snapshot()
+		byID := make(map[string]string, len(paths))
+		for _, path := range paths {
+			byID[stableImageID(path)] = path
 		}
+		s.index.byID, s.index.version, s.index.built = byID, version, true
 	}
-	return "", false
+	path, found := s.index.byID[id]
+	return path, found
 }
 
 func (s *server) appState(w http.ResponseWriter, _ *http.Request) {

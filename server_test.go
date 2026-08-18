@@ -1326,3 +1326,53 @@ func TestTheAndroidPageGetsItsOwnInterface(t *testing.T) {
 		t.Error("index.html names the phone class itself, so the rewrite is not the only way in")
 	}
 }
+
+// Turning an id back into a path is on the path of every thumbnail request, so
+// it is cached. A cache that outlives the library it was built from is worse
+// than the linear scan it replaced: it answers with a picture that has been
+// removed, and the user gets a thumbnail for a file that is no longer theirs.
+func TestTheImageIndexDiesWithTheLibraryItWasBuiltFrom(t *testing.T) {
+	app, _ := testHTTPServer(t)
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	folder := t.TempDir()
+	first := filepath.Join(folder, "first.png")
+	second := filepath.Join(folder, "second.png")
+	writeTestPNG(t, first)
+	writeTestPNG(t, second)
+	app.addPath(first)
+	app.addPath(second)
+
+	firstID, secondID := stableImageID(first), stableImageID(second)
+
+	// Ask once, which builds the index.
+	if path, found := handler.imagePathByID(firstID); !found || path != first {
+		t.Fatalf("first lookup gave %q, %v", path, found)
+	}
+	if path, found := handler.imagePathByID(secondID); !found || path != second {
+		t.Fatalf("second lookup gave %q, %v", path, found)
+	}
+
+	// Now take one away. The library has changed underneath a cache that has
+	// already been built and would otherwise still be holding the answer.
+	if err := app.removePath(first); err != nil {
+		t.Fatal(err)
+	}
+	if path, found := handler.imagePathByID(firstID); found {
+		t.Errorf("a removed picture is still being served as %q", path)
+	}
+	if path, found := handler.imagePathByID(secondID); !found || path != second {
+		t.Errorf("the picture that stayed was lost: %q, %v", path, found)
+	}
+
+	// And adding one is seen without anything being told to rebuild.
+	third := filepath.Join(folder, "third.png")
+	writeTestPNG(t, third)
+	app.addPath(third)
+	if path, found := handler.imagePathByID(stableImageID(third)); !found || path != third {
+		t.Errorf("a picture added after the index was built is missing: %q, %v", path, found)
+	}
+}
