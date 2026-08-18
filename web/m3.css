@@ -470,6 +470,21 @@
 
 .is-phone .image-card-skeleton span { border-radius: var(--m3-corner-md); }
 
+/* The menu button is drawn as a dark circle with a white glyph, which only
+   reads as anything over a picture. It was positioned against .image-info, the
+   strip of metadata under the picture, so it came out below the card instead:
+   a grey pill floating in the margin with nothing behind it. The card is
+   already a positioned ancestor, so the strip only has to stop being one. The
+   space that strip reserved on its right for the button goes with it. */
+.is-phone .image-info {
+  position: static;
+  padding-right: 0;
+}
+
+/* Anchored under the button rather than under the top of the card, now that
+   the two are no longer in the same box. */
+.is-phone .card-menu { top: 44px; }
+
 .is-phone .card-menu-button {
   right: 4px;
   top: 4px;
