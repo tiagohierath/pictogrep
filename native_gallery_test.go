@@ -34,8 +34,8 @@ func testPNG(t *testing.T, shade uint8) []byte {
 	return buffer.Bytes()
 }
 
-// A Pinterest that behaves like the real one: a board page carrying its state
-// in a script tag, and a feed endpoint that pages through the rest.
+// A Pinterest that behaves like the real one: the two resource endpoints, the
+// mandatory handler header, and a board that pages.
 func fakePinterest(t *testing.T, pins, perPage int) *httptest.Server {
 	t.Helper()
 	pin := func(index int) map[string]any {
@@ -51,20 +51,40 @@ func fakePinterest(t *testing.T, pins, perPage int) *httptest.Server {
 	mux := http.NewServeMux()
 	server := httptest.NewServer(mux)
 
-	mux.HandleFunc("/someone/a-board/", func(w http.ResponseWriter, r *http.Request) {
-		first := map[string]any{}
-		for index := 0; index < perPage && index < pins; index++ {
-			first[fmt.Sprint(index)] = pin(index)
+	// Without the handler header the real endpoints answer 403, and getting
+	// that wrong is the difference between a working import and none.
+	guard := func(next http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("X-Pinterest-PWS-Handler") == "" {
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte("Invalid Resource Request"))
+				return
+			}
+			next(w, r)
 		}
-		state := map[string]any{"props": map[string]any{"initialReduxState": map[string]any{
-			"pins":   first,
-			"boards": map[string]any{"b1": map[string]any{"id": "8891", "url": "/someone/a-board/"}},
-		}}}
-		encoded, _ := json.Marshal(state)
-		fmt.Fprintf(w, `<html><body><script id="__PWS_DATA__" type="application/json">%s</script></body></html>`, encoded)
-	})
+	}
 
-	mux.HandleFunc("/resource/BoardFeedResource/get/", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("/resource/BoardResource/get/", guard(func(w http.ResponseWriter, r *http.Request) {
+		var query struct {
+			Options struct {
+				Username string `json:"username"`
+				Slug     string `json:"slug"`
+			} `json:"options"`
+		}
+		_ = json.Unmarshal([]byte(r.URL.Query().Get("data")), &query)
+		if query.Options.Username != "someone" || query.Options.Slug != "a-board" {
+			w.WriteHeader(http.StatusNotFound)
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"resource_response": map[string]any{"error": map[string]any{"message": "Board not found."}},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"resource_response": map[string]any{"data": map[string]any{"id": "8891", "pin_count": pins}},
+		})
+	}))
+
+	mux.HandleFunc("/resource/BoardFeedResource/get/", guard(func(w http.ResponseWriter, r *http.Request) {
 		var query struct {
 			Options struct {
 				BoardID   string   `json:"board_id"`
@@ -79,7 +99,7 @@ func fakePinterest(t *testing.T, pins, perPage int) *httptest.Server {
 			w.WriteHeader(http.StatusNotFound)
 			return
 		}
-		from := perPage
+		from := 0
 		if len(query.Options.Bookmarks) > 0 {
 			fmt.Sscanf(query.Options.Bookmarks[0], "at-%d", &from)
 		}
@@ -94,7 +114,7 @@ func fakePinterest(t *testing.T, pins, perPage int) *httptest.Server {
 		_ = json.NewEncoder(w).Encode(map[string]any{
 			"resource_response": map[string]any{"data": data, "bookmark": bookmark},
 		})
-	})
+	}))
 
 	mux.HandleFunc("/img/", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "image/png")
@@ -105,9 +125,8 @@ func fakePinterest(t *testing.T, pins, perPage int) *httptest.Server {
 	return server
 }
 
-// Nothing has to pretend to be pinterest.com: the downloader decides what a
-// page is from the state blob it carries, and pages the board against the host
-// the page came from, which here is the test server.
+// downloadFrom runs the whole downloader against a test server, which for any
+// host that is not Pinterest is the same path the app takes.
 func downloadFrom(t *testing.T, server *httptest.Server, path string, request galleryDLRequest) error {
 	t.Helper()
 	request.URL = server.URL + path
@@ -130,61 +149,93 @@ func downloadedFiles(t *testing.T, directory string) []string {
 	return names
 }
 
-func TestNativeDownloaderWalksAWholePinterestBoard(t *testing.T) {
-	server := fakePinterest(t, 30, 10)
-	directory := t.TempDir()
-	if err := downloadFrom(t, server, "/someone/a-board/", galleryDLRequest{Directory: directory}); err != nil {
+// board runs the Pinterest extractor against a fake Pinterest. Dispatch is by
+// hostname and a test server is not pinterest.com, so the extractor is reached
+// directly; everything past that point is the code the app runs.
+func board(t *testing.T, server *httptest.Server, path string, limit int) []nativeGalleryImage {
+	t.Helper()
+	address, err := url.Parse(server.URL + path)
+	if err != nil {
 		t.Fatal(err)
 	}
-	// Ten pins came with the page, twenty more from two pages of the feed.
+	if limit == 0 {
+		limit = maxPinterestImages
+	}
+	images, err := pinterestBoardImages(context.Background(), address, limit)
+	if err != nil {
+		t.Fatalf("reading the board failed: %v", err)
+	}
+	return images
+}
+
+func TestNativeDownloaderWalksAWholePinterestBoard(t *testing.T) {
+	server := fakePinterest(t, 30, 10)
+	images := board(t, server, "/someone/a-board/", 0)
+	if len(images) != 30 {
+		t.Fatalf("found %d pictures on a 30 pin board", len(images))
+	}
+	directory := t.TempDir()
+	if err := downloadAll(context.Background(), images, galleryDLRequest{Directory: directory}, 0); err != nil {
+		t.Fatal(err)
+	}
 	if files := downloadedFiles(t, directory); len(files) != 30 {
-		t.Fatalf("downloaded %d pictures from a 30 pin board: %v", len(files), files)
+		t.Fatalf("downloaded %d of 30 pictures: %v", len(files), files)
+	}
+}
+
+// The board endpoint and the feed endpoint both answer 403 without the handler
+// header, which is the one header that matters and the easiest to lose.
+func TestNativeDownloaderSendsThePinterestHandlerHeader(t *testing.T) {
+	server := fakePinterest(t, 5, 5)
+	if images := board(t, server, "/someone/a-board/", 0); len(images) != 5 {
+		t.Fatalf("found %d pictures, so a request went out without the handler header", len(images))
 	}
 }
 
 func TestNativeDownloaderTakesTheOriginalNotTheThumbnail(t *testing.T) {
-	asked := make(chan string, 64)
-	mux := http.NewServeMux()
-	server := httptest.NewServer(mux)
-	t.Cleanup(server.Close)
-	mux.HandleFunc("/someone/a-board/", func(w http.ResponseWriter, r *http.Request) {
-		state := map[string]any{"props": map[string]any{"initialReduxState": map[string]any{
-			"pins": map[string]any{"0": map[string]any{
-				"id": "1",
-				"images": map[string]any{
-					"236x": map[string]any{"url": server.URL + "/img/small.png", "width": 236, "height": 236},
-					"orig": map[string]any{"url": server.URL + "/img/original.png", "width": 2000, "height": 2000},
-				},
-			}},
-		}}}
-		encoded, _ := json.Marshal(state)
-		fmt.Fprintf(w, `<script id="__PWS_DATA__" type="application/json">%s</script>`, encoded)
-	})
-	mux.HandleFunc("/img/", func(w http.ResponseWriter, r *http.Request) {
-		asked <- r.URL.Path
-		w.Header().Set("Content-Type", "image/png")
-		_, _ = w.Write(testPNG(t, 10))
-	})
-
-	if err := downloadFrom(t, server, "/someone/a-board/", galleryDLRequest{}); err != nil {
-		t.Fatal(err)
+	server := fakePinterest(t, 1, 1)
+	images := board(t, server, "/someone/a-board/", 0)
+	if len(images) != 1 {
+		t.Fatalf("expected one picture, found %d", len(images))
 	}
-	close(asked)
-	for path := range asked {
-		if path != "/img/original.png" {
-			t.Fatalf("downloaded %s instead of the original", path)
-		}
+	if !strings.HasSuffix(images[0].URL, "/img/0.png") {
+		t.Fatalf("took %s instead of the original", images[0].URL)
 	}
 }
 
 func TestNativeDownloaderStopsAtTheLimit(t *testing.T) {
 	server := fakePinterest(t, 100, 10)
-	directory := t.TempDir()
-	if err := downloadFrom(t, server, "/someone/a-board/", galleryDLRequest{Directory: directory, Limit: 12}); err != nil {
+	if images := board(t, server, "/someone/a-board/", 12); len(images) != 12 {
+		t.Fatalf("a limit of 12 found %d pictures", len(images))
+	}
+}
+
+// A board that is not there answers 404, and the message has to say so rather
+// than reporting an empty board, which is what a silent parse failure looks
+// like from the outside.
+func TestNativeDownloaderSaysWhenABoardIsNotThere(t *testing.T) {
+	server := fakePinterest(t, 10, 10)
+	address, err := url.Parse(server.URL + "/someone/no-such-board/")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if files := downloadedFiles(t, directory); len(files) != 12 {
-		t.Fatalf("a limit of 12 downloaded %d pictures", len(files))
+	_, err = pinterestBoardImages(context.Background(), address, 10)
+	if err == nil || !strings.Contains(err.Error(), "no public board") {
+		t.Fatalf("a missing board failed with: %v", err)
+	}
+}
+
+// A profile holds many boards, and picking one of them at random is worse than
+// saying which address is wanted.
+func TestNativeDownloaderRefusesAProfile(t *testing.T) {
+	server := fakePinterest(t, 10, 10)
+	address, err := url.Parse(server.URL + "/someone/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = pinterestBoardImages(context.Background(), address, 10)
+	if err == nil || !strings.Contains(err.Error(), "profile") {
+		t.Fatalf("a profile address failed with: %v", err)
 	}
 }
 
@@ -192,9 +243,10 @@ func TestNativeDownloaderStopsAtTheLimit(t *testing.T) {
 func TestNativeDownloaderRemembersWhatItAlreadyHas(t *testing.T) {
 	server := fakePinterest(t, 20, 10)
 	archive := filepath.Join(t.TempDir(), "seen.sqlite")
+	images := board(t, server, "/someone/a-board/", 0)
 
 	first := t.TempDir()
-	if err := downloadFrom(t, server, "/someone/a-board/", galleryDLRequest{Directory: first, Archive: archive}); err != nil {
+	if err := downloadAll(context.Background(), images, galleryDLRequest{Directory: first, Archive: archive}, 0); err != nil {
 		t.Fatal(err)
 	}
 	if files := downloadedFiles(t, first); len(files) != 20 {
@@ -202,7 +254,7 @@ func TestNativeDownloaderRemembersWhatItAlreadyHas(t *testing.T) {
 	}
 
 	second := t.TempDir()
-	if err := downloadFrom(t, server, "/someone/a-board/", galleryDLRequest{Directory: second, Archive: archive}); err != nil {
+	if err := downloadAll(context.Background(), images, galleryDLRequest{Directory: second, Archive: archive}, 0); err != nil {
 		t.Fatal(err)
 	}
 	if files := downloadedFiles(t, second); len(files) != 0 {

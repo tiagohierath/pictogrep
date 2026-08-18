@@ -14,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 )
@@ -86,9 +85,12 @@ func runNativeGallery(ctx context.Context, download galleryDLRequest) error {
 	if err != nil {
 		return err
 	}
+	return downloadAll(ctx, images, download, limit)
+}
 
-	// Everything already downloaded on an earlier check, skipped before a
-	// single request goes out for it.
+// downloadAll fetches what an extractor found, skipping anything an earlier run
+// already took.
+func downloadAll(ctx context.Context, images []nativeGalleryImage, download galleryDLRequest, limit int) error {
 	seen, archivePath := readNativeArchive(download.Archive)
 	fresh := images[:0:0]
 	for _, image := range images {
@@ -96,7 +98,7 @@ func runNativeGallery(ctx context.Context, download galleryDLRequest) error {
 			fresh = append(fresh, image)
 		}
 	}
-	if len(fresh) > limit {
+	if limit > 0 && len(fresh) > limit {
 		fresh = fresh[:limit]
 	}
 
@@ -127,29 +129,19 @@ func runNativeGallery(ctx context.Context, download galleryDLRequest) error {
 	// look, is the caller's error to raise: it knows whether an empty download
 	// is allowed here and this does not.
 	if saved > 0 {
-		log.Printf("downloaded %d pictures from %s", saved, target.Hostname())
+		log.Printf("downloaded %d pictures", saved)
 	}
 	return nil
 }
 
-// nativeGalleryImages fetches the address once and decides what it is from what
-// came back, rather than from a pattern matched against the address. Pinterest
-// has a site per country, hands out pin.it short links that redirect, and puts
-// the same state blob on a board, a profile and a search; all of them arrive
-// here as "a page that carries Pinterest state", which is the thing actually
-// worth branching on.
+// nativeGalleryImages picks the extractor for an address.
 func nativeGalleryImages(ctx context.Context, target *url.URL, limit int) ([]nativeGalleryImage, error) {
+	if isPinterestHost(target.Hostname()) {
+		return pinterestBoardImages(ctx, target, limit)
+	}
 	body, final, err := fetchTextFrom(ctx, target, nil)
 	if err != nil {
 		return nil, importError(http.StatusBadGateway, "could not open that page: %v", err)
-	}
-	if state := pinterestStateScript.FindStringSubmatch(body); state != nil {
-		return pinterestBoardImages(ctx, final, state[1], limit)
-	}
-	if isPinterestHost(final.Hostname()) {
-		return nil, importError(http.StatusBadGateway,
-			"Pinterest did not return a board here. A board address looks like "+
-				"pinterest.com/someone/a-board/, and a private board cannot be read.")
 	}
 	return webPageImages(final, body, limit)
 }
@@ -163,62 +155,108 @@ func isPinterestHost(host string) bool {
 // ---------------------------------------------------------------------------
 // Pinterest
 // ---------------------------------------------------------------------------
+//
+// Boards are read through the same two JSON endpoints the site's own interface
+// calls, and not out of the HTML.
+//
+// The HTML was the obvious route and it is a trap. Pinterest used to ship the
+// first screen's state in a <script id="__PWS_DATA__"> tag; that tag is still
+// there and now carries only routing configuration, so parsing it yields zero
+// pins, no error, and an import that silently saves nothing. The state moved to
+// __PWS_INITIAL_PROPS__, and the page also reports renderMode "shellReady" with
+// unauthenticated lockdown experiments switched on, which is a payload being
+// actively thinned. The JSON endpoints are both simpler and the more durable
+// bet: 3.5 KB instead of a megabyte of HTML, a real 404 for a board that does
+// not exist, and no dependence on how much of the page is rendered on the
+// server this month.
+//
+// One header does all the work. Without X-Pinterest-PWS-Handler naming a real
+// route, both endpoints answer 403 "Invalid Resource Request". With it, and
+// nothing else, they answer 200: no cookies, no CSRF token, no sign-in, and the
+// user agent turns out not to matter at all.
+const pinterestHandler = "www/[username]/[slug].js"
 
-// Pinterest renders its first screen on the server and ships the state that
-// produced it in a script tag, so the first page of pins arrives with the HTML
-// and costs nothing extra. Everything after that comes from the same JSON
-// endpoint the site's own scroll handler calls.
-var pinterestStateScript = regexp.MustCompile(
-	`(?s)<script[^>]+id="__PWS_DATA__"[^>]*>(.*?)</script>`)
+// How many pins to ask for at a time. The site's own scroll uses 25; the
+// endpoint honours far more, and a board of 800 pins is 4 requests instead of
+// 33, which on mobile data is the difference worth having.
+const pinterestPageSize = 250
 
-// pinterestBoardImages reads the state blob that came with the page and then
-// pages through the rest of the board.
-func pinterestBoardImages(ctx context.Context, board *url.URL, blob string, limit int) ([]nativeGalleryImage, error) {
-	var state struct {
-		Props struct {
-			InitialReduxState struct {
-				Pins   map[string]json.RawMessage `json:"pins"`
-				Boards map[string]struct {
-					ID  string `json:"id"`
-					URL string `json:"url"`
-				} `json:"boards"`
-			} `json:"initialReduxState"`
-		} `json:"props"`
+// pinterestResource calls one of Pinterest's resource endpoints and returns the
+// raw JSON body.
+func pinterestResource(ctx context.Context, site *url.URL, resource string, options map[string]any) (string, error) {
+	payload, err := json.Marshal(map[string]any{"options": options, "context": map[string]any{}})
+	if err != nil {
+		return "", err
 	}
-	if err := json.Unmarshal([]byte(blob), &state); err != nil {
-		return nil, importError(http.StatusBadGateway, "Pinterest sent a board Pictogrep could not read")
+	endpoint := &url.URL{
+		// The host the board was opened from. Pinterest runs a site per country
+		// and a board opened on br.pinterest.com answers there.
+		Scheme: site.Scheme, Host: site.Host,
+		Path: "/resource/" + resource + "/get/",
+		RawQuery: url.Values{
+			"source_url": {site.EscapedPath()},
+			"data":       {string(payload)},
+		}.Encode(),
+	}
+	body, _, err := fetchText(ctx, endpoint.String(), map[string]string{
+		"Accept":                  "application/json, text/javascript, */*, q=0.01",
+		"X-Pinterest-PWS-Handler": pinterestHandler,
+		"Referer":                 site.String(),
+	})
+	return body, err
+}
+
+// pinterestBoardImages lists every picture on a public board.
+func pinterestBoardImages(ctx context.Context, board *url.URL, limit int) ([]nativeGalleryImage, error) {
+	// A pin.it link is a redirect and carries no board in its own path, so it
+	// has to be followed before anything can be read out of the address.
+	if strings.EqualFold(board.Hostname(), "pin.it") {
+		if _, final, err := fetchTextFrom(ctx, board, nil); err == nil {
+			board = final
+		}
+	}
+
+	parts := strings.FieldsFunc(board.Path, func(r rune) bool { return r == '/' })
+	if len(parts) < 2 {
+		return nil, importError(http.StatusBadRequest,
+			"that is a Pinterest profile, not a board. Open the board you want and copy its address, "+
+				"which looks like pinterest.com/someone/a-board/.")
+	}
+	username, slug := parts[0], parts[1]
+
+	body, err := pinterestResource(ctx, board, "BoardResource", map[string]any{
+		"username": username, "slug": slug,
+	})
+	var answered siteStatus
+	if errors.As(err, &answered) && answered.code == http.StatusNotFound {
+		err = nil
+		body = ""
+	}
+	if err != nil {
+		return nil, importError(http.StatusBadGateway,
+			"Pinterest would not open that board: %v", err)
+	}
+	var boardAnswer struct {
+		ResourceResponse struct {
+			Data struct {
+				ID       string `json:"id"`
+				PinCount int    `json:"pin_count"`
+			} `json:"data"`
+		} `json:"resource_response"`
+	}
+	if err := json.Unmarshal([]byte(body), &boardAnswer); err != nil || boardAnswer.ResourceResponse.Data.ID == "" {
+		return nil, importError(http.StatusBadRequest,
+			"there is no public board at that address. Check it, and note that a private board "+
+				"cannot be read even when you are the one who made it.")
 	}
 
 	images := []nativeGalleryImage{}
 	seen := map[string]bool{}
-	for _, raw := range state.Props.InitialReduxState.Pins {
-		if image, ok := pinterestPinImage(raw, board); ok && !seen[image.ID] {
-			seen[image.ID] = true
-			images = append(images, image)
-		}
-	}
-	// A map has no order and an import that changes its mind about which
-	// pictures are "the newest few" every run would download the board twice.
-	sort.Slice(images, func(a, b int) bool { return images[a].ID < images[b].ID })
-
-	boardID := ""
-	for _, entry := range state.Props.InitialReduxState.Boards {
-		if entry.ID != "" {
-			boardID = entry.ID
-			break
-		}
-	}
-	if boardID == "" {
-		// A pin page, a search page, or a profile: whatever was on the first
-		// screen is all there is to have.
-		return images, nil
-	}
-
 	bookmark := ""
 	for page := 0; page < nativeGalleryMaxPages && len(images) < limit; page++ {
-		next, nextBookmark, err := pinterestBoardPage(ctx, board, boardID, bookmark)
+		next, nextBookmark, err := pinterestBoardPage(ctx, board, boardAnswer.ResourceResponse.Data.ID, bookmark)
 		if err != nil {
-			// Losing pagination is losing the rest of the board, not the part
+			// Losing pagination costs the rest of the board, not the part
 			// already in hand.
 			break
 		}
@@ -228,6 +266,8 @@ func pinterestBoardImages(ctx context.Context, board *url.URL, blob string, limi
 				images = append(images, image)
 			}
 		}
+		// The last page says so in one of two places depending on the endpoint's
+		// mood: an absent bookmark, or the sentinel.
 		if nextBookmark == "" || nextBookmark == "-end-" || nextBookmark == bookmark {
 			break
 		}
@@ -242,31 +282,11 @@ func pinterestBoardImages(ctx context.Context, board *url.URL, blob string, limi
 // pinterestBoardPage asks for one page of a board the way the site's own
 // scrolling does.
 func pinterestBoardPage(ctx context.Context, board *url.URL, boardID, bookmark string) ([]nativeGalleryImage, string, error) {
-	options := map[string]any{"board_id": boardID, "page_size": 25}
+	options := map[string]any{"board_id": boardID, "page_size": pinterestPageSize}
 	if bookmark != "" {
 		options["bookmarks"] = []string{bookmark}
 	}
-	payload, err := json.Marshal(map[string]any{"options": options, "context": map[string]any{}})
-	if err != nil {
-		return nil, "", err
-	}
-
-	// The same host the board came from. Pinterest runs a site per country and
-	// a board opened on br.pinterest.com pages against br.pinterest.com; asking
-	// the .com for it answers about a board that is not the one being read.
-	endpoint := &url.URL{
-		Scheme: board.Scheme, Host: board.Host, Path: "/resource/BoardFeedResource/get/",
-		RawQuery: url.Values{
-			"source_url": {board.EscapedPath()},
-			"data":       {string(payload)},
-		}.Encode(),
-	}
-	body, _, err := fetchText(ctx, endpoint.String(), map[string]string{
-		"Accept":                  "application/json, text/javascript, */*, q=0.01",
-		"X-Requested-With":        "XMLHttpRequest",
-		"X-Pinterest-PWS-Handler": "www/[username]/[slug].js",
-		"Referer":                 board.String(),
-	})
+	body, err := pinterestResource(ctx, board, "BoardFeedResource", options)
 	if err != nil {
 		return nil, "", err
 	}
@@ -416,6 +436,16 @@ func webPageImages(page *url.URL, body string, limit int) ([]nativeGalleryImage,
 // Fetching
 // ---------------------------------------------------------------------------
 
+// siteStatus is an answer that was not 200, carrying the code so a caller can
+// tell "there is no such board" apart from "Pinterest is having a bad day".
+// Those two want very different sentences in front of a user.
+type siteStatus struct {
+	code   int
+	status string
+}
+
+func (s siteStatus) Error() string { return "the site answered " + s.status }
+
 // fetchTextFrom is fetchText for a caller that already parsed the address and
 // wants the final one back in the same shape.
 func fetchTextFrom(ctx context.Context, address *url.URL, headers map[string]string) (string, *url.URL, error) {
@@ -446,7 +476,7 @@ func fetchText(ctx context.Context, address string, headers map[string]string) (
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return "", nil, fmt.Errorf("the site answered %s", response.Status)
+		return "", nil, siteStatus{code: response.StatusCode, status: response.Status}
 	}
 	// A page is text. Anything enormous here is a site answering a page request
 	// with a file, and reading it into memory on a phone is how the app dies.
