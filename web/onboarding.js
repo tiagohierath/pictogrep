@@ -147,7 +147,7 @@ window.PictogrepOnboarding = (function () {
       el("div", {class: "onboarding-choices"}, [
         choice(t("onboarding.share.action"), null, () => context.finish()),
       ]),
-      el("p", {class: "onboarding-creds", text: t("onboarding.source.privacy")}),
+      el("p", {class: "onboarding-creds", text: t("onboarding.share.privacy")}),
     );
     return wrap;
   }

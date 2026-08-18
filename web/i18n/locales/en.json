@@ -450,6 +450,7 @@
   "onboarding.source.title": "Where are your pictures?",
   "onboarding.source.folder": "Choose a folder",
   "onboarding.source.pinterest": "Import from Pinterest",
+  "onboarding.share.privacy": "100% local · works offline · your pictures stay on your phone · open source",
   "onboarding.source.privacy": "100% local · works offline · your pictures stay on your machine · open source",
   "onboarding.share.title": "Your library starts empty",
   "onboarding.share.body": "On a phone, Pictogrep keeps its own library. Open a picture in any app, tap Share, and pick Pictogrep. It arrives here, ready to search.",
