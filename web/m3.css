@@ -797,3 +797,48 @@
 .is-phone .m3-nav-item:active .m3-nav-icon {
   background: color-mix(in srgb, var(--m3-on-surface) 12%, transparent);
 }
+
+/* ------------------------------------------------------------------ *
+ * 13. Typography that app.css sets by hand
+ * ------------------------------------------------------------------ */
+
+/* app.css gives the first-run screen a monospace display line on purpose,
+   echoing the bitmap wordmark. It is a good gesture on a desktop and an
+   off-system one here: Material headlines are Roboto, and a monospace heading
+   is the single loudest way for this to read as someone's website rather than
+   as an Android app. The tokens could not reach these, because they name
+   --font-mono directly. */
+.is-phone .onboarding-title {
+  font-family: var(--font);
+  font-size: var(--text-2xl);
+  font-weight: 400;
+  letter-spacing: 0;
+  line-height: 1.29;
+}
+
+.is-phone .onboarding-badge,
+.is-phone .onboarding-path-value,
+.is-phone .onboarding-jump-input { font-family: var(--font); }
+
+/* The language pair, as an M3 segmented button. */
+.is-phone .onboarding-langs button {
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid var(--m3-outline);
+  font-family: var(--font);
+  font-size: var(--text-sm);
+  font-weight: 500;
+  letter-spacing: .1px;
+}
+
+.is-phone .onboarding-langs button:first-child { border-radius: 20px 0 0 20px; }
+.is-phone .onboarding-langs button:last-child { border-radius: 0 20px 20px 0; }
+.is-phone .onboarding-langs button + button { border-left: 0; }
+
+.is-phone .onboarding-langs button.is-current {
+  border-color: var(--m3-outline);
+  background: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
+}
+
+.is-phone .wordmark { letter-spacing: 0; font-weight: 400; }
