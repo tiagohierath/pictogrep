@@ -162,7 +162,13 @@
   --icon-size: 48px;
   --header-height: 64px;
   --m3-nav-height: 80px;
+  /* The search bar at the bottom: 56px of control and 8px of air above and
+     below it. Everything that has to clear it counts from here. */
+  --m3-search-height: 72px;
   --m3-gutter: 16px;
+  /* The space between two pictures, and between a picture and the edge of
+     the screen. One number, because two different ones read as a mistake. */
+  --m3-grid-gap: 8px;
 
   background: var(--m3-surface);
   color: var(--m3-on-surface);
@@ -170,8 +176,9 @@
 
 .is-phone body {
   background: var(--m3-surface);
-  /* Room for the navigation bar and the button floating above it. */
-  padding-bottom: calc(var(--m3-nav-height) + 16px);
+  /* Room for the navigation bar, the search bar sitting on top of it, and the
+     button floating above both. */
+  padding-bottom: calc(var(--m3-nav-height) + var(--m3-search-height) + 16px);
 }
 
 .is-phone :focus-visible { outline: 3px solid var(--m3-primary); outline-offset: 2px; }
@@ -303,13 +310,25 @@
  * 4. Search bar
  * ------------------------------------------------------------------ */
 
-.is-phone .main-content { padding: 0 var(--m3-gutter); }
+.is-phone .main-content { padding: 0 var(--m3-grid-gap); }
 
+/* At the bottom, above the navigation bar, because that is where a thumb
+   already is. Fixed rather than scrolled away: search is the point of the app,
+   and reaching for the top of a 6 inch screen to use it is a stretch every
+   time. The window resizes when the keyboard opens, so this rides up with it
+   instead of hiding behind it. */
 .is-phone .search {
+  position: fixed;
+  z-index: 20;
+  right: 0;
+  bottom: var(--m3-nav-height);
+  left: 0;
   display: flex;
-  margin: 4px 0 16px;
+  margin: 0;
+  padding: 8px var(--m3-grid-gap);
   gap: 0;
   align-items: center;
+  background: var(--m3-surface);
 }
 
 .is-phone .search-input-shell {
@@ -453,7 +472,7 @@
   position: fixed;
   z-index: 25;
   right: 16px;
-  bottom: calc(var(--m3-nav-height) + 16px);
+  bottom: calc(var(--m3-nav-height) + var(--m3-search-height) + 16px);
   display: grid;
   width: 56px;
   height: 56px;
@@ -472,11 +491,11 @@
  * 7. The pictures
  * ------------------------------------------------------------------ */
 
-.is-phone .image-grid { columns: 2; column-gap: 8px; }
+.is-phone .image-grid { columns: 2; column-gap: var(--m3-grid-gap); }
 .is-phone body[data-thumbnail-size="small"] .image-grid { columns: 3; }
 .is-phone body[data-thumbnail-size="large"] .image-grid { columns: 1; }
 
-.is-phone .image-card { margin-bottom: 8px; background: transparent; }
+.is-phone .image-card { margin-bottom: var(--m3-grid-gap); background: transparent; }
 
 .is-phone .image-card > img {
   border-radius: var(--m3-corner-md);
