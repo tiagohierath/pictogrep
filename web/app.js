@@ -2010,6 +2010,11 @@ function renderState() {
     : sourceCount ? t("settings.folders_count", {count: sourceCount}) : t("settings.folders_help");
   document.body.dataset.thumbnailSize = appState.browser?.thumbnailSize || "medium";
   document.body.classList.toggle("show-filenames", Boolean(appState.browser?.showFilenames));
+  // Inside the Android app there is no folder to point at and no gallery-dl to
+  // run, so the parts of the interface that offer them are not disabled, they
+  // are absent. The server is what knows; the class is how the stylesheet and
+  // the onboarding find out.
+  document.body.classList.toggle("is-phone", Boolean(appState.mobile));
   const wikimediaEnabled = Boolean(appState.plugins?.wikimedia?.enabled);
   $("#commonsTab").hidden = !wikimediaEnabled;
   $("#wikimediaPluginToggle").checked = wikimediaEnabled;
@@ -3954,6 +3959,9 @@ window.PictogrepApp = {
   indexFolder: path => startIndex({folders: [path]}, {announce: true}),
 
   startPinterest: () => startPinterestOnboarding(),
+
+  /** Running inside the Android app, where pictures arrive through the share sheet. */
+  isMobile: () => Boolean(appState?.mobile),
 
   setLanguage: async locale => {
     await request("/api/app/settings/language", {

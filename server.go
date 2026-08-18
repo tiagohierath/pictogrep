@@ -440,6 +440,7 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 			"pending": len(missing), "total": len(paths),
 		},
 		"boards": len(s.boardRecords()), "aiAvailable": true,
+		"mobile": runsOnPhone,
 		"paths":  map[string]string{"home": s.app.home, "library": s.app.libraryDir, "boards": s.app.boardsDir, "tags": s.app.tagsDir},
 		"viewer": "Browser",
 		"storage": map[string]any{

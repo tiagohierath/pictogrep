@@ -20,6 +20,11 @@ const (
 	closesWhenIdle = false
 	// Play policy: apps do not download and execute their own new code.
 	updatesItself = false
+	// The interface asks the server what it is running on, because the two
+	// answers it gives here are different screens: there is no folder on a phone
+	// the app is allowed to read, and no Python for gallery-dl to run in. The
+	// library is this app's own directory, and the share sheet is what fills it.
+	runsOnPhone = true
 )
 
 // Android kills an app process without warning and without running anything on

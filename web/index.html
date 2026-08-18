@@ -48,12 +48,13 @@
         <h2 data-i18n="empty.welcome">Welcome to Pictogrep</h2>
         <p class="empty-intro" data-i18n="empty.intro">Your picture library is empty. Here’s how it works:</p>
         <ol class="empty-tutorial">
-          <li><div><strong data-i18n="empty.choose_title">Choose a folder</strong><span data-i18n="empty.choose_text">Add the folder where your pictures live.</span></div></li>
+          <li class="desktop-only"><div><strong data-i18n="empty.choose_title">Choose a folder</strong><span data-i18n="empty.choose_text">Add the folder where your pictures live.</span></div></li>
+          <li class="phone-only"><div><strong data-i18n="empty.share_title">Send pictures over</strong><span data-i18n="empty.share_text">In any app, tap Share and pick Pictogrep.</span></div></li>
           <li><div><strong data-i18n="empty.search_title">Search your pictures</strong><span data-i18n="empty.search_text">Describe what you remember in the search box.</span></div></li>
           <li><div><strong data-i18n="empty.organize_title">Organize what you find</strong><span data-i18n="empty.organize_text">Put pictures into folders and build storyboards.</span></div></li>
         </ol>
-        <button id="emptyAddImages" class="primary" data-i18n="empty.choose_action">Add pictures</button>
-        <p class="empty-alternative"><button type="button" class="link-button" id="emptyPinterest" data-i18n="empty.pinterest_action">Or import a Pinterest board</button><span class="empty-alternative-help" data-i18n="empty.pinterest_help">Optional. Pictogrep downloads a public board into your library.</span></p>
+        <button id="emptyAddImages" class="primary desktop-only" data-i18n="empty.choose_action">Add pictures</button>
+        <p class="empty-alternative desktop-only"><button type="button" class="link-button" id="emptyPinterest" data-i18n="empty.pinterest_action">Or import a Pinterest board</button><span class="empty-alternative-help" data-i18n="empty.pinterest_help">Optional. Pictogrep downloads a public board into your library.</span></p>
       </div>
     </section>
 
@@ -104,7 +105,7 @@
 
     <section class="drawer-section" id="addSection" hidden>
       <h2 data-i18n="add.title">Add pictures</h2>
-      <button type="button" class="file-button" id="chooseFolder"><span data-i18n="add.choose_folder">Choose a folder</span><small data-i18n="add.choose_folder_help">Read a folder where it is. Nothing is moved or copied.</small></button>
+      <button type="button" class="file-button desktop-only" id="chooseFolder"><span data-i18n="add.choose_folder">Choose a folder</span><small data-i18n="add.choose_folder_help">Read a folder where it is. Nothing is moved or copied.</small></button>
       <label class="file-button"><span data-i18n="add.choose_images">Copy pictures in</span><small data-i18n="add.choose_images_help">Saves the pictures you pick into Pictogrep's library.</small><input id="imageFiles" type="file" accept="image/*" multiple hidden></label>
     </section>
 
@@ -212,8 +213,8 @@
         <label class="settings-row plugin-row"><span><strong data-i18n="plugins.vim">Vim Mode</strong><small data-i18n="plugins.vim_help">Use Vim-style keyboard navigation in the library and storyboard.</small></span><input type="checkbox" id="vimPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong data-i18n="plugins.canvas">Folder canvas</strong><small data-i18n="plugins.canvas_help">Adds an action for spreading a folder's pictures out on a flat workspace and dragging them around. The files never move.</small></span><input type="checkbox" id="canvasPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong data-i18n="plugins.command_palette">Command palette</strong><small data-i18n="plugins.command_palette_help">Open navigation and picture search with Ctrl+K or Command+K.</small></span><input type="checkbox" id="commandPalettePluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.title">Import from Pinterest</strong><small data-i18n="plugins.pinterest_help">On by default. Copy a public board into your library with the included downloader.</small></span><input type="checkbox" id="pinterestPluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.auto_sync">Keep imported boards up to date</strong><small data-i18n="pinterest.auto_sync_help">Checks the boards you have already imported about once a week and adds only what is new. Nothing is ever deleted.</small></span><input type="checkbox" id="pinterestAutoSyncToggle"></label>
+        <label class="settings-row plugin-row desktop-only"><span><strong data-i18n="pinterest.title">Import from Pinterest</strong><small data-i18n="plugins.pinterest_help">On by default. Copy a public board into your library with the included downloader.</small></span><input type="checkbox" id="pinterestPluginToggle"></label>
+        <label class="settings-row plugin-row desktop-only"><span><strong data-i18n="pinterest.auto_sync">Keep imported boards up to date</strong><small data-i18n="pinterest.auto_sync_help">Checks the boards you have already imported about once a week and adds only what is new. Nothing is ever deleted.</small></span><input type="checkbox" id="pinterestAutoSyncToggle"></label>
         <div class="followed-boards" id="pinterestBoardList" hidden></div>
         <label class="settings-row plugin-row"><span><strong data-i18n="web.title">Import from web</strong><small data-i18n="web.plugin_help">On by default. Download a gallery from any site the included downloader supports.</small></span><input type="checkbox" id="webPluginToggle"></label>
         <label class="settings-row plugin-row"><span><strong data-i18n="web.auto_sync">Keep followed websites up to date</strong><small data-i18n="web.auto_sync_help">Checks each website you follow about once a day and adds only new work. Nothing is ever deleted.</small></span><input type="checkbox" id="webAutoSyncToggle"></label>

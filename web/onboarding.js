@@ -135,7 +135,25 @@ window.PictogrepOnboarding = (function () {
     ]);
   }
 
+  // On a phone this step has nothing to ask. There is no folder the app is
+  // allowed to read and no gallery-dl to run, so the only way in is the share
+  // sheet, and the honest screen says so instead of offering two choices that
+  // both dead-end.
+  function renderShareStep(context) {
+    const wrap = el("div", {class: "onboarding-step"});
+    wrap.append(
+      el("h2", {class: "onboarding-title", text: t("onboarding.share.title")}),
+      el("p", {class: "onboarding-lead", text: t("onboarding.share.body")}),
+      el("div", {class: "onboarding-choices"}, [
+        choice(t("onboarding.share.action"), null, () => context.finish()),
+      ]),
+      el("p", {class: "onboarding-creds", text: t("onboarding.source.privacy")}),
+    );
+    return wrap;
+  }
+
   function renderSourceStep(context) {
+    if (context.app.isMobile?.()) return renderShareStep(context);
     const wrap = el("div", {class: "onboarding-step"});
     wrap.append(
       el("h2", {class: "onboarding-title", text: t("onboarding.source.title")}),

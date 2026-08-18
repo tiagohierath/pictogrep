@@ -14,6 +14,9 @@ const (
 	closesWhenIdle = true
 	// Self-updating binaries are fine from a tarball, banned from an app store.
 	updatesItself = true
+	// There is a filesystem to point at, and a Python to run gallery-dl with.
+	// The interface offers both.
+	runsOnPhone = false
 )
 
 // A desktop launch has no parent watching it, and often no stdin at all: a

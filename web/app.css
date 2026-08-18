@@ -808,3 +808,11 @@ body.onboarding-open { overflow: hidden; }
   .viewer-picture.is-image-loading.is-slow-loading::before { animation: none; }
   .onboarding-choice { transition: none; }
 }
+
+/* Inside the Android app. The class is set from the server's answer, not from a
+   screen width: a narrow desktop window is still a desktop, with a filesystem
+   to point at and a gallery-dl to run. */
+.phone-only { display: none; }
+body.is-phone .phone-only { display: revert; }
+body.is-phone .desktop-only { display: none; }
+.onboarding-lead { margin: 0 0 var(--space-5); font-size: var(--text-md); line-height: var(--leading); }
