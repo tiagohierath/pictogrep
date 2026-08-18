@@ -161,6 +161,9 @@ function logBackground(event, message, path = "", level = "warning") {
   }).catch(() => {});
 }
 
+/** The last whole percent shown while a model downloads. See getAIWorker. */
+let lastModelPercent = -1;
+
 function getAIWorker() {
   if (aiWorker) return aiWorker;
   aiWorker = new Worker("/assets/ai-worker.js", {type: "module"});
@@ -171,8 +174,16 @@ function getAIWorker() {
       if (message.kind === "image" && quietImageIndexing) return;
       const detail = message.detail || {};
       if (detail.status === "progress" && Number.isFinite(detail.progress)) {
-        showMessage(t("ai.preparing_percent", {progress: Math.round(detail.progress)}), false, true);
+        // Once per whole percent. The worker reports on every chunk it reads
+        // off the network, which over a 156 MB model is thousands of calls,
+        // and each one used to rewrite the toast and post a line to the server.
+        const percent = Math.round(detail.progress);
+        if (percent !== lastModelPercent) {
+          lastModelPercent = percent;
+          showMessage(t("ai.preparing_percent", {progress: percent}), false, true);
+        }
       } else if (detail.status === "initiate") {
+        lastModelPercent = -1;
         showMessage(t("ai.preparing_first"), false, true);
       }
       return;
@@ -542,12 +553,28 @@ async function semanticSearch(query) {
   }
 
   continueSemanticIndex(state.missing, state.indexed, state.total);
-  await vectorPromise;
+  try {
+    await vectorPromise;
+  } catch (error) {
+    // The query could not be turned into a vector: offline, or the model
+    // download died with the app. Letting this throw cleared the grid and said
+    // "Could not load pictures", which is the worst of both answers, because
+    // the library is right there and its filenames are searchable without any
+    // model at all. This is the same fallback a brand-new library gets.
+    logBackground("search-query-vector", error.message);
+    const fallback = await request(`/api/app/search?q=${encodeURIComponent(query)}&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}&limit=120`);
+    fallback.preparing = true;
+    return fallback;
+  }
   return requestSemanticResults(query);
 }
 
 function showMessage(text, error = false, persist = false, seconds = 3.5) {
-  if (!error) logBackground("ui-status", text, "", "info");
+  // Errors only. Every ordinary status line used to be posted back to the
+  // server as well, which during a model download meant one HTTP round trip
+  // and one log line per network chunk, on a phone, while that phone was busy
+  // downloading 156 MB.
+  if (error) logBackground("ui-status", text, "", "error");
   const box = $("#message");
   clearTimeout(messageTimer);
   $("#messageText").textContent = text;
@@ -1300,6 +1327,12 @@ async function loadImages({keepOrder = false} = {}) {
       renderImages(data.images, data.images.length);
       if (data.preparing) {
         $("#imagesEmpty").hidden = true;
+        // renderImages has already written "No results" across the screen, and
+        // while the search model is still being fetched that is a lie: there is
+        // no answer yet, rather than an empty one. On a phone the model is 156
+        // MB, so "no results" can sit there for minutes over a library that is
+        // about to answer perfectly well.
+        if (!data.images.length) showResultState(t("ai.preparing_first"), t("ai.downloading"));
       } else if (!semanticIndexPromise && !semanticWarmupPromise) closeMessage();
     } else {
       const mode = currentTag || currentSource ? "recent" : sidebarMode;
