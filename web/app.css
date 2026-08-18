@@ -440,6 +440,9 @@ body.show-filenames .image-filename { display: block; }
 .pinterest-choice:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); box-shadow: 0 0 0 1px var(--accent); }
 .pinterest-choice:hover { border-color: var(--line-strong); }
 .pinterest-choice input, .pinterest-skip input { width: 18px; height: 18px; flex: none; margin: 1px 0 0; accent-color: var(--accent); }
+/* Sits under the choice it belongs to, indented past the radio so it reads as
+   part of that answer rather than as a fourth option. */
+.pinterest-existing-folder { width: calc(100% - 18px - var(--space-3)); min-height: var(--control-height); margin-left: calc(18px + var(--space-3)); padding: 0 var(--space-2); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); color: var(--fg); font-size: var(--text-sm); }
 .pinterest-choice strong, .pinterest-choice small, .pinterest-skip strong, .pinterest-skip small { display: block; }
 .pinterest-choice strong, .pinterest-skip strong { font-size: var(--text-sm); font-weight: 600; }
 .pinterest-choice small, .pinterest-skip small { margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--text-2xs); line-height: var(--leading-tight); }
@@ -766,6 +769,32 @@ body.onboarding-open { overflow: hidden; }
   .image-grid { columns: 150px; column-gap: var(--space-3); }
   body[data-thumbnail-size="small"] .image-grid { columns: 120px; }
   body[data-thumbnail-size="large"] .image-grid { columns: 210px; }
+
+  /* The strip under each picture exists to hold the ⋯ button, and filenames
+     are off by default, so on a phone it is thirty pixels of nothing repeated
+     down every column. The button moves onto the picture instead, where it can
+     also be a thumb-sized target rather than a 30 by 28 one. */
+  .image-card:not(.image-card-skeleton) .image-info { position: static; min-height: 0; padding: 0; }
+  .image-card .image-meta:empty { display: none; }
+  .card-menu-button {
+    top: 0;
+    right: 0;
+    width: 40px;
+    height: 40px;
+    padding: var(--space-2);
+    border: 0;
+    border-radius: var(--radius-md);
+    /* The target stays 40 px for a thumb while the visible chip is only 24,
+       so the button reads as a small mark on the picture rather than a lid
+       over the corner of it. */
+    background-clip: content-box;
+    /* A picture can be any colour, so the chip carries its own contrast rather
+       than trusting whatever it happens to be sitting on. */
+    background-color: rgba(0, 0, 0, .45);
+    color: #fff;
+  }
+  .card-menu-button:hover, .card-menu-button[aria-expanded="true"] { background-color: rgba(0, 0, 0, .72); }
+  .card-menu:not(.cursor-menu) { top: calc(40px + var(--space-4)); right: var(--space-2); }
   .result-state, .empty { padding: var(--space-10) var(--space-3); }
   .folder-card { grid-template-columns: 54px minmax(0, 1fr); gap: var(--space-2); padding-left: calc(var(--space-2) + var(--folder-depth, 0) * 18px); }
   .folder-card[data-depth]:not([data-depth="0"])::before { left: calc(9px + (var(--folder-depth) - 1) * 18px); width: var(--space-3); }
@@ -812,7 +841,6 @@ body.onboarding-open { overflow: hidden; }
 /* Inside the Android app. The class is set from the server's answer, not from a
    screen width: a narrow desktop window is still a desktop, with a filesystem
    to point at and a gallery-dl to run. */
-.phone-only { display: none; }
-body.is-phone .phone-only { display: revert; }
+body:not(.is-phone) .phone-only { display: none; }
 body.is-phone .desktop-only { display: none; }
 .onboarding-lead { margin: 0 0 var(--space-5); font-size: var(--text-md); line-height: var(--leading); }
