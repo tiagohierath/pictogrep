@@ -49,6 +49,28 @@ type server struct {
 	updates     autoUpdater
 	// Rebuilt from the library whenever it changes. See imageIndex.
 	index imageIndex
+	// nil until attachSync runs, which loads a device identity from disk. A
+	// server under test, or one whose data directory is unwritable, works fine
+	// without it: sync is additive to a working library, never a dependency of
+	// one.
+	sync *syncServer
+}
+
+// attachSync loads this device's identity and paired peers, but does not open
+// the sync port: nothing listens until the user has opened "Connect phone" or
+// this device has at least one paired peer to talk to. A machine that has
+// never used sync should not be found by one that is scanning the network for
+// open ports.
+func (s *server) attachSync(deviceName string) error {
+	sync, err := newSyncServer(s, deviceName)
+	if err != nil {
+		return err
+	}
+	s.sync = sync
+	if len(sync.peers.all()) > 0 {
+		return sync.start()
+	}
+	return nil
 }
 
 type imageRecord struct {
@@ -88,9 +110,15 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/app/plugins", s.savePlugin)
 	mux.HandleFunc("GET /api/app/plugins/wikimedia/search", s.wikimediaSearch)
 	mux.HandleFunc("GET /api/app/plugins/calendar", s.calendarView)
-	mux.HandleFunc("POST /api/app/plugins/pinterest/import", s.importPinterestBoard)
-	mux.HandleFunc("GET /api/app/plugins/pinterest/import", s.pinterestImportStatus)
-	mux.HandleFunc("DELETE /api/app/plugins/pinterest/import", s.cancelPinterestImport)
+	// Not registered where the build has no board importer, so the app answers
+	// 404 rather than "the downloader is missing". The panel is gone from the
+	// page there (see rewriteForPhone), and an endpoint with no caller is an
+	// endpoint that can still be called.
+	if offersPinterest {
+		mux.HandleFunc("POST /api/app/plugins/pinterest/import", s.importPinterestBoard)
+		mux.HandleFunc("GET /api/app/plugins/pinterest/import", s.pinterestImportStatus)
+		mux.HandleFunc("DELETE /api/app/plugins/pinterest/import", s.cancelPinterestImport)
+	}
 	mux.HandleFunc("POST /api/app/settings/storage", s.saveStorageSettings)
 	mux.HandleFunc("POST /api/app/settings/language", s.saveStorageSettings)
 	mux.HandleFunc("POST /api/app/settings/browser", s.saveBrowserSettings)
@@ -109,14 +137,26 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/app/index", s.appIndex)
 	mux.HandleFunc("GET /api/app/browse", s.appBrowse)
 	mux.HandleFunc("POST /api/app/folders/forget", s.forgetFolder)
-	mux.HandleFunc("GET /api/app/plugins/pinterest/boards", s.appPinterestBoards)
-	mux.HandleFunc("POST /api/app/settings/pinterest", s.savePinterestSettings)
+	if offersPinterest {
+		mux.HandleFunc("GET /api/app/plugins/pinterest/boards", s.appPinterestBoards)
+		mux.HandleFunc("POST /api/app/settings/pinterest", s.savePinterestSettings)
+	}
 	mux.HandleFunc("POST /api/app/plugins/web/import", s.importWebSource)
 	mux.HandleFunc("POST /api/app/settings/web", s.saveWebSettings)
 	mux.HandleFunc("POST /api/app/settings/update", s.saveUpdateSettings)
 	mux.HandleFunc("GET /api/app/plugins/web/sources", s.appWebSources)
 	mux.HandleFunc("POST /api/app/plugins/web/sources", s.forgetWebSourceRequest)
 	mux.HandleFunc("POST /api/app/onboarding", s.saveOnboarding)
+	// LAN sync with a paired phone or desktop. See sync_controls.go for what
+	// each one does and why it exists as a button rather than only happening on
+	// its own.
+	mux.HandleFunc("GET /api/app/sync", s.syncState)
+	mux.HandleFunc("POST /api/app/sync/listen", s.startSyncListening)
+	mux.HandleFunc("POST /api/app/sync/pause", s.pauseSync)
+	mux.HandleFunc("POST /api/app/sync/pairing", s.beginSyncPairing)
+	mux.HandleFunc("POST /api/app/sync/now", s.syncNow)
+	mux.HandleFunc("DELETE /api/app/sync/peers/{id}", s.forgetSyncPeer)
+	mux.HandleFunc("POST /api/app/sync/pair-with", s.pairWithScanned)
 	mux.HandleFunc("POST /api/app/upload", s.appUpload)
 	mux.HandleFunc("POST /api/app/import-url", s.importImageURL)
 	mux.HandleFunc("POST /api/app/tags", s.appTags)
@@ -334,7 +374,147 @@ func rewriteForPhone(page []byte) []byte {
 		}
 		page = bytes.Replace(page, []byte(swap.from), []byte(swap.to), 1)
 	}
+	return withoutPinterest(page)
+}
+
+// Which parts of the page belong to the board importer, and what kind of
+// element each one is.
+var pinterestParts = []struct{ marker, tag string }{
+	{`id="pinterestSection"`, "section"},    // the panel itself
+	{`id="showPinterest"`, "button"},        // the way into it, in the menu
+	{`id="emptyPinterest"`, "p"},            // the offer on an empty library
+	{`id="emptyPinterestPhone"`, "button"},  // the same offer, phone shaped
+	{`id="pinterestPluginToggle"`, "label"}, // both settings rows
+	{`id="pinterestAutoSyncToggle"`, "label"},
+	{`id="pinterestBoardList"`, "div"}, // the boards a desktop is following
+}
+
+// withoutPinterest takes the board importer out of the page an app build
+// serves. See platform_mobile.go for why this build does not have one.
+//
+// Emptied rather than deleted, because app.js is the same file on both
+// platforms and writes to these elements as it renders, hiding the panel and
+// setting the toggles. An element that is not there at all is a TypeError on
+// the first state update, which takes the whole interface down with it. What is
+// left is a skeleton of ids with nothing inside: no heading, no board field,
+// nothing to press, and no mention of the service anywhere a user can read.
+//
+// Deleting the markup properly is the better end state, and it is a change to
+// app.js rather than to this function: every one of those writes has to stop
+// assuming its element exists first.
+func withoutPinterest(page []byte) []byte {
+	for _, part := range pinterestParts {
+		page = hollowElement(page, part.marker, part.tag)
+	}
+	// A new piece of importer UI would arrive in index.html, which this function
+	// has never seen, and reach the app as a working button. So the question is
+	// asked of the finished page rather than of the list above: is the name of
+	// the service readable anywhere on it. Loud and in front of a test, like the
+	// rewrites above, rather than in a submission.
+	if text := visibleText(page); bytes.Contains(bytes.ToLower(text), []byte("pinterest")) {
+		panic("withoutPinterest: the page still says Pinterest somewhere a user can read it")
+	}
 	return page
+}
+
+// hollowElement empties the element carrying marker, keeping its own tag and
+// every id inside it as an empty hidden span. Elements this build has never
+// had are not an error: the page is free to lose one.
+func hollowElement(page []byte, marker, tag string) []byte {
+	at := bytes.Index(page, []byte(marker))
+	if at < 0 {
+		return page
+	}
+	open := bytes.LastIndex(page[:at], []byte("<"+tag))
+	if open < 0 {
+		panic("hollowElement: " + marker + " is not inside a <" + tag + ">")
+	}
+	// Where that element ends, counting the ones of the same kind nested inside
+	// it: the importer panel holds a result section, and stopping at the first
+	// </section> would cut the page in half.
+	depth, end := 0, -1
+	for i := open; i < len(page); i++ {
+		switch {
+		case bytes.HasPrefix(page[i:], []byte("<"+tag)):
+			depth++
+		case bytes.HasPrefix(page[i:], []byte("</"+tag+">")):
+			depth--
+			if depth == 0 {
+				end = i + len("</"+tag+">")
+			}
+		}
+		if end >= 0 {
+			break
+		}
+	}
+	if end < 0 {
+		panic("hollowElement: no closing </" + tag + "> for " + marker)
+	}
+
+	// The element's own id is the one in its opening tag. Everything after that
+	// belongs to what was inside it, and the two are kept apart: writing a
+	// child's id onto the parent would put the same id on the page twice.
+	body := page[open:end]
+	opening := bytes.IndexByte(body, '>')
+	rebuilt := []byte("<" + tag)
+	if own := idOf(body[:opening]); own != nil {
+		rebuilt = append(rebuilt, ' ')
+		rebuilt = append(rebuilt, own...)
+	}
+	rebuilt = append(rebuilt, []byte(" hidden>")...)
+	// The ids of everything that was inside, kept so that code written for the
+	// desktop page can go on writing to them harmlessly.
+	for _, id := range idsIn(body[opening:]) {
+		rebuilt = append(rebuilt, []byte(`<span `+string(id)+` hidden></span>`)...)
+	}
+	rebuilt = append(rebuilt, []byte("</"+tag+">")...)
+
+	out := make([]byte, 0, len(page)-len(body)+len(rebuilt))
+	out = append(out, page[:open]...)
+	out = append(out, rebuilt...)
+	return append(out, page[end:]...)
+}
+
+// idOf returns the first id attribute in fragment, as written.
+func idOf(fragment []byte) []byte {
+	ids := idsIn(fragment)
+	if len(ids) == 0 {
+		return nil
+	}
+	return ids[0]
+}
+
+// idsIn returns every id attribute in fragment, as written.
+func idsIn(fragment []byte) [][]byte {
+	var found [][]byte
+	for rest := fragment; ; {
+		at := bytes.Index(rest, []byte(`id="`))
+		if at < 0 {
+			return found
+		}
+		end := bytes.IndexByte(rest[at+len(`id="`):], '"')
+		if end < 0 {
+			return found
+		}
+		found = append(found, rest[at:at+len(`id="`)+end+1])
+		rest = rest[at+len(`id="`)+end+1:]
+	}
+}
+
+// visibleText returns the page with every tag removed, which is roughly what a
+// user reads. Roughly is enough: it is asked one question, about one word.
+func visibleText(page []byte) []byte {
+	var text []byte
+	for i := 0; i < len(page); i++ {
+		if page[i] != '<' {
+			text = append(text, page[i])
+			continue
+		}
+		if close := bytes.IndexByte(page[i:], '>'); close >= 0 {
+			i += close
+		}
+	}
+	return text
 }
 
 func (s *server) home(w http.ResponseWriter, r *http.Request) {
@@ -533,6 +713,7 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 		},
 		"boards": len(s.boardRecords()), "aiAvailable": true,
 		"mobile": runsOnPhone,
+		"sync":   map[string]any{"available": s.sync != nil},
 		"paths":  map[string]string{"home": s.app.home, "library": s.app.libraryDir, "boards": s.app.boardsDir, "tags": s.app.tagsDir},
 		"viewer": "Browser",
 		"storage": map[string]any{

@@ -25,6 +25,22 @@ const (
 	// the app is allowed to read, and no Python for gallery-dl to run in. The
 	// library is this app's own directory, and the share sheet is what fills it.
 	runsOnPhone = true
+	// No board importer in the app, at all: not the panel, not the routes, not
+	// the weekly sync.
+	//
+	// Play's Device and Network Abuse policy is the one that removes apps for
+	// downloading from a service in a way that service's terms forbid, and
+	// Pinterest's terms forbid automated collection. The risk is not a rejection
+	// at submission, which costs a resubmission; it is a takedown months later,
+	// after a complaint, when people already have the app, and a developer
+	// account that cannot be got back. Against that, the feature is worth
+	// nothing here: gallery-dl needs a Python this app does not carry, so the
+	// importer could not run on a phone even if it were offered.
+	//
+	// The desktop keeps it. It is not distributed by a store, and a program a
+	// person runs on their own machine to fetch pictures they can already see is
+	// the thing every browser does with "save image".
+	offersPinterest = false
 )
 
 // Android kills an app process without warning and without running anything on

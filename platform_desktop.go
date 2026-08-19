@@ -17,6 +17,9 @@ const (
 	// There is a filesystem to point at, and a Python to run gallery-dl with.
 	// The interface offers both.
 	runsOnPhone = false
+	// The board importer, which is a desktop feature and stays one. See
+	// platform_mobile.go for why the app build has none of it.
+	offersPinterest = true
 )
 
 // A desktop launch has no parent watching it, and often no stdin at all: a

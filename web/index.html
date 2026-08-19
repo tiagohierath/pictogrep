@@ -54,7 +54,8 @@
           <li><div><strong data-i18n="empty.organize_title">Organize what you find</strong><span data-i18n="empty.organize_text">Put pictures into folders and build storyboards.</span></div></li>
         </ol>
         <button id="emptyAddImages" class="primary desktop-only" data-i18n="empty.choose_action">Add pictures</button>
-        <p class="empty-alternative"><button type="button" class="link-button" id="emptyPinterest" data-i18n="empty.pinterest_action">Or import a Pinterest board</button><span class="empty-alternative-help" data-i18n="empty.pinterest_help">Optional. Pictogrep downloads a public board into your library.</span></p>
+        <button type="button" class="primary phone-only" id="emptyPinterestPhone" data-i18n="empty.pinterest_suggest">Import from Pinterest</button>
+        <p class="empty-alternative desktop-only"><button type="button" class="link-button" id="emptyPinterest" data-i18n="empty.pinterest_action">Or import a Pinterest board</button><span class="empty-alternative-help" data-i18n="empty.pinterest_help">Optional. Pictogrep downloads a public board into your library.</span></p>
       </div>
     </section>
 
@@ -97,6 +98,8 @@
       <a href="/practice" data-i18n="menu.open_storyboard">Open storyboard</a>
       <button id="showBoards"><span data-i18n="menu.saved_boards">Saved storyboards</span> <span id="boardCount"></span></button>
       <button id="showAdd" data-i18n="menu.add_pictures">Add pictures</button>
+      <button id="showSync" class="desktop-only" data-i18n="sync.title" hidden>Connect phone</button>
+      <button id="showSyncPhone" class="phone-only" data-i18n="sync.title_phone" hidden>Connect to computer</button>
       <button id="showPinterest" data-i18n="pinterest.title" hidden>Import from Pinterest</button>
       <button id="showPlugins" data-i18n="menu.plugins">Plugins</button>
       <button id="showSettings" data-i18n="settings.title">Settings</button>
@@ -123,6 +126,8 @@
         <fieldset class="pinterest-options">
           <legend data-i18n="pinterest.save_images">Save pictures</legend>
           <label class="pinterest-choice"><input type="radio" name="pinterestMode" value="board" checked><span><strong data-i18n="pinterest.board_folder">In a board folder</strong><small data-i18n="pinterest.recommended">Recommended</small></span></label>
+          <label class="pinterest-choice" id="pinterestExistingChoice"><input type="radio" name="pinterestMode" value="existing"><span><strong data-i18n="pinterest.existing_folder">In a folder I already have</strong><small data-i18n="pinterest.existing_help">Add this board to one of your folders</small></span></label>
+          <select id="pinterestExistingFolder" class="pinterest-existing-folder" hidden></select>
           <label class="pinterest-choice"><input type="radio" name="pinterestMode" value="original"><span><strong data-i18n="pinterest.library_direct">Directly in my library</strong><small data-i18n="pinterest.keep_names">Keep downloaded filenames</small></span></label>
         </fieldset>
         <label class="pinterest-skip"><input id="pinterestSkipExisting" type="checkbox" checked><span><strong data-i18n="pinterest.skip_existing">Skip pictures already in my library</strong><small data-i18n="pinterest.duplicates_help">Exact duplicates are kept only once.</small></span></label>
@@ -164,6 +169,27 @@
         </section>
       </form>
       <div class="followed-boards" id="webSectionSourceList" hidden></div>
+    </section>
+
+    <section class="drawer-section pinterest-import" id="syncSection" hidden>
+      <header class="pinterest-heading">
+        <h2 data-i18n="sync.title">Connect phone</h2>
+        <p class="desktop-only" data-i18n="sync.intro">Scan this with the Pictogrep app to send pictures here straight from your phone's share sheet. No account, and nothing leaves your network.</p>
+        <p class="phone-only" data-i18n="sync.intro_phone">Open Connect phone on your computer and scan the code it shows. No account, and nothing leaves your network.</p>
+      </header>
+
+      <div class="sync-qr desktop-only" id="syncQR" role="img" aria-label="Pairing QR code"></div>
+      <p class="field-help desktop-only" id="syncExpiry" data-i18n="sync.expiry">This code is good for a few minutes.</p>
+      <button type="button" class="primary phone-only" id="syncScanButton" data-i18n="sync.scan">Scan code</button>
+
+      <p class="field-help" id="syncNoDevices" data-i18n="sync.no_devices">Nothing paired yet.</p>
+      <ul class="sync-devices" id="syncDeviceList" hidden></ul>
+
+      <div class="pinterest-actions">
+        <button type="button" id="syncPauseToggle" data-i18n="sync.pause">Pause sync</button>
+        <button type="button" class="desktop-only" id="syncNewCode" data-i18n="sync.new_code">New code</button>
+      </div>
+      <small class="pinterest-return-help" data-i18n="sync.return_help">Use it again anytime from Menu → Connect phone.</small>
     </section>
 
     <section class="drawer-section settings" id="settingsSection" hidden>

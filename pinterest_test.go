@@ -300,6 +300,63 @@ func TestPinterestOriginalModeKeepsGalleryDLFilename(t *testing.T) {
 	}
 }
 
+func TestPinterestExistingModeFillsTheChosenFolder(t *testing.T) {
+	app := testApplication(t)
+	if err := app.setPluginEnabled("pinterest", true); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(app.tagsDir, "faces"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.galleryDL = func(_ context.Context, download galleryDLRequest) error {
+		return os.WriteFile(filepath.Join(download.Directory, "pin.png"), testRemotePNG(t), 0o644)
+	}
+	routes := handler.routes()
+
+	// A folder that is not there cannot be filled, and finding that out has to
+	// happen before the download rather than after half an hour of it.
+	missing := postPinterestImport(t, routes, map[string]any{
+		"url": "https://www.pinterest.com/artist/portraits/", "mode": "existing",
+		"folder": "nowhere", "skipExisting": true,
+	})
+	if missing.Code != http.StatusBadRequest {
+		t.Fatalf("import into a folder that does not exist was accepted: status=%d body=%s", missing.Code, missing.Body)
+	}
+
+	response := postPinterestImport(t, routes, map[string]any{
+		"url": "https://www.pinterest.com/artist/portraits/", "mode": "existing",
+		"folder": "faces", "skipExisting": true,
+	})
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("Pinterest import into an existing folder failed: status=%d body=%s", response.Code, response.Body)
+	}
+	result := pinterestResult(t, waitForPinterestImport(t, routes))
+	if result["folder"] != "faces" {
+		t.Fatalf("import did not report the chosen folder: %#v", result)
+	}
+	manifest, err := os.ReadFile(filepath.Join(app.tagsDir, "faces", "images.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	if err := json.Unmarshal(manifest, &paths); err != nil || len(paths) != 1 {
+		t.Fatalf("picture did not land in the chosen folder: err=%v paths=%#v", err, paths)
+	}
+	// The board is followed with the folder attached, so the weekly re-check
+	// keeps filling the same one instead of making a board folder of its own.
+	boards := app.trackedBoards()
+	if len(boards) != 1 || boards[0].Mode != "existing" || boards[0].Folder != "faces" {
+		t.Fatalf("board was not followed with its folder: %#v", boards)
+	}
+	if _, err := os.Stat(filepath.Join(app.tagsDir, "portraits")); !os.IsNotExist(err) {
+		t.Fatalf("existing mode also made a board folder: %v", err)
+	}
+}
+
 func TestPinterestBoardLinksExistingDuplicateOnce(t *testing.T) {
 	app := testApplication(t)
 	if err := app.setPluginEnabled("pinterest", true); err != nil {
@@ -484,7 +541,7 @@ func TestPinterestUIContainsRequestedOptionalImportForm(t *testing.T) {
 	}
 	for _, required := range []string{
 		`id="pinterestPluginToggle"`, `id="pinterestSection"`,
-		`Import from Pinterest`, `Board link`, `value="original"`, `value="board" checked`,
+		`Import from Pinterest`, `Board link`, `value="original"`, `value="board" checked`, `value="existing"`, `id="pinterestExistingFolder"`,
 		`id="pinterestSkipExisting" type="checkbox" checked`, `id="pinterestImportButton" class="primary" data-i18n="pinterest.download_all">Download all`,
 		`Use it again anytime from Menu → Import from Pinterest`,
 	} {

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -204,6 +205,21 @@ func serve(app *application, args []string) error {
 	handler, err := newServer(app)
 	if err != nil {
 		return err
+	}
+	// Best effort: a device that cannot get an identity (a read-only data
+	// directory, most likely) still gets a working library, just no sync tab.
+	//
+	// The success line matters as much as the failure one on Android, where it
+	// is the only evidence from outside the process that PICTOGREP_SIGNER was
+	// reachable and Keystore actually signed something: this line only prints
+	// once loadIdentity has gone all the way through bridgedSigner and back.
+	// scripts/launch-check.sh asserts it appears, which is the one check in
+	// this whole codebase that touches real Android Keystore rather than a
+	// desktop stand-in for it.
+	if err := handler.attachSync(deviceDisplayName()); err != nil {
+		log.Printf("sync unavailable: %v", err)
+	} else {
+		log.Printf("sync ready: device %s", handler.sync.identity.id)
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(options.port))
 	if err != nil && options.port == defaultPort {

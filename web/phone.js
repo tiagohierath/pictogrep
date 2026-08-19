@@ -20,18 +20,25 @@
 
   // Material Symbols as paths rather than a font, because a font is a few
   // hundred kilobytes to draw six shapes.
+  //
+  // Symbols, not the older Material Icons: the two sets draw the same names in
+  // different hands, and mixing them is visible. They are also drawn in a
+  // different box, 960 units tall with the baseline at zero rather than 24
+  // square, which is what ICON_BOX below is.
+  const ICON_BOX = "0 -960 960 960";
   const ICONS = {
-    pictures: "M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4l2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z",
-    folders: "M10 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z",
-    boards: "M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z",
-    commons: "M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm6.93 6h-2.95a15.65 15.65 0 0 0-1.38-3.56A8.03 8.03 0 0 1 18.92 8zM12 4.04c.83 1.2 1.48 2.53 1.91 3.96h-3.82c.43-1.43 1.08-2.76 1.91-3.96zM4.26 14C4.1 13.36 4 12.69 4 12s.1-1.36.26-2h3.38c-.08.66-.14 1.32-.14 2s.06 1.34.14 2H4.26zm.82 2h2.95c.32 1.25.78 2.45 1.38 3.56A7.987 7.987 0 0 1 5.08 16zm2.95-8H5.08a7.987 7.987 0 0 1 4.33-3.56A15.65 15.65 0 0 0 8.03 8zM12 19.96c-.83-1.2-1.48-2.53-1.91-3.96h3.82c-.43 1.43-1.08 2.76-1.91 3.96zM14.34 14H9.66c-.09-.66-.16-1.32-.16-2s.07-1.35.16-2h4.68c.09.65.16 1.32.16 2s-.07 1.34-.16 2zm.25 5.56c.6-1.11 1.06-2.31 1.38-3.56h2.95a8.03 8.03 0 0 1-4.33 3.56zM16.36 14c.08-.66.14-1.32.14-2s-.06-1.34-.14-2h3.38c.16.64.26 1.31.26 2s-.1 1.36-.26 2h-3.38z",
-    calendar: "M19 3h-1V1h-2v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V8h14v11zM7 10h5v5H7z",
-    add: "M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z",
+    pictures: "M360-400h400L622-580l-92 120-62-80-108 140Zm-40 160q-33 0-56.5-23.5T240-320v-480q0-33 23.5-56.5T320-880h480q33 0 56.5 23.5T880-800v480q0 33-23.5 56.5T800-240H320Zm0-80h480v-480H320v480ZM160-80q-33 0-56.5-23.5T80-160v-560h80v560h560v80H160Zm160-720v480-480Z",
+    folders: "M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h240l80 80h320q33 0 56.5 23.5T880-640v400q0 33-23.5 56.5T800-160H160Zm0-80h640v-400H447l-80-80H160v480Zm0 0v-480 480Z",
+    boards: "M520-600v-240h320v240H520ZM120-440v-400h320v400H120Zm400 320v-400h320v400H520Zm-400 0v-240h320v240H120Zm80-400h160v-240H200v240Zm400 320h160v-240H600v240Zm0-480h160v-80H600v80ZM200-200h160v-80H200v80Zm160-320Zm240-160Zm0 240ZM360-280Z",
+    commons: "M324-111.5Q251-143 197-197t-85.5-127Q80-397 80-480t31.5-156Q143-709 197-763t127-85.5Q397-880 480-880t156 31.5Q709-817 763-763t85.5 127Q880-563 880-480t-31.5 156Q817-251 763-197t-127 85.5Q563-80 480-80t-156-31.5ZM440-162v-78q-33 0-56.5-23.5T360-320v-40L168-552q-3 18-5.5 36t-2.5 36q0 121 79.5 212T440-162Zm276-102q41-45 62.5-100.5T800-480q0-98-54.5-179T600-776v16q0 33-23.5 56.5T520-680h-80v80q0 17-11.5 28.5T400-560h-80v80h240q17 0 28.5 11.5T600-440v120h40q26 0 47 15.5t29 40.5Z",
+    calendar: "M200-80q-33 0-56.5-23.5T120-160v-560q0-33 23.5-56.5T200-800h40v-80h80v80h320v-80h80v80h40q33 0 56.5 23.5T840-720v560q0 33-23.5 56.5T760-80H200Zm0-80h560v-400H200v400Zm0-480h560v-80H200v80Zm0 0v-80 80Zm280 240q-17 0-28.5-11.5T440-440q0-17 11.5-28.5T480-480q17 0 28.5 11.5T520-440q0 17-11.5 28.5T480-400Zm-188.5-11.5Q280-423 280-440t11.5-28.5Q303-480 320-480t28.5 11.5Q360-457 360-440t-11.5 28.5Q337-400 320-400t-28.5-11.5ZM640-400q-17 0-28.5-11.5T600-440q0-17 11.5-28.5T640-480q17 0 28.5 11.5T680-440q0 17-11.5 28.5T640-400ZM480-240q-17 0-28.5-11.5T440-280q0-17 11.5-28.5T480-320q17 0 28.5 11.5T520-280q0 17-11.5 28.5T480-240Zm-188.5-11.5Q280-263 280-280t11.5-28.5Q303-320 320-320t28.5 11.5Q360-297 360-280t-11.5 28.5Q337-240 320-240t-28.5-11.5ZM640-240q-17 0-28.5-11.5T600-280q0-17 11.5-28.5T640-320q17 0 28.5 11.5T680-280q0 17-11.5 28.5T640-240Z",
+    profile: "M367-527q-47-47-47-113t47-113q47-47 113-47t113 47q47 47 47 113t-47 113q-47 47-113 47t-113-47ZM160-160v-112q0-34 17.5-62.5T224-378q62-31 126-46.5T480-440q66 0 130 15.5T736-378q29 15 46.5 43.5T800-272v112H160Zm80-80h480v-32q0-11-5.5-20T700-306q-54-27-109-40.5T480-360q-56 0-111 13.5T260-306q-9 5-14.5 14t-5.5 20v32Zm296.5-343.5Q560-607 560-640t-23.5-56.5Q513-720 480-720t-56.5 23.5Q400-673 400-640t23.5 56.5Q447-560 480-560t56.5-23.5ZM480-640Zm0 400Z",
+    add: "M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z",
   };
 
   function icon(name) {
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("viewBox", ICON_BOX);
     svg.setAttribute("aria-hidden", "true");
     svg.setAttribute("fill", "currentColor");
     const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -42,11 +49,23 @@
 
   const $ = selector => document.querySelector(selector);
 
+  /* A translated string, or the English one until the locale has arrived.
+     i18n.t answers with the key itself when it has nothing, and a navigation
+     bar reading "nav.feed" for the first few hundred milliseconds is worse than
+     one reading English for them. */
+  function t(key, english) {
+    const value = window.PictogrepI18n?.t(key);
+    return !value || value === key ? english : value;
+  }
+
   // --- ripple ------------------------------------------------------------
 
   // Everything that can be pressed, named once. The state layer under these is
   // pure CSS, so this list exists only to find the element a touch landed on.
-  const PRESSABLE = "button, .m3-nav-item, .drawer-actions a, .card-menu a, .card-menu button";
+  // Menu controls left out on purpose: a ripple on the bottom destinations or
+  // a drawer row is a 450ms effect on the exact thing that is supposed to feel
+  // instant, changing where you are.
+  const PRESSABLE = "button, .card-menu a, .card-menu button";
 
   // A Material control answers a touch where it was touched. This is the whole
   // of that: a circle that grows from the point and fades.
@@ -84,8 +103,11 @@
   // The destinations are the tab buttons the app already decided to show, so a
   // plugin turning its tab on puts it here too, and nothing has to know the
   // list twice. Material allows five.
+  // A destination may name its own label. The pictures tab is called Pictures
+  // in a window with a tab strip in it, and Feed at the bottom of a phone,
+  // where it is the place you land rather than one view of several.
   const DESTINATIONS = [
-    {tab: "#imagesTab", icon: "pictures"},
+    {tab: "#imagesTab", icon: "pictures", key: "nav.feed", english: "Feed"},
     {tab: "#commonsTab", icon: "commons"},
     {tab: "#calendarTab", icon: "calendar"},
     {tab: "#foldersTab", icon: "folders"},
@@ -106,7 +128,7 @@
     const shown = DESTINATIONS.filter(({tab}) => $(tab) && !$(tab).hidden);
     nav.replaceChildren();
 
-    shown.forEach(({tab, icon: name}) => {
+    shown.forEach(({tab, icon: name, key, english}) => {
       const button = $(tab);
       const item = document.createElement("button");
       item.type = "button";
@@ -117,27 +139,32 @@
       bed.append(icon(name));
       const text = document.createElement("span");
       text.className = "m3-nav-label";
-      text.textContent = label(button);
+      text.textContent = key ? t(key, english) : label(button);
       item.append(bed, text);
       item.onclick = () => button.click();
       nav.append(item);
     });
 
-    // Storyboards is a page rather than a tab, and it is the other half of
-    // what Pictogrep does, so it belongs down here rather than three taps deep
-    // in the menu. Only when there is room inside Material's five.
-    if (shown.length < 5) {
-      const link = document.createElement("a");
-      link.className = "m3-nav-item";
-      link.href = "/practice";
+    // Everything that is not the library itself: storyboards, settings,
+    // plugins, importing, about. On a desktop that is a menu behind an icon in
+    // the corner, which on a phone is the hardest place on the screen to
+    // reach. As the last destination it is under a thumb, and the drawer it
+    // opens is unchanged, so nothing moved except the way in. Only when there
+    // is room inside Material's five.
+    const menu = $("#menuButton");
+    if (menu && shown.length < 5) {
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "m3-nav-item";
       const bed = document.createElement("span");
       bed.className = "m3-nav-icon";
-      bed.append(icon("boards"));
+      bed.append(icon("profile"));
       const text = document.createElement("span");
       text.className = "m3-nav-label";
-      text.textContent = $("[data-i18n='menu.open_storyboard']")?.textContent.trim() || "Storyboard";
-      link.append(bed, text);
-      nav.append(link);
+      text.textContent = t("nav.profile", "Profile");
+      item.append(bed, text);
+      item.onclick = () => menu.click();
+      nav.append(item);
     }
 
     syncNav();

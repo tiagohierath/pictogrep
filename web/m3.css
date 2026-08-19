@@ -161,11 +161,23 @@
   --control-height-lg: 56px;
   --icon-size: 48px;
   --header-height: 64px;
-  --m3-nav-height: 80px;
-  /* The search bar at the bottom: 56px of control and 8px of air above and
-     below it. Everything that has to clear it counts from here. */
-  --m3-search-height: 72px;
+  /* Equal to the search band below: icons only, no label line, so both read
+     as one pair of matched controls rather than two different heights. */
+  --m3-nav-height: 76px;
+  /* One gap for the whole bottom stack, so every space between the things
+     down there is the same one: screen edge to island, island to search row,
+     search row to whatever sits above it. Uneven gaps here were three
+     different hand-picked numbers. */
+  --m3-stack-gap: 8px;
+  /* Bottom of the screen to the top of the search row's band. */
+  --m3-nav-clearance: calc(var(--m3-nav-height) + var(--m3-stack-gap) * 2);
+  /* The band holding the search row: the field, with one gap above and below. */
+  --m3-search-pad: var(--m3-stack-gap);
+  --m3-search-height: calc(var(--control-height-lg) + var(--m3-stack-gap) * 2);
   --m3-gutter: 16px;
+  /* The add button sitting beside the search field. Its size is the field's
+     height rather than a second 56 written down, so the two cannot drift. */
+  --m3-fab-size: var(--control-height-lg);
   /* The space between two pictures, and between a picture and the edge of
      the screen. One number, because two different ones read as a mistake. */
   --m3-grid-gap: 8px;
@@ -176,9 +188,9 @@
 
 .is-phone body {
   background: var(--m3-surface);
-  /* Room for the navigation bar, the search bar sitting on top of it, and the
-     button floating above both. */
-  padding-bottom: calc(var(--m3-nav-height) + var(--m3-search-height) + 16px);
+  /* Room for the floating island, the search bar above it, and the button
+     floating above both. */
+  padding-bottom: calc(var(--m3-nav-clearance) + var(--m3-search-height) + var(--m3-stack-gap));
 }
 
 .is-phone :focus-visible { outline: 3px solid var(--m3-primary); outline-offset: 2px; }
@@ -195,7 +207,14 @@
    colour. Written against the real selectors rather than a marker class, so
    nothing has to walk the DOM tagging elements as they appear: a control added
    by any part of the app is already correct. */
-.is-phone button,
+/* .m3-nav-item is a <button> too, but the bottom destinations are left out of
+   the press tint on purpose, same as the ripple above: an effect on the exact
+   control that is supposed to feel instant.
+   .m3-fab is excluded for a different reason. Every :not() here raises this
+   rule's specificity, and `position: relative` below then outranks the
+   `position: fixed` in .is-phone .m3-fab, which drops the button out of its
+   corner and back into the flow. Excluding it keeps that rule the winner. */
+.is-phone button:not(.m3-nav-item):not(.m3-fab),
 .is-phone .drawer-actions a,
 .is-phone .card-menu a,
 .is-phone .card-menu button {
@@ -204,7 +223,7 @@
   isolation: isolate;
 }
 
-.is-phone button::after,
+.is-phone button:not(.m3-nav-item):not(.m3-fab)::after,
 .is-phone .drawer-actions a::after,
 .is-phone .card-menu a::after,
 .is-phone .card-menu button::after {
@@ -218,7 +237,7 @@
   pointer-events: none;
 }
 
-.is-phone button:active::after,
+.is-phone button:not(.m3-nav-item):not(.m3-fab):active::after,
 .is-phone .drawer-actions a:active::after,
 .is-phone .card-menu a:active::after,
 .is-phone .card-menu button:active::after { opacity: .12; }
@@ -286,24 +305,40 @@
    translator rewrites the text content of anything carrying data-i18n on every
    language load. An icon put there by JavaScript is an icon that disappears
    the moment the page finishes starting up. Masked so they inherit colour. */
-.is-phone #menuButton { font-size: 0; }
+/* font-size: 0 collapses the button's own text node so only the masked
+   ::before icon shows. Left off the search button, "Search" sits in the grid
+   cell next to the icon and pushes it off centre; small enough at 56px wide
+   that it reads as "slightly wrong" rather than as visible text. */
+.is-phone #menuButton,
+.is-phone .search > button[type="submit"] { font-size: 0; }
 
+/* Absolutely centred rather than laid out. These buttons still carry their own
+   text node, collapsed to font-size: 0 but not gone, and any layout mode has
+   to place the pseudo-element around it: as a grid item it lands in its own
+   implicit row and sits off centre by half a line box, which is the search
+   icon that has been slightly low this whole time. inset: 0 with a fixed size
+   and margin: auto owes nothing to the content beside it. */
 .is-phone #menuButton::before,
 .is-phone .search > button[type="submit"]::before {
+  position: absolute;
   width: 24px;
   height: 24px;
+  margin: auto;
   background: currentColor;
   content: "";
+  inset: 0;
   -webkit-mask: var(--m3-icon) center / 24px 24px no-repeat;
   mask: var(--m3-icon) center / 24px 24px no-repeat;
 }
 
+/* Material Symbols, same set as the navigation bar's icons in phone.js, drawn
+   in the same 960 box with the baseline at zero. */
 .is-phone #menuButton {
-  --m3-icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm0 6c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z"/></svg>');
+  --m3-icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path d="M480-160q-33 0-56.5-23.5T400-240q0-33 23.5-56.5T480-320q33 0 56.5 23.5T560-240q0 33-23.5 56.5T480-160Zm0-240q-33 0-56.5-23.5T400-480q0-33 23.5-56.5T480-560q33 0 56.5 23.5T560-480q0 33-23.5 56.5T480-400Zm0-240q-33 0-56.5-23.5T400-720q0-33 23.5-56.5T480-800q33 0 56.5 23.5T560-720q0 33-23.5 56.5T480-640Z"/></svg>');
 }
 
 .is-phone .search > button[type="submit"] {
-  --m3-icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27A6.471 6.471 0 0 0 16 9.5 6.5 6.5 0 1 0 9.5 16c1.61 0 3.09-.59 4.23-1.57l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0C7.01 14 5 11.99 5 9.5S7.01 5 9.5 5 14 7.01 14 9.5 11.99 14 9.5 14z"/></svg>');
+  --m3-icon: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -960 960 960"><path d="M784-120 532-372q-30 24-69 38t-83 14q-109 0-184.5-75.5T120-580q0-109 75.5-184.5T380-840q109 0 184.5 75.5T640-580q0 44-14 83t-38 69l252 252-56 56ZM380-400q75 0 127.5-52.5T560-580q0-75-52.5-127.5T380-760q-75 0-127.5 52.5T200-580q0 75 52.5 127.5T380-400Z"/></svg>');
 }
 
 /* ------------------------------------------------------------------ *
@@ -312,20 +347,26 @@
 
 .is-phone .main-content { padding: 0 var(--m3-grid-gap); }
 
-/* At the bottom, above the navigation bar, because that is where a thumb
-   already is. Fixed rather than scrolled away: search is the point of the app,
-   and reaching for the top of a 6 inch screen to use it is a stretch every
-   time. The window resizes when the keyboard opens, so this rides up with it
-   instead of hiding behind it. */
+/* Directly above the navigation bar, not under the title. Searching and moving
+   between destinations are the two things this screen is for, and on a phone
+   the top of the screen is the far end of a reach: both belong in the same band
+   under a thumb. Fixed rather than scrolled away, because a search box you have
+   to scroll back up to find is a search box people stop using. */
 .is-phone .search {
   position: fixed;
-  z-index: 20;
-  right: 0;
-  bottom: var(--m3-nav-height);
+  z-index: 29;
+  /* Stops short of the right edge, where the add button now sits on the same
+     row: its own width, plus the gutter beyond it, plus the gap between them. */
+  right: calc(var(--m3-fab-size) + var(--m3-gutter) + 8px);
+  bottom: var(--m3-nav-clearance);
   left: 0;
+  /* app.css gives this a width, which with both left and right set is an
+     over-constrained box: the browser drops `right` and the bar runs under
+     the add button instead of stopping beside it. */
+  width: auto;
   display: flex;
   margin: 0;
-  padding: 8px var(--m3-grid-gap);
+  padding: var(--m3-search-pad) 0 var(--m3-search-pad) var(--m3-gutter);
   gap: 0;
   align-items: center;
   background: var(--m3-surface);
@@ -392,8 +433,12 @@
   line-height: 32px;
 }
 
+/* Upwards, since there is nothing below the search bar but the navigation bar.
+   Left opening downwards it would render off the bottom of the screen. */
 .is-phone .recent-searches {
-  margin-top: 8px;
+  top: auto;
+  bottom: calc(100% - 4px);
+  margin-top: 0;
   border: 0;
   border-radius: var(--m3-corner-md);
   background: var(--m3-surface-container);
@@ -409,53 +454,71 @@
    destinations are rebuilt below as a navigation bar. */
 .is-phone .tabs { display: none; }
 
+/* With the menu open, the library's own controls are furniture for a screen
+   nobody is looking at: they belong to the page behind the sheet and float
+   over the top of it. The destinations stay, so there is always a way out
+   without hunting for the close button. */
+.is-phone:has(.drawer.open) .search,
+.is-phone:has(.drawer.open) .m3-fab,
+.is-phone:has(.drawer.open) #emptyPinterestPhone {
+  display: none;
+}
+
+/* A floating island rather than a bar the width of the screen: full-radius
+   corners and margin on all three open sides, standing clear of the edge on a
+   shadow instead of meeting it. */
 .is-phone .m3-nav {
   position: fixed;
   z-index: 30;
-  right: 0;
-  bottom: 0;
-  left: 0;
+  right: 16px;
+  bottom: var(--m3-stack-gap);
+  left: 16px;
   display: flex;
   height: var(--m3-nav-height);
-  padding: 12px 8px 16px;
+  padding: 10px 12px;
   justify-content: space-around;
+  border-radius: 999px;
   background: var(--m3-surface-container);
+  box-shadow: var(--shadow-menu);
 }
 
 .is-phone .m3-nav-item {
   position: relative;
   display: flex;
   overflow: hidden;
-  border-radius: 0;
   min-width: 0;
   flex: 1;
-  flex-direction: column;
-  gap: 4px;
   align-items: center;
-  padding: 0;
+  justify-content: center;
+  padding: 4px;
   border: 0;
+  border-radius: 999px;
   background: none;
   color: var(--m3-on-surface-variant);
-  font-size: var(--text-xs);
-  font-weight: 500;
   text-decoration: none;
 }
 
-/* The pill behind the icon is the whole idea of an M3 navigation bar: the
-   indicator moves, the label stays. */
+/* Icon only: the label used to carry the name, and the selected pill now
+   covers enough of the item on its own to say which one that is. */
+.is-phone .m3-nav-label { display: none; }
+
 .is-phone .m3-nav-icon {
   display: grid;
   width: 64px;
-  height: 32px;
+  height: 100%;
   place-items: center;
-  border-radius: 16px;
-  transition: background 150ms cubic-bezier(.2, 0, 0, 1);
 }
 
-.is-phone .m3-nav-icon svg { width: 24px; height: 24px; }
+.is-phone .m3-nav-icon svg { width: 26px; height: 26px; }
 
-.is-phone .m3-nav-item[aria-current="page"] { color: var(--m3-on-surface); }
-.is-phone .m3-nav-item[aria-current="page"] .m3-nav-icon { background: var(--m3-secondary-container); color: var(--m3-on-secondary-container); }
+/* The selected indicator used to be a pill behind the icon alone; the label
+   sitting outside it read as an afterthought rather than as part of what was
+   picked. One pill now wraps icon and label together, sized to the item
+   itself rather than to the icon's own bed. */
+.is-phone .m3-nav-item[aria-current="page"] {
+  background: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
+}
 
 .is-phone .m3-nav-label {
   max-width: 100%;
@@ -468,18 +531,22 @@
  * 6. Floating action button
  * ------------------------------------------------------------------ */
 
+/* Same row as the search field now, not floating above it: the reachable band
+   at the bottom of the phone holds search, add, and the destinations below
+   it, in that order, rather than stacking add on its own between the two. */
 .is-phone .m3-fab {
   position: fixed;
-  z-index: 25;
-  right: 16px;
-  bottom: calc(var(--m3-nav-height) + var(--m3-search-height) + 16px);
+  z-index: 29;
+  right: var(--m3-gutter);
+  /* The search band's own bottom padding, so the two sit on one baseline. */
+  bottom: calc(var(--m3-nav-clearance) + var(--m3-search-pad));
   display: grid;
-  width: 56px;
-  height: 56px;
+  width: var(--m3-fab-size);
+  height: var(--m3-fab-size);
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: var(--m3-corner-lg);
+  border-radius: 50%;
   background: var(--m3-primary-container);
   color: var(--m3-on-primary-container);
   box-shadow: 0 3px 5px rgb(0 0 0 / .15), 0 1px 3px rgb(0 0 0 / .30);
@@ -633,7 +700,13 @@
  * 9. Fields, switches, choices
  * ------------------------------------------------------------------ */
 
-/* M3 filled text fields: no box, a tinted bed and one line under it. */
+/* M3 filled text fields: no box, a tinted bed and one line under it. An input
+   with no type attribute is type="text" by every spec and browser, but is not
+   text[type="text"] as a selector: newFolderName is one, and fell through to
+   the browser's own unstyled box, small and square in the middle of an
+   otherwise-M3 dialog. :not([type]) catches it without also catching the
+   checkboxes and files this rule already lists on purpose. */
+.is-phone input:not([type]),
 .is-phone input[type="text"],
 .is-phone input[type="url"],
 .is-phone input[type="search"],
@@ -655,6 +728,22 @@
 .is-phone textarea:focus {
   border-bottom: 2px solid var(--m3-primary);
   outline: 0;
+}
+
+/* The search field is the one text input that is already inside a box. The
+   rule above would give it a second one: a tinted bed with square corners and
+   a line under it, drawn inside the pill and shorter than it, which reads as a
+   rectangle floating in a bar rather than as a search field. The shell is the
+   box; the input inside it draws nothing and fills it. */
+.is-phone .search-draft { height: 100%; }
+
+.is-phone .search-draft input,
+.is-phone .search-draft input:focus {
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
 }
 
 /* A checkbox that means "on or off" is a switch in Material, and every
@@ -747,6 +836,9 @@
   border: 0;
   border-radius: 0;
   background: var(--m3-surface-container-low);
+  /* The navigation island floats over this sheet so there is always a way
+     out of it. Room at the end so the last row is not under the island. */
+  padding-bottom: var(--m3-nav-clearance);
 }
 
 .is-phone .drawer-header {
@@ -816,6 +908,23 @@
 
 .is-phone dialog::backdrop { background: color-mix(in srgb, var(--m3-scrim) 32%, transparent); }
 
+/* The desktop dialog asks four questions to create a folder that only ever
+   needs a name: where to nest it, whether to seed it from a search, whether
+   to seed it from files picked right now. All three are things a folder can
+   get afterward, from inside it, and asking for them up front is what made
+   "create a folder" feel like a form. The card in the grid is also the one
+   way in on a phone; the toolbar button above it opened the same dialog. */
+.is-phone label[for="newFolderParent"],
+.is-phone #newFolderParent,
+.is-phone label[for="newFolderPrompt"],
+.is-phone #newFolderPrompt,
+.is-phone #newFolderPrompt + .field-help,
+.is-phone label[for="newFolderFiles"],
+.is-phone #newFolderFiles,
+.is-phone #newFolderButton {
+  display: none;
+}
+
 .is-phone .onboarding-title { font-size: var(--text-2xl); font-weight: 400; }
 .is-phone .onboarding-lead { font-size: var(--text-md); }
 
@@ -826,7 +935,16 @@
   border-radius: var(--m3-corner-xl);
 }
 
+/* Below the status bar rather than above the search bar and the island: the
+   base position is bottom-right, which on a phone is exactly where the search
+   bar, the navigation island and the FAB already live. A toast landing on top
+   of those hides whichever one it covers for as long as it is up. */
 .is-phone .message {
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  right: var(--m3-gutter);
+  bottom: auto;
+  left: var(--m3-gutter);
+  max-width: none;
   border: 0;
   border-radius: var(--m3-corner-xs);
   background: var(--m3-inverse-surface);
@@ -840,6 +958,24 @@
 
 .is-phone .empty { padding: 48px 8px; }
 .is-phone .empty h2 { font-size: var(--text-2xl); font-weight: 400; }
+
+/* Pinned just above the search band rather than left in the flow of the empty
+   state, where it scrolled away with the tutorial text above it. It is the
+   suggested next action on an empty library, not one more line of the
+   explanation, so it stays exactly where the search row does. The FAB is on
+   that row now rather than stacked above it, so this only has to clear the
+   row itself. */
+.is-phone #emptyPinterestPhone {
+  position: fixed;
+  z-index: 28;
+  right: var(--m3-gutter);
+  /* One gap above the search field itself, not above the band around it, so
+     the space here reads the same as every other space in the stack. */
+  bottom: calc(var(--m3-nav-clearance) + var(--m3-search-pad) + var(--control-height-lg) + var(--m3-stack-gap));
+  left: var(--m3-gutter);
+  width: auto;
+  margin: 0;
+}
 
 .is-phone .empty-tutorial li {
   padding: 16px 0;
@@ -874,12 +1010,8 @@
   accent-color: var(--m3-primary);
 }
 
-/* Pressed, the indicator appears under the thumb before the tab has switched,
-   which is the difference between a navigation bar that feels wired up and one
-   that feels like it is thinking about it. */
-.is-phone .m3-nav-item:active .m3-nav-icon {
-  background: color-mix(in srgb, var(--m3-on-surface) 12%, transparent);
-}
+/* No pressed state on the destinations: the selected pill moves on tap, which
+   is the whole feedback the bar needs. */
 
 /* ------------------------------------------------------------------ *
  * 13. Typography that app.css sets by hand

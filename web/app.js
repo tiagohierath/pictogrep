@@ -620,6 +620,7 @@ function closeMenu() {
 function showMenuHome() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#syncSection").hidden = true;
   $("#webSection").hidden = true;
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
@@ -1153,7 +1154,14 @@ function renderImages(images, total = images.length) {
   browserImages = images;
   grid.replaceChildren(...images.map(pictureCard));
   $("#imageCount").textContent = total ? `(${total})` : "";
-  const libraryEmpty = !appState?.index || appState.index.count === 0;
+  // The welcome tutorial answers "how do I start a whole library", which is
+  // the wrong answer inside a folder: an empty folder in an otherwise-empty
+  // library used to show it anyway, because emptiness was read off the whole
+  // library's count rather than off what is actually on screen. Scoped to a
+  // folder or a search, whether the library overall has anything in it is not
+  // the question being asked.
+  const scoped = Boolean(currentTag || currentSource || currentQuery);
+  const libraryEmpty = !scoped && (!appState?.index || appState.index.count === 0);
   $("#imagesEmpty").hidden = !libraryEmpty || images.length !== 0;
   if (images.length || libraryEmpty) showResultState();
   else if (currentQuery) showResultState(t("search.no_results", {query: currentQuery}), t("search.try_fewer"), t("search.clear"), showAllImages);
@@ -2062,6 +2070,8 @@ function renderState() {
   $("#vimPluginToggle").checked = Boolean(appState.plugins?.vim?.enabled);
   $("#canvasPluginToggle").checked = Boolean(appState.plugins?.canvas?.enabled);
   $("#commandPalettePluginToggle").checked = Boolean(appState.plugins?.commandPalette?.enabled);
+  $("#showSync").hidden = appState.mobile || appState.sync?.available === false;
+  $("#showSyncPhone").hidden = !appState.mobile || appState.sync?.available === false;
   const pinterestEnabled = Boolean(appState.plugins?.pinterest?.enabled);
   $("#pinterestPluginToggle").checked = pinterestEnabled;
   $("#pinterestAutoSyncToggle").checked = appState.pinterest?.autoSync !== false;
@@ -2086,6 +2096,8 @@ function renderState() {
   $("#webImportButton").disabled = !webAvailable || downloaderBusy();
 
   renderAutoUpdate();
+
+  renderPinterestFolders();
 
   const options = $("#tagOptions");
   options.replaceChildren(...appState.tags.map(tag => {
@@ -2618,6 +2630,7 @@ async function saveTag(event) {
 async function loadBoards() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#syncSection").hidden = true;
   $("#webSection").hidden = true;
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
@@ -2650,6 +2663,7 @@ async function loadBoards() {
 function showAbout() {
 	$("#addSection").hidden = true;
 	$("#pinterestSection").hidden = true;
+	$("#syncSection").hidden = true;
 	$("#webSection").hidden = true;
 	$("#settingsSection").hidden = true;
 	$("#pluginsSection").hidden = true;
@@ -2663,6 +2677,7 @@ function showAbout() {
 function showSettings() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#syncSection").hidden = true;
   $("#webSection").hidden = true;
   $("#boardsSection").hidden = true;
   $("#aboutSection").hidden = true;
@@ -2675,6 +2690,7 @@ function showSettings() {
 function showPlugins() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#syncSection").hidden = true;
   $("#webSection").hidden = true;
   $("#boardsSection").hidden = true;
   $("#aboutSection").hidden = true;
@@ -2923,6 +2939,146 @@ async function togglePinterestPlugin() {
   }
 }
 
+// --- LAN phone sync -----------------------------------------------------
+//
+// The panel never blocks on the network: opening it starts a pairing request
+// and shows a QR the moment the reply arrives, but the drawer itself opens
+// immediately, and every button below answers right away and lets the actual
+// network work happen after. A phone that is asleep or a laptop with the lid
+// closed is not an error state anywhere in this file, because it just isn't
+// one: it is the normal condition sync is designed to sit through.
+
+let syncExpiryTimer = null;
+
+function openSyncPanel(title) {
+  $("#addSection").hidden = true;
+  $("#pinterestSection").hidden = true;
+  $("#webSection").hidden = true;
+  $("#boardsSection").hidden = true;
+  $("#aboutSection").hidden = true;
+  $("#settingsSection").hidden = true;
+  $("#pluginsSection").hidden = true;
+  $("#syncSection").hidden = false;
+  openMenu(title);
+}
+
+function showSyncPairing() {
+  openSyncPanel(t("sync.title"));
+  refreshSyncState();
+  beginSyncPairing();
+}
+
+// The phone half of pairing. A phone shows no QR of its own, so this skips
+// the pairing request entirely and offers the camera instead. The scan itself
+// belongs to the Android shell, which calls window.onPairingScanned below.
+function showSyncPairingOnPhone() {
+  openSyncPanel(t("sync.title_phone"));
+  clearTimeout(syncExpiryTimer);
+  $("#syncQR").innerHTML = "";
+  refreshSyncState();
+}
+
+// Called by name from the Android side once the camera closes, with the raw
+// scanned text or null when the scan was cancelled. Defined on window because
+// that is the only handle the native code has on it.
+window.onPairingScanned = async function (text) {
+  if (!text) return; // Cancelled or unreadable; the panel is still open to try again.
+  try {
+    const reply = await request("/api/app/sync/pair-with", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({data: text}),
+    });
+    showMessage(t("sync.paired", {name: reply.name || ""}));
+  } catch (error) {
+    showMessage(error.message, true, true);
+  }
+  refreshSyncState();
+};
+
+async function refreshSyncState() {
+  let state;
+  try {
+    state = await (await fetch("/api/app/sync")).json();
+  } catch {
+    return; // The panel already shows what it had; nothing to update yet.
+  }
+  renderSyncDevices(state.peers || []);
+  $("#syncPauseToggle").textContent = state.listening ? t("sync.pause") : t("sync.resume");
+}
+
+function renderSyncDevices(peers) {
+  const list = $("#syncDeviceList");
+  $("#syncNoDevices").hidden = peers.length > 0;
+  list.hidden = peers.length === 0;
+  list.innerHTML = "";
+  const now = Date.now() / 1000;
+  for (const peer of peers) {
+    const item = document.createElement("li");
+    item.className = "sync-device";
+    const seen = document.createElement("span");
+    seen.className = "sync-device-status";
+    // "nearby" for anything seen in the last five minutes, which is the
+    // window a phone on the same wifi realistically checks in within. Older
+    // than that reads as a plain date rather than a stale "2 min ago" that
+    // quietly became "3 weeks ago" and kept looking recent.
+    if (!peer.lastSeen) seen.textContent = t("sync.last_seen_never");
+    else if (now - peer.lastSeen < 300) seen.textContent = t("sync.last_seen_now");
+    else seen.textContent = new Date(peer.lastSeen * 1000).toLocaleDateString();
+    const name = document.createElement("strong");
+    name.textContent = peer.name || peer.id;
+    const forget = document.createElement("button");
+    forget.type = "button";
+    forget.textContent = t("sync.forget");
+    forget.onclick = () => forgetSyncPeer(peer.id);
+    item.append(name, seen, forget);
+    list.append(item);
+  }
+}
+
+async function forgetSyncPeer(id) {
+  try {
+    await fetch(`/api/app/sync/peers/${encodeURIComponent(id)}`, { method: "DELETE" });
+  } catch {
+    // The button already reflects the attempt; a retry is just pressing it
+    // again, and there is nothing more specific to say about a LAN request
+    // that did not land.
+  }
+  refreshSyncState();
+}
+
+async function beginSyncPairing() {
+  clearTimeout(syncExpiryTimer);
+  $("#syncExpiry").textContent = t("sync.expiry");
+  let reply;
+  try {
+    reply = await (await fetch("/api/app/sync/pairing", { method: "POST" })).json();
+  } catch {
+    // Sync is not reachable at all (attachSync failed at startup, most
+    // likely a read-only data directory). The menu button that opens this
+    // panel is already hidden in that case; reaching here regardless fails
+    // quietly rather than with a wall of red text over a QR code.
+    return;
+  }
+  $("#syncQR").innerHTML = reply.qrSVG || "";
+  // Refreshed a little before the server's own deadline, so there is no
+  // moment where a phone might scan a code between it going stale on the
+  // server and this screen noticing.
+  syncExpiryTimer = setTimeout(beginSyncPairing, Math.max(5, (reply.expiresIn || 180) - 10) * 1000);
+}
+
+$("#syncNewCode").onclick = beginSyncPairing;
+$("#syncPauseToggle").onclick = async () => {
+  const pausing = $("#syncPauseToggle").textContent === t("sync.pause");
+  try {
+    await fetch(`/api/app/sync/${pausing ? "pause" : "listen"}`, { method: "POST" });
+  } catch {
+    // Nothing to report; refreshSyncState below shows whatever the truth
+    // turns out to be.
+  }
+  refreshSyncState();
+};
+
 // An empty library is the moment a Pinterest board is most useful, so the
 // welcome screen offers it and turns the plugin on for whoever asks.
 async function startPinterestOnboarding() {
@@ -2980,6 +3136,7 @@ async function importPinterestBoard(event) {
       body: JSON.stringify({
         url: rawURL,
         mode,
+        folder: mode === "existing" ? $("#pinterestExistingFolder").value : "",
         skipExisting: $("#pinterestSkipExisting").checked,
       }),
     });
@@ -2999,6 +3156,36 @@ async function importPinterestBoard(event) {
   watchPinterestImport();
 }
 
+// A board does not always deserve a folder of its own. Several boards about one
+// subject belong together, and the only way to do that used to be importing
+// straight into the library and sorting it by hand afterwards, so the folders
+// already in the library are offered as a destination.
+function renderPinterestFolders() {
+  const select = $("#pinterestExistingFolder");
+  const choice = $("#pinterestExistingChoice");
+  const folders = appState.tags || [];
+  const chosen = select.value;
+  select.replaceChildren(...folders.map(folder => {
+    const option = document.createElement("option");
+    option.value = folder.name;
+    option.textContent = `${folder.name} (${folder.count})`;
+    return option;
+  }));
+  if (folders.some(folder => folder.name === chosen)) select.value = chosen;
+  // Offering an empty list would be offering nothing. Somebody with no folders
+  // yet gets the board folder, which is what makes their first one.
+  choice.hidden = !folders.length;
+  if (!folders.length && document.querySelector('input[name="pinterestMode"]:checked')?.value === "existing") {
+    document.querySelector('input[name="pinterestMode"][value="board"]').checked = true;
+  }
+  syncPinterestFolderChoice();
+}
+
+function syncPinterestFolderChoice() {
+  const mode = document.querySelector('input[name="pinterestMode"]:checked')?.value;
+  $("#pinterestExistingFolder").hidden = mode !== "existing" || !(appState.tags || []).length;
+}
+
 function showPinterestWorking(status) {
   pinterestRunning = true;
   const title = $("#pinterestWorkingTitle");
@@ -3016,14 +3203,14 @@ function showPinterestWorking(status) {
   $("#pinterestImportButton").textContent = t("pinterest.downloading");
   $("#pinterestCancelImport").hidden = false;
   $("#pinterestWorking").hidden = false;
-  $("#pinterestImportForm").querySelectorAll("input").forEach(input => { input.disabled = true; });
+  $("#pinterestImportForm").querySelectorAll("input, select").forEach(input => { input.disabled = true; });
 }
 
 function clearPinterestWorking() {
   pinterestRunning = false;
   $("#pinterestWorking").hidden = true;
   $("#pinterestCancelImport").hidden = true;
-  $("#pinterestImportForm").querySelectorAll("input").forEach(input => { input.disabled = false; });
+  $("#pinterestImportForm").querySelectorAll("input, select").forEach(input => { input.disabled = false; });
   $("#pinterestImportButton").disabled = appState.plugins?.pinterest?.available === false;
   $("#pinterestImportButton").textContent = t("pinterest.download_all");
 }
@@ -3522,6 +3709,9 @@ $("#foldersTab").onclick = () => { switchTab("folders"); loadFolders(); };
 $("#newFolderButton").onclick = () => openCreateFolder();
 $("#showBoards").onclick = loadBoards;
 $("#showPinterest").onclick = showPinterestImport;
+$("#showSync").onclick = showSyncPairing;
+$("#showSyncPhone").onclick = showSyncPairingOnPhone;
+$("#syncScanButton").onclick = () => window.AndroidBridge?.scanForPairing?.();
 $("#showPlugins").onclick = showPlugins;
 $("#showOnboarding").onclick = () => {
   closeMenu();
@@ -3591,6 +3781,7 @@ $("#showAdd").onclick = () => {
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#syncSection").hidden = true;
   $("#webSection").hidden = true;
   $("#addSection").hidden = !$("#addSection").hidden;
 };
@@ -3600,11 +3791,13 @@ $("#emptyAddImages").onclick = () => {
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#syncSection").hidden = true;
   $("#webSection").hidden = true;
   $("#addSection").hidden = false;
   openMenu();
 };
 $("#emptyPinterest").onclick = startPinterestOnboarding;
+$("#emptyPinterestPhone").onclick = startPinterestOnboarding;
 $("#imageFiles").onchange = event => uploadFiles(event.target.files);
 $("#chooseFolder").onclick = openFolderPickerDialog;
 $("#addSourceFolder").onclick = openFolderPickerDialog;
@@ -3619,6 +3812,8 @@ $("#autoSyncStop").onclick = async () => {
 };
 $("#folderPickerClose").onclick = () => $("#folderPickerDialog").close();
 $("#pinterestImportForm").onsubmit = importPinterestBoard;
+$("#pinterestImportForm").querySelectorAll('input[name="pinterestMode"]')
+  .forEach(radio => { radio.onchange = syncPinterestFolderChoice; });
 $("#pinterestCancelImport").onclick = () => request("/api/app/plugins/pinterest/import", {method: "DELETE"}).catch(() => {});
 $("#pinterestImportAnother").onclick = resetPinterestImport;
 $("#pinterestOpenFolder").onclick = openImportedPinterestFolder;
@@ -3860,7 +4055,14 @@ async function start() {
   resumePinterestImport();
   // First run only, and only while there is nothing to look at. Once it has
   // been through, or closed, Pictogrep does not ask again.
-  if (!appState.onboarding?.completed && !appState.index?.count) window.PictogrepOnboarding?.start();
+  //
+  // Never on a phone. The empty library already explains itself, in the same
+  // words and on the screen the app opens on, and the only thing the phone
+  // path of this flow adds is a modal in front of it saying so again. The
+  // desktop keeps it: there it is what asks for a folder to read, which is
+  // the one thing a desktop library cannot start without.
+  const wanted = !appState.mobile && !appState.onboarding?.completed && !appState.index?.count;
+  if (wanted) window.PictogrepOnboarding?.start();
 }
 
 // The bridge the onboarding flow talks to. It is the whole contract between
@@ -4042,6 +4244,7 @@ function showWebImport() {
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = true;
+  $("#syncSection").hidden = true;
   $("#webSection").hidden = false;
   openMenu(t("web.title"));
   renderFollowedWebSources();

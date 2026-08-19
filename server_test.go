@@ -1327,6 +1327,54 @@ func TestTheAndroidPageGetsItsOwnInterface(t *testing.T) {
 	}
 }
 
+// The app build ships without the board importer, and this is the check that
+// says so about the page rather than about the code that builds it. See
+// platform_mobile.go: the risk being avoided is a store takedown months after
+// release, which is not a thing anyone gets to fix afterwards.
+func TestTheAndroidPageHasNoBoardImporter(t *testing.T) {
+	page, err := embeddedFiles.ReadFile("web/index.html")
+	if err != nil {
+		t.Fatalf("reading the page: %v", err)
+	}
+	phone := string(rewriteForPhone(page))
+
+	// Nothing to read. The desktop page says the name a dozen times, so this
+	// also proves the rewrite ran at all.
+	if text := strings.ToLower(string(visibleText([]byte(phone)))); strings.Contains(text, "pinterest") {
+		t.Error("the phone page says Pinterest somewhere a user can read it")
+	}
+	if !strings.Contains(strings.ToLower(string(visibleText(page))), "pinterest") {
+		t.Skip("index.html no longer mentions Pinterest at all, so this test proves nothing")
+	}
+
+	// Nothing to press, either: the panel and both ways into it are empty.
+	for _, gone := range []string{
+		`data-i18n="pinterest.title"`,
+		`data-i18n="pinterest.intro"`,
+		`<input id="pinterestBoardURL"`,
+		`<form id="pinterestImportForm"`,
+	} {
+		if strings.Contains(phone, gone) {
+			t.Errorf("the phone page still carries %s", gone)
+		}
+	}
+
+	// The ids survive as empty stubs, because app.js writes to them on every
+	// state update and is the same file on both platforms.
+	for _, kept := range []string{`id="pinterestSection"`, `id="showPinterest"`, `id="pinterestReadiness"`} {
+		if !strings.Contains(phone, kept) {
+			t.Errorf("%s is gone from the phone page, which is a TypeError in app.js", kept)
+		}
+	}
+
+	// The rest of the page is untouched: the web importer shares the panel's
+	// stylesheet and its help strings, and hollowing it out too would take the
+	// share sheet's own destination with it.
+	if !strings.Contains(phone, `id="webSection"`) {
+		t.Error("the web importer went out with the board importer")
+	}
+}
+
 // Turning an id back into a path is on the path of every thumbnail request, so
 // it is cached. A cache that outlives the library it was built from is worse
 // than the linear scan it replaced: it answers with a picture that has been

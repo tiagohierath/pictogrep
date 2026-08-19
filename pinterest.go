@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -192,6 +193,7 @@ func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 	var request struct {
 		URL          string `json:"url"`
 		Mode         string `json:"mode"`
+		Folder       string `json:"folder"`
 		SkipExisting bool   `json:"skipExisting"`
 	}
 	if err := decodeJSON(r, &request, 1<<20); err != nil {
@@ -203,9 +205,21 @@ func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 		sendError(w, http.StatusBadRequest, err)
 		return
 	}
-	if request.Mode != "original" && request.Mode != "board" {
+	if request.Mode != "original" && request.Mode != "board" && request.Mode != "existing" {
 		sendError(w, http.StatusBadRequest, fmt.Errorf("choose how Pinterest images should be organized"))
 		return
+	}
+	// A board can go into a folder that is already there, which is the only way
+	// to keep several boards about one subject together. The folder is checked
+	// before the download for the same reason the board name is.
+	folder := ""
+	if request.Mode == "existing" {
+		name, err := collectionName(request.Folder)
+		if err != nil || !slices.Contains(s.collectionNames(), name) {
+			sendError(w, http.StatusBadRequest, fmt.Errorf("choose a folder you already have"))
+			return
+		}
+		folder = name
 	}
 	// A board name that cannot become a folder has to be caught here. Finding
 	// out after the download would throw away everything it just spent half an
@@ -228,7 +242,7 @@ func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		defer cancel()
 		defer guard(func(err error) { s.pinterest.finish(nil, err) })
-		result, err := s.runPinterestImport(ctx, boardURL, request.Mode, request.SkipExisting)
+		result, err := s.runPinterestImport(ctx, boardURL, request.Mode, folder, request.SkipExisting)
 		// A board that imported at least once is worth following, so it gets
 		// re-checked about weekly until auto-sync is turned off or the board is
 		// forgotten. Only the import settles what "now" means, so the timestamp
@@ -237,6 +251,7 @@ func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
 			_ = s.app.trackBoard(trackedBoard{
 				URL:          boardURL.String(),
 				Mode:         request.Mode,
+				Folder:       folder,
 				SkipExisting: request.SkipExisting,
 				LastSyncAt:   time.Now().Unix(),
 			})
@@ -262,9 +277,11 @@ func (s *server) cancelPinterestImport(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "state": "cancelled"})
 }
 
-func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode string, skipExisting bool) (map[string]any, error) {
+func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode, folder string, skipExisting bool) (map[string]any, error) {
 	boardName := pinterestBoardName(boardURL)
-	folder := ""
+	if mode != "existing" {
+		folder = ""
+	}
 	if mode == "board" {
 		name, err := collectionName(boardName)
 		if err != nil {

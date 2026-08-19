@@ -336,6 +336,12 @@ func (a *application) saveIndexingSettings(settings indexingSettings) error {
 }
 
 func (a *application) pluginEnabled(name string) bool {
+	// Not a default the user can change: a build without the board importer does
+	// not have one to turn on. This is also what stops the weekly board sync,
+	// which asks this question before it fetches anything.
+	if name == "pinterest" && !offersPinterest {
+		return false
+	}
 	// The two importers ship with release installations and are ready on first
 	// launch, while remaining ordinary plugins that users can turn off.
 	defaultEnabled := name == "pinterest" || name == "web"
@@ -358,6 +364,12 @@ func (a *application) pluginEnabled(name string) bool {
 
 func (a *application) setPluginEnabled(name string, enabled bool) error {
 	if name != "wikimedia" && name != "calendar" && name != "sidebar" && name != "vim" && name != "commandPalette" && name != "pinterest" && name != "web" && name != "canvas" {
+		return fmt.Errorf("unknown plugin: %s", name)
+	}
+	// A build with no board importer has no setting for one either, so that
+	// writing the config by hand cannot bring back a panel this build does not
+	// serve.
+	if name == "pinterest" && !offersPinterest {
 		return fmt.Errorf("unknown plugin: %s", name)
 	}
 	document := map[string]any{}
@@ -999,6 +1011,21 @@ func scanImages(root string) ([]string, error) {
 	})
 	sort.Strings(paths)
 	return paths, err
+}
+
+// digestSet is the content hash of every picture currently in the library,
+// which is what a sync manifest is checked against. Same cost as
+// newImportBatch's index, because it answers the same question: is this
+// picture already here, under whatever name it arrived with.
+func (a *application) digestSet() map[[32]byte]bool {
+	paths, _, _ := a.snapshot()
+	have := make(map[[32]byte]bool, len(paths))
+	for _, path := range paths {
+		if digest, err := fileDigest(path); err == nil {
+			have[digest] = true
+		}
+	}
+	return have
 }
 
 func (a *application) snapshot() (paths, sources []string, job jobState) {

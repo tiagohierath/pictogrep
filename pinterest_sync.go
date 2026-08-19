@@ -28,8 +28,11 @@ const (
 )
 
 type trackedBoard struct {
-	URL          string `json:"url"`
-	Mode         string `json:"mode"`
+	URL  string `json:"url"`
+	Mode string `json:"mode"`
+	// Folder is the existing collection an "existing" import fills. Empty for
+	// the other modes, which name their own folder or use none.
+	Folder       string `json:"folder,omitempty"`
 	SkipExisting bool   `json:"skipExisting"`
 	LastSyncAt   int64  `json:"lastSyncAt"`
 }
@@ -209,7 +212,7 @@ func (s *server) syncDueBoards(ctx context.Context, now time.Time) bool {
 		// waits its turn again instead of being retried on every pass.
 		board.LastSyncAt = now.Unix()
 		_ = s.app.trackBoard(board)
-		result, runErr := s.runPinterestImport(runCtx, boardURL, board.Mode, true)
+		result, runErr := s.runPinterestImport(runCtx, boardURL, board.Mode, board.Folder, true)
 		cancel()
 		s.pinterest.finish(result, runErr)
 		if runErr != nil {
