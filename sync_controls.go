@@ -147,7 +147,10 @@ func (s *server) beginSyncPairing(w http.ResponseWriter, r *http.Request) {
 		DeviceID:        sync.identity.id,
 		Name:            sync.identity.name,
 		Addresses:       addresses,
-		Port:            syncPort,
+		// The port that is open, not the one the constant asks for: start() has
+		// just returned, so these are the same number in every real install, and
+		// the QR stays truthful if that ever stops being so.
+		Port: sync.listeningPort(),
 		Fingerprint:     sync.fingerprint(),
 		Secret:          secret,
 	}

@@ -88,10 +88,14 @@ func (s *syncServer) handleUploadBlob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	peer, _ := peerFromContext(r.Context())
-	source := "sync:" + peer.Name
+	// No source directory: a picture arriving from a phone belongs in the
+	// library itself, exactly like one dropped on the window or saved from the
+	// share sheet. `source` in importDestination names one of the library's own
+	// indexed folders on this disk, so anything descriptive passed here (the
+	// sending device, say) is read as a path, fails to stat, and turns every
+	// upload into "unknown destination folder".
 	result, status, err := s.appServer.saveImportedImageWithOptions(
-		bytes.NewReader(data), name, folder, source, true, true, nil,
+		bytes.NewReader(data), name, folder, "", true, true, nil,
 	)
 	if err != nil {
 		sendError(w, status, err)

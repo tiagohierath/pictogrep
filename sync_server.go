@@ -54,6 +54,11 @@ type syncServer struct {
 	// Held here rather than started alongside the app because there is nothing
 	// to announce until the port is open. See sync_mdns.go.
 	advertiser mdnsAdvertiser
+
+	// port to listen on, or 0 for syncPort. Only a test sets this, so that two
+	// instances can pair inside one process without fighting over the one fixed
+	// port a real installation wants.
+	port int
 }
 
 // newSyncServer loads or creates the device's identity and certificate, and
@@ -97,7 +102,11 @@ func (s *syncServer) start() error {
 		// one, by design.
 		ClientAuth: tls.RequestClientCert,
 	}
-	listener, err := tls.Listen("tcp", fmt.Sprintf(":%d", syncPort), config)
+	port := s.port
+	if port == 0 {
+		port = syncPort
+	}
+	listener, err := tls.Listen("tcp", fmt.Sprintf(":%d", port), config)
 	if err != nil {
 		return err
 	}
@@ -106,17 +115,34 @@ func (s *syncServer) start() error {
 	// The only door open to someone who has never paired.
 	mux.HandleFunc("POST /pair", s.handlePair)
 	// Everything past this line checks the caller against the peer store.
-	mux.Handle("GET /manifest", s.authenticated(http.HandlerFunc(s.handleManifest)))
+	//
+	// POST, not GET, though it only asks a question: the question is a list of
+	// hashes, which is a body, and a GET carrying a body is the kind of request
+	// that works until it meets a proxy or an HTTP stack that drops it.
+	mux.Handle("POST /manifest", s.authenticated(http.HandlerFunc(s.handleManifest)))
 	mux.Handle("POST /blobs/{hash}", s.authenticated(http.HandlerFunc(s.handleUploadBlob)))
 	go func() { _ = http.Serve(listener, mux) }()
 	// Announced only once the listener is up, so nothing is ever told to knock
 	// on a door that is not there yet. A failure here is logged and swallowed:
 	// what matters to a caller of start() is that the port is open, and every
 	// paired device can still reach it by its stored address or a fresh QR.
-	if err := s.advertiser.start(s.identity.id, s.identity.name, syncPort); err != nil {
+	if err := s.advertiser.start(s.identity.id, s.identity.name, s.listeningPort()); err != nil {
 		logMDNSUnavailable(err)
 	}
 	return nil
+}
+
+// listeningPort is the port actually open, which is what a QR and an mDNS
+// record have to carry: a constant is what was asked for, and this is what was
+// got. Zero when nothing is listening.
+func (s *syncServer) listeningPort() int {
+	if s.listener == nil {
+		return 0
+	}
+	if addr, ok := s.listener.Addr().(*net.TCPAddr); ok {
+		return addr.Port
+	}
+	return 0
 }
 
 func (s *syncServer) stop() error {

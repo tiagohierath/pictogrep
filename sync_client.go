@@ -137,6 +137,42 @@ func (s *syncServer) attemptPair(target string, tlsConfig *tls.Config, session p
 	})
 }
 
+// peerClient dials a device this one has already paired with.
+//
+// The same pinning as pairing, against a different source of truth: pairing
+// pins the fingerprint the QR carried, and everything afterwards pins the one
+// written into the peer record when that pairing succeeded. A peer whose
+// certificate has changed is refused rather than re-trusted, because on this
+// network a changed certificate and an impostor are the same event.
+func (s *syncServer) peerClient(target peer) *http.Client {
+	config := &tls.Config{
+		Certificates:       []tls.Certificate{s.cert},
+		InsecureSkipVerify: true, //nolint:gosec // pinned in VerifyPeerCertificate below
+		VerifyPeerCertificate: func(raw [][]byte, _ [][]*x509.Certificate) error {
+			if len(raw) == 0 {
+				return fmt.Errorf("%s presented no certificate", target.Name)
+			}
+			sum := sha256.Sum256(raw[0])
+			if hex.EncodeToString(sum[:]) != target.Fingerprint {
+				return fmt.Errorf("%s is not the device that was paired", target.Name)
+			}
+			return nil
+		},
+	}
+	dialer := &net.Dialer{Timeout: 5 * time.Second}
+	return &http.Client{
+		// Generous next to pairing's ten seconds: this one carries a picture over
+		// a phone's wifi, and a timeout that fires mid-upload is a transfer that
+		// gets retried from the beginning rather than one that fails usefully.
+		Timeout: 2 * time.Minute,
+		Transport: &http.Transport{
+			DialTLSContext: func(_ context.Context, network, addr string) (net.Conn, error) {
+				return tls.DialWithDialer(dialer, network, addr, config)
+			},
+		},
+	}
+}
+
 // pairWithScannedRequest is what the phone's own page posts to its own local
 // server right after the camera reads a QR: the raw pictogrep://pair? text,
 // unparsed, because parsing it is this file's job and not JavaScript's.
