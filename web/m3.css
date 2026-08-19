@@ -1080,6 +1080,33 @@
   box-shadow: var(--shadow-menu);
 }
 
+/* The other notification: import progress ("Adding a picture" and its bar),
+   which is a separate element from .message above and had no phone rule of
+   its own, so it stayed at the bottom under the search bar and the
+   navigation island every other floating panel was already moved out from
+   under. Same position as .message, for the same reason. */
+.is-phone .import-progress {
+  top: calc(env(safe-area-inset-top, 0px) + 12px);
+  right: var(--m3-gutter);
+  bottom: auto;
+  left: var(--m3-gutter);
+  width: auto;
+  max-width: none;
+  border: 0;
+  border-radius: var(--m3-corner-xs);
+  background: var(--m3-surface-container-high);
+  box-shadow: var(--shadow-menu);
+}
+
+/* .message used to stack above the progress panel when both showed at once,
+   which only made sense when both lived at the bottom. Now that both sit at
+   the top, the message belongs below the progress panel instead of on top of
+   it, so it does not cover the thing it is reporting on. */
+.is-phone .import-progress:not([hidden]) + .message {
+  top: calc(env(safe-area-inset-top, 0px) + 12px + 96px);
+  bottom: auto;
+}
+
 /* ------------------------------------------------------------------ *
  * 12. Empty and result states
  * ------------------------------------------------------------------ */
