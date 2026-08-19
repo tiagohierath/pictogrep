@@ -905,10 +905,27 @@
 }
 
 .is-phone .drawer-header {
+  /* Pinned within the drawer's own scroll, the same way the main header is
+     pinned within the page's: whatever panel is open below it (the menu list,
+     Settings, Plugins, Connect phone) can be pulled down without taking the
+     title bar and its close button along for the ride. */
+  position: sticky;
+  z-index: 5;
+  top: 0;
   height: var(--header-height);
   padding: 0 4px 0 16px;
   border: 0;
   align-items: center;
+  background: var(--m3-surface-container-low);
+}
+
+/* One spacer, shared by every panel the drawer can show, since only one of
+   them is ever visible and all of them scroll inside the same #drawer
+   element. Shorter than the main page's: this sheet already starts its own
+   lists partway down for thumb reach, so the same 50vh again would push a
+   short list (the plain menu) almost entirely out of view. */
+.is-phone .drawer .pull-space {
+  height: 25vh;
   background: var(--m3-surface-container-low);
 }
 
@@ -1123,6 +1140,14 @@
  * ------------------------------------------------------------------ */
 
 .is-phone .empty { padding: 48px 8px; }
+
+/* Reachable only by pulling the photos down; phone.js starts every load
+   already scrolled past it, so nothing about this shows up on its own, and
+   the sticky header above it in the document never moves regardless. */
+.is-phone .pull-space {
+  height: 50vh;
+  background: var(--m3-surface);
+}
 .is-phone .empty h2 { font-size: var(--text-2xl); font-weight: 400; }
 
 /* Pinned just above the search band rather than left in the flow of the empty

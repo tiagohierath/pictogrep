@@ -223,6 +223,34 @@
     }
   }
 
+  /*
+   * A pull-down gap that moves the photos, not the header.
+   *
+   * The spacer goes inside .main-content, right after the header rather than
+   * before it. That is the whole fix for the header dragging along with the
+   * content on the first try: the header is sticky, and a sticky element only
+   * releases from top:0 while something before it in the document is still
+   * scrolling past. With nothing above the header any more, it is stuck from
+   * scrollTop 0 onward and never moves, and the spacer's own scroll is what
+   * carries the photos down when it is pulled into view.
+   */
+  const main = $(".main-content");
+  if (main) {
+    const spacer = document.createElement("div");
+    spacer.className = "pull-space";
+    spacer.setAttribute("aria-hidden", "true");
+    main.prepend(spacer);
+    const hideSpacer = () => window.scrollTo(0, spacer.getBoundingClientRect().height);
+    hideSpacer();
+    // Only while the gap is still at or near the top of the screen: once the
+    // person has scrolled on into the library, a resize (the keyboard opening
+    // for a search, most often) must not snap them back out of what they were
+    // doing.
+    window.addEventListener("resize", () => {
+      if (window.scrollY < spacer.getBoundingClientRect().height) hideSpacer();
+    });
+  }
+
   buildNav();
 
   /*
@@ -281,7 +309,25 @@
    */
   const drawer = $("#drawer");
   if (drawer) {
-    new MutationObserver(syncNav).observe(drawer, {
+    // One spacer, placed once, right after the header and before whichever
+    // panel the drawer opens with: the header above it is what to keep
+    // pinned, and everything after it is one of the panels this shares
+    // between.
+    const drawerSpacer = document.createElement("div");
+    drawerSpacer.className = "pull-space";
+    drawerSpacer.setAttribute("aria-hidden", "true");
+    $(".drawer-header")?.after(drawerSpacer);
+    const hideDrawerSpacer = () => {
+      drawer.scrollTop = drawerSpacer.getBoundingClientRect().height;
+    };
+
+    new MutationObserver(() => {
+      syncNav();
+      // Reset every time the sheet opens, not once at page load: the drawer
+      // starts hidden off-screen and unscrolled, and each new open is a fresh
+      // reason to hide the gap again, whichever panel it opens to.
+      if (drawer.classList.contains("open")) hideDrawerSpacer();
+    }).observe(drawer, {
       attributes: true,
       attributeFilter: ["class"],
     });
