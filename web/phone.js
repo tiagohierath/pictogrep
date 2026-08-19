@@ -223,32 +223,6 @@
     }
   }
 
-  /*
-   * A pull-down gap above the header, hidden by default.
-   *
-   * A spacer goes in above everything, sized to half the screen, and the page
-   * loads scrolled past it so nothing about it shows at first glance. Pulling
-   * the content down (scrolling toward the top of the document) uncovers it
-   * the ordinary way, through the same scroll the rest of the page already
-   * has, rather than through a gesture this file has to detect and animate
-   * itself. Nothing here is a pull-to-refresh: there is no threshold, no
-   * release action, just room that was always there to scroll into.
-   */
-  const spacer = document.createElement("div");
-  spacer.className = "pull-space";
-  spacer.setAttribute("aria-hidden", "true");
-  document.body.prepend(spacer);
-  const hideSpacer = () => window.scrollTo(0, spacer.getBoundingClientRect().height);
-  hideSpacer();
-  // The spacer is in vh, so a rotation changes its pixel height under a scroll
-  // position set for the old one. Only correct that while the gap is at or
-  // near the top of the screen: once the person has scrolled on into the
-  // library, a resize (the keyboard opening for a search, most often) must not
-  // snap them back to the top of the page out from under what they were doing.
-  window.addEventListener("resize", () => {
-    if (window.scrollY < spacer.getBoundingClientRect().height) hideSpacer();
-  });
-
   buildNav();
 
   /*

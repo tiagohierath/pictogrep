@@ -1123,13 +1123,6 @@
  * ------------------------------------------------------------------ */
 
 .is-phone .empty { padding: 48px 8px; }
-
-/* Reachable only by pulling the page down; phone.js starts every load already
-   scrolled past it, so nothing about this shows up on its own. */
-.is-phone .pull-space {
-  height: 50vh;
-  background: var(--m3-surface);
-}
 .is-phone .empty h2 { font-size: var(--text-2xl); font-weight: 400; }
 
 /* Pinned just above the search band rather than left in the flow of the empty
