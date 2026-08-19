@@ -287,6 +287,16 @@
 .is-phone .app-header.is-lifted { background: var(--m3-surface-container); }
 
 .is-phone .wordmark {
+  /* Centered on the header's own box, not balanced against its neighbours.
+     The three-column grid should have done this and reportedly still did not
+     land as centered on the device it was checked against, so this instead
+     answers only to the header, which is already the positioning context
+     here via its own position: sticky. Nothing about either button, shown,
+     hidden, or a different width than assumed, can move this off-centre. */
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   grid-column: 2;
   color: var(--m3-on-surface);
   font-size: var(--text-xl);
@@ -294,6 +304,7 @@
   letter-spacing: 0;
   text-align: center;
   text-transform: none;
+  pointer-events: none;
 }
 
 .is-phone .app-header button {
