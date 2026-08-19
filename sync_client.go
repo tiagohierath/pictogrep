@@ -134,6 +134,9 @@ func (s *syncServer) attemptPair(target string, tlsConfig *tls.Config, session p
 	return s.peers.add(peer{
 		ID: accepted.DeviceID, Name: accepted.Name, PublicKey: accepted.PublicKey,
 		Fingerprint: session.Fingerprint, Address: target,
+		// This device dialled that address and was answered, so it is somewhere
+		// pictures can be sent. The other end cannot say the same about this one.
+		Listens: true,
 	})
 }
 
@@ -203,5 +206,9 @@ func (s *server) pairWithScanned(w http.ResponseWriter, r *http.Request) {
 		sendError(w, http.StatusBadGateway, err)
 		return
 	}
+	// Straight into a first pass. Pairing is the one moment the user is watching
+	// sync happen, and waiting out the ordinary interval before anything moves
+	// would read as a connection that did not work.
+	sync.outbox.nudge()
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "name": session.Name})
 }

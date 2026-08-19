@@ -27,9 +27,17 @@ type peer struct {
 	Fingerprint string `json:"fingerprint"`
 	// Where it answered last. A hint, refreshed on every successful connection
 	// and never trusted on its own.
-	Address  string `json:"address,omitempty"`
-	PairedAt int64  `json:"pairedAt"`
-	LastSeen int64  `json:"lastSeen,omitempty"`
+	Address string `json:"address,omitempty"`
+	// Whether Address is somewhere this device can actually connect to.
+	//
+	// True only for a peer this device dialled during pairing, because that is
+	// the only case where the address is one the peer chose to listen on. The
+	// device that was dialled saw the other end's source port, which nothing can
+	// be sent to, so a desktop knows not to try pushing to a phone: the phone
+	// pushes to it. Pairing is symmetric, reachability is not.
+	Listens  bool  `json:"listens,omitempty"`
+	PairedAt int64 `json:"pairedAt"`
+	LastSeen int64 `json:"lastSeen,omitempty"`
 }
 
 // peerStore is the paired devices, on disk as one JSON file.
@@ -121,7 +129,11 @@ func (s *peerStore) seen(id, address string) error {
 		return nil
 	}
 	one.LastSeen = time.Now().Unix()
-	if address != "" {
+	// Only for a peer whose address was never anywhere to send to anyway. A
+	// peer that listens keeps the address it was paired on: what arrives here is
+	// the source port of its outgoing connection, and writing that over a good
+	// address would quietly turn a working peer into an unreachable one.
+	if address != "" && !one.Listens {
 		one.Address = address
 	}
 	s.peers[id] = one

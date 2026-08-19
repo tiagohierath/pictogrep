@@ -67,6 +67,10 @@ func (s *server) attachSync(deviceName string) error {
 		return err
 	}
 	s.sync = sync
+	// Sending does not need a port of its own: a phone pushes outward and never
+	// listens, so the outbox runs whether or not this device answers the
+	// network. It costs nothing where nothing is paired.
+	sync.outbox.start()
 	if len(sync.peers.all()) > 0 {
 		return sync.start()
 	}
@@ -1514,7 +1518,20 @@ func (s *server) appUpload(w http.ResponseWriter, r *http.Request) {
 		sendError(w, status, err)
 		return
 	}
+	// The share sheet's own endpoint, so this is where a picture most often
+	// enters a phone. Sending starts now rather than on the next interval,
+	// which is the difference between "share it and it is on the desktop" and
+	// "share it and it is on the desktop in five minutes".
+	s.syncSoon()
 	sendJSON(w, http.StatusOK, result)
+}
+
+// syncSoon asks the outbox for a pass, where there is one. Safe on a build with
+// no sync and on a device that has never paired: both are a no-op.
+func (s *server) syncSoon() {
+	if s.sync != nil && s.sync.outbox != nil {
+		s.sync.outbox.nudge()
+	}
 }
 
 func (s *server) deleteImage(w http.ResponseWriter, r *http.Request) {

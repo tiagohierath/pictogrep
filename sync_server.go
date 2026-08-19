@@ -48,6 +48,12 @@ type syncServer struct {
 	peers    *peerStore
 	pairing  *pairingManager
 	cert     tls.Certificate
+	// digests answers "what is in this library", for the manifest this device
+	// serves and for the one its outbox asks of others.
+	digests *digestCache
+	// outbox is what sends. Nil is a valid state and means this device only
+	// receives; see newSyncServer.
+	outbox *outbox
 
 	listener net.Listener
 	// advertiser makes this machine findable again after its address changes.
@@ -80,10 +86,21 @@ func newSyncServer(appServer *server, deviceName string) (*syncServer, error) {
 	if err != nil {
 		return nil, fmt.Errorf("sync certificate: %w", err)
 	}
-	return &syncServer{
+	server := &syncServer{
 		appServer: appServer, app: app,
 		identity: id, peers: peers, pairing: newPairingManager(), cert: cert,
-	}, nil
+		digests: openDigestCache(filepath.Join(dir, "digests.json")),
+	}
+	server.outbox = newOutbox(server, dir)
+	return server, nil
+}
+
+// libraryIndex is every picture in the library by content hash, which is what
+// both halves of a transfer are decided from: what this device can answer a
+// manifest with, and what its outbox still has to offer.
+func (s *syncServer) libraryIndex() map[[32]byte]string {
+	paths, _, _ := s.app.snapshot()
+	return s.digests.index(paths)
 }
 
 func (s *syncServer) fingerprint() string { return certFingerprint(&s.cert) }

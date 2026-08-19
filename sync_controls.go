@@ -38,11 +38,6 @@ func localAddresses() []string {
 	return found
 }
 
-// requestSyncFromPeers asks every reachable paired device to flush its
-// outbox now rather than on its own schedule. A stub until the outbox itself
-// exists on the phone side (task 8): there is nothing to ask for yet.
-func (a *application) requestSyncFromPeers() {}
-
 // deviceDisplayName is what a peer shows for this machine in its list of
 // paired devices: "Tiago's Laptop", not a device id nobody chose.
 func deviceDisplayName() string {
@@ -69,10 +64,11 @@ func (s *server) syncState(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendJSON(w, http.StatusOK, map[string]any{
-		"deviceId": sync.identity.id,
+		"deviceId":   sync.identity.id,
 		"deviceName": sync.identity.name,
-		"listening": sync.listener != nil,
-		"peers":     sync.peers.all(),
+		"listening":  sync.listener != nil,
+		"peers":      sync.peers.all(),
+		"outbox":     sync.outbox.snapshot(),
 	})
 }
 
@@ -119,6 +115,9 @@ func (s *server) forgetSyncPeer(w http.ResponseWriter, r *http.Request) {
 		sendError(w, http.StatusInternalServerError, err)
 		return
 	}
+	// What that device had already received is forgotten with it, so pairing it
+	// again fills an empty library rather than skipping everything it once had.
+	sync.outbox.forget(id)
 	if len(sync.peers.all()) == 0 {
 		_ = sync.stop()
 	}
@@ -176,9 +175,10 @@ func (s *server) beginSyncPairing(w http.ResponseWriter, r *http.Request) {
 // push what it is holding; the endpoint itself does not wait for that to
 // finish, because "sync now" is a request to hurry, not a request to block.
 func (s *server) syncNow(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireSync(w); !ok {
+	sync, ok := s.requireSync(w)
+	if !ok {
 		return
 	}
-	go s.app.requestSyncFromPeers()
+	sync.outbox.nudge()
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true})
 }

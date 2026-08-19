@@ -41,7 +41,7 @@ func (s *syncServer) handleManifest(w http.ResponseWriter, r *http.Request) {
 		sendError(w, http.StatusBadRequest, fmt.Errorf("malformed manifest"))
 		return
 	}
-	have := s.app.digestSet()
+	have := s.libraryIndex()
 	missing := make([]string, 0, len(req.Hashes))
 	for _, hash := range req.Hashes {
 		raw, err := hex.DecodeString(hash)
@@ -50,7 +50,7 @@ func (s *syncServer) handleManifest(w http.ResponseWriter, r *http.Request) {
 		}
 		var digest [32]byte
 		copy(digest[:], raw)
-		if !have[digest] {
+		if _, held := have[digest]; !held {
 			missing = append(missing, hash)
 		}
 	}

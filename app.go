@@ -1013,21 +1013,6 @@ func scanImages(root string) ([]string, error) {
 	return paths, err
 }
 
-// digestSet is the content hash of every picture currently in the library,
-// which is what a sync manifest is checked against. Same cost as
-// newImportBatch's index, because it answers the same question: is this
-// picture already here, under whatever name it arrived with.
-func (a *application) digestSet() map[[32]byte]bool {
-	paths, _, _ := a.snapshot()
-	have := make(map[[32]byte]bool, len(paths))
-	for _, path := range paths {
-		if digest, err := fileDigest(path); err == nil {
-			have[digest] = true
-		}
-	}
-	return have
-}
-
 func (a *application) snapshot() (paths, sources []string, job jobState) {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

@@ -199,10 +199,11 @@ func TestAnUnpairedDeviceCannotReachTheLibrary(t *testing.T) {
 // TestAPairedDeviceCanSendAPictureThatIsNotAlreadyThere walks the two requests
 // that actually move a picture: ask what is missing, then send only that.
 //
-// The client here is the test's own, because the phone's outbox does not exist
-// yet. What it proves is the receiving half, which does: that a paired device
-// is let in, that the manifest answers honestly, that the bytes land in the
-// library, and that asking again afterwards reports nothing missing.
+// The client here is the test's own rather than the outbox, so that the
+// receiving half is pinned on its own terms: that a paired device is let in,
+// that the manifest answers honestly, that the bytes land in the library, and
+// that asking again afterwards reports nothing missing. sync_outbox_test.go
+// covers the same ground through the loop that will actually drive it.
 func TestAPairedDeviceCanSendAPictureThatIsNotAlreadyThere(t *testing.T) {
 	desktop := newSyncPeer(t, "Laptop")
 	desktop.listen(t)
@@ -240,7 +241,7 @@ func TestAPairedDeviceCanSendAPictureThatIsNotAlreadyThere(t *testing.T) {
 
 	// In the library, by content: the name it arrived under is not what makes it
 	// the same picture.
-	if !desktop.app.digestSet()[sum] {
+	if _, held := desktop.sync.libraryIndex()[sum]; !held {
 		t.Fatal("the picture did not reach the desktop's library")
 	}
 	// And the second phone to offer the same picture, or the same phone after a
@@ -281,7 +282,7 @@ func TestAnUploadThatDoesNotMatchItsHashIsRefused(t *testing.T) {
 	if response.StatusCode != http.StatusUnprocessableEntity {
 		t.Errorf("a mismatched upload got %d, wanted 422", response.StatusCode)
 	}
-	if sum := sha256.Sum256(data); desktop.app.digestSet()[sum] {
+	if _, held := desktop.sync.libraryIndex()[sha256.Sum256(data)]; held {
 		t.Error("the mismatched upload was kept anyway")
 	}
 }
