@@ -50,6 +50,18 @@ type bridgeSigner struct {
 	// something asked a few times per sync.
 	mu     sync.Mutex
 	public crypto.PublicKey
+	// Why Public() last returned nil. crypto.Signer has nowhere to report an
+	// error, so without this the only symptom that escapes is whatever complains
+	// about the nil key afterwards, which names neither the socket nor the
+	// reply that actually went wrong.
+	publicErr error
+}
+
+// publicKeyError is the reason this signer has no public key, or nil.
+func (b *bridgeSigner) publicKeyError() error {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.publicErr
 }
 
 // bridgedSigner returns the shell's key service, if this process was started by
@@ -70,6 +82,7 @@ func (b *bridgeSigner) Public() crypto.PublicKey {
 	}
 	reply, err := b.ask("public")
 	if err != nil {
+		b.publicErr = fmt.Errorf("asking the app's key service for its public key: %w", err)
 		// crypto.Signer cannot report this, and a nil public key is refused by
 		// everything that would use it, which is the failure we want: no
 		// identity, so no pairing and no sync, rather than an identity that
@@ -78,12 +91,15 @@ func (b *bridgeSigner) Public() crypto.PublicKey {
 	}
 	der, err := base64.StdEncoding.DecodeString(reply)
 	if err != nil {
+		b.publicErr = fmt.Errorf("the key service's public key was not base64: %w", err)
 		return nil
 	}
 	public, err := x509.ParsePKIXPublicKey(der)
 	if err != nil {
+		b.publicErr = fmt.Errorf("parsing the key service's public key (%d bytes): %w", len(der), err)
 		return nil
 	}
+	b.publicErr = nil
 	b.public = public
 	return public
 }

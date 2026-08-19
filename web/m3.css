@@ -178,9 +178,13 @@
   /* The add button sitting beside the search field. Its size is the field's
      height rather than a second 56 written down, so the two cannot drift. */
   --m3-fab-size: var(--control-height-lg);
-  /* The space between two pictures, and between a picture and the edge of
-     the screen. One number, because two different ones read as a mistake. */
-  --m3-grid-gap: 8px;
+  /* The space between two pictures, and between a picture and the edge of the
+     screen. One number, because two different ones read as a mistake: the eye
+     reads the outer margin against the inner gap immediately, and any
+     mismatch looks like a bug rather than a choice. Small, so the pictures get
+     the screen and the grid reads as pictures rather than as a page with
+     pictures on it. */
+  --m3-grid-gap: 4px;
 
   background: var(--m3-surface);
   color: var(--m3-on-surface);
@@ -349,7 +353,16 @@
  * 4. Search bar
  * ------------------------------------------------------------------ */
 
-.is-phone .main-content { padding: 0 var(--m3-grid-gap); }
+/* Full width, with the gutter as padding rather than as a narrower box.
+   app.css takes width off the content in its narrow-screen media query, which
+   a phone also matches, and that margin lands outside this padding: the space
+   at the edges of the screen came out as the sum of the two and read as wider
+   than the gap between the columns, which is the one comparison the eye makes
+   here without being asked. */
+.is-phone .main-content {
+  width: 100%;
+  padding: 0 var(--m3-grid-gap);
+}
 
 /* Directly above the navigation bar, not under the title. Searching and moving
    between destinations are the two things this screen is for, and on a phone
@@ -568,12 +581,19 @@
 
 .is-phone .image-card { margin-bottom: var(--m3-grid-gap); background: transparent; }
 
+/* A fifth off the standard medium corner. Its own token rather than the shared
+   one, because this is a deliberate choice about photographs specifically:
+   every other medium corner in the interface is unchanged, and the skeleton
+   has to round by exactly the same amount or the placeholder and the picture
+   that replaces it are visibly different shapes. */
+.is-phone { --m3-corner-picture: 9.6px; }
+
 .is-phone .image-card > img {
-  border-radius: var(--m3-corner-md);
+  border-radius: var(--m3-corner-picture);
   background: var(--m3-surface-container-high);
 }
 
-.is-phone .image-card-skeleton span { border-radius: var(--m3-corner-md); }
+.is-phone .image-card-skeleton span { border-radius: var(--m3-corner-picture); }
 
 /* The menu button is drawn as a dark circle with a white glyph, which only
    reads as anything over a picture. It was positioned against .image-info, the
@@ -606,15 +626,38 @@
   min-height: 0;
   place-items: center;
   padding: 0;
-  border-radius: 50%;
   line-height: 1;
-  /* A soft gradient rather than a flat dark disc: a solid circle sits on top
-     of a picture like a stray dot with nothing to do with the photo under it.
-     Faded at the edges, it reads as legibility help for the icon instead of a
-     shape of its own, and it holds up over both a light sky and a dark
-     doorway, which a single flat tone cannot do at one opacity. */
-  background: radial-gradient(circle, rgb(0 0 0 / .55) 0%, rgb(0 0 0 / .38) 55%, rgb(0 0 0 / 0) 100%);
-  color: #fff;
+  /* Just the glyph. Any disc behind it, flat or faded, reads as a button stuck
+     onto the photograph rather than as part of the interface, and there is one
+     on every single card. A drop shadow does the whole job the disc was there
+     for: it keeps the dots legible over a pale sky without putting a shape on
+     the picture. border and border-radius have to be said here too: the
+     generic .is-phone button rule below draws every plain button as an
+     outlined 20px-radius pill, and on a 32x32 box that outline alone is
+     close enough to a full circle to be the one this was trying to remove. */
+  border: 0;
+  border-radius: 0;
+  background: none;
+  /* The theme's own foreground: dark dots on a light theme, light dots on a
+     dark one. The halo behind them is the opposite colour rather than always
+     black, because the button sits on the corner of a photograph and the
+     picture underneath is the one surface no theme controls. It is what keeps
+     dark dots readable over a dark photo without putting a shape on it. */
+  color: var(--m3-on-surface);
+  text-shadow:
+    0 0 3px var(--m3-surface),
+    0 0 6px var(--m3-surface),
+    0 1px 2px var(--m3-surface);
+}
+
+/* app.css paints the chip again inside its narrow-screen media query, which a
+   phone also matches, and that rule is more specific than the one above. Said
+   here so the dots stay dots while pressed and while the menu is open. */
+.is-phone .card-menu-button,
+.is-phone .card-menu-button:hover,
+.is-phone .card-menu-button[aria-expanded="true"] {
+  background-color: transparent;
+  color: var(--m3-on-surface);
 }
 
 .is-phone .card-menu {
@@ -864,7 +907,27 @@
 .is-phone .sidebar-scrim { background: color-mix(in srgb, var(--m3-scrim) 32%, transparent); }
 
 /* Drawer rows are Material list items: full-bleed pills, 56dp, no borders. */
-.is-phone .drawer-actions { padding: 8px 12px; gap: 0; }
+/* Pushed down the screen rather than starting under the title. The top of a
+   phone is the far end of a reach, and this list is the app's main way around
+   itself, so it begins where a thumb already is and runs toward the bottom.
+   The gap is empty on purpose: filling it would only put something else out of
+   reach. A viewport unit so it scales with the handset rather than being one
+   number picked against one phone, and capped so a short screen does not push
+   the last entry under the navigation island. */
+.is-phone .drawer-actions {
+  padding: min(28vh, 220px) 12px 8px;
+  gap: 0;
+}
+
+/* Small, and the same size on every row: these are a scanning aid, so an icon
+   that competed with the label would defeat the point. flex: none so a long
+   label cannot squeeze them into different widths down the list. */
+.is-phone .drawer-actions svg {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  color: var(--m3-on-surface-variant);
+}
 
 .is-phone .drawer-actions a,
 .is-phone .drawer-actions button {
@@ -876,6 +939,7 @@
   border-radius: var(--m3-corner-xl);
   gap: 12px;
   align-items: center;
+  justify-content: flex-start;
   background: transparent;
   color: var(--m3-on-surface-variant);
   font-size: var(--text-sm);
@@ -884,7 +948,19 @@
   text-decoration: none;
 }
 
-.is-phone .drawer-section { padding: 8px 16px 24px; }
+/* The label span the icon script wraps text.i18n rows in in has to sit right
+   after the icon, not float to whatever the row's own text-align would have
+   centered a bare text node at. */
+.is-phone .drawer-actions a > span:not(.m3-nav-icon),
+.is-phone .drawer-actions button > span:not(.m3-nav-icon) {
+  margin: 0;
+  text-align: left;
+}
+
+/* The same reasoning as the menu list above, for the panels that replace it:
+   Settings, Plugins, Connect phone. Less of it, because these scroll and have
+   real content to show, where the menu is a short fixed list. */
+.is-phone .drawer-section { padding: min(16vh, 130px) 16px 24px; }
 .is-phone .drawer-section h2 { font-size: var(--text-lg); font-weight: 500; }
 
 .is-phone .settings-group {
@@ -933,6 +1009,49 @@
 .is-phone #newFolderButton {
   display: none;
 }
+
+/* "Create folder" is an action, not a folder, and drawing it as one more
+   folder row (a full-width card with an empty grey thumbnail where a picture
+   would be) made it read as a broken folder rather than as a button. It is a
+   pill now, and it sticks to the bottom of the panel so it is under a thumb
+   whether the list is empty or long: it is the last child of the list, so with
+   no folders yet it would otherwise sit alone at the top of the screen, which
+   is the hardest place to reach on a phone. */
+.is-phone .folder-card.new-folder {
+  position: sticky;
+  z-index: 5;
+  bottom: calc(var(--m3-nav-clearance) + var(--m3-search-height) + var(--m3-stack-gap));
+  display: inline-flex;
+  width: auto;
+  min-height: 48px;
+  padding: 0 20px 0 14px;
+  border: 0;
+  border-radius: 999px;
+  gap: 8px;
+  align-items: center;
+  background: var(--m3-secondary-container);
+  color: var(--m3-on-secondary-container);
+  box-shadow: var(--shadow-menu);
+}
+
+/* No thumbnail bed on an action: the + is the whole icon. */
+.is-phone .new-folder .folder-preview {
+  width: auto;
+  height: auto;
+  background: none;
+}
+
+.is-phone .new-folder .folder-create-button {
+  font-size: var(--text-xl);
+  line-height: 1;
+}
+
+.is-phone .new-folder .folder-details { flex: none; }
+.is-phone .new-folder strong { font-size: var(--text-sm); font-weight: 500; }
+
+/* The row is sticky inside a list that is centred, so the list itself has to
+   allow a child narrower than it, and the pill has to be told where to sit. */
+.is-phone #folderList { display: flex; flex-direction: column; align-items: center; }
 
 .is-phone .onboarding-title { font-size: var(--text-2xl); font-weight: 400; }
 .is-phone .onboarding-lead { font-size: var(--text-md); }

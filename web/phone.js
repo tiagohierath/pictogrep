@@ -34,6 +34,29 @@
     calendar: "M200-80q-33 0-56.5-23.5T120-160v-560q0-33 23.5-56.5T200-800h40v-80h80v80h320v-80h80v80h40q33 0 56.5 23.5T840-720v560q0 33-23.5 56.5T760-80H200Zm0-80h560v-400H200v400Zm0-480h560v-80H200v80Zm0 0v-80 80Zm280 240q-17 0-28.5-11.5T440-440q0-17 11.5-28.5T480-480q17 0 28.5 11.5T520-440q0 17-11.5 28.5T480-400Zm-188.5-11.5Q280-423 280-440t11.5-28.5Q303-480 320-480t28.5 11.5Q360-457 360-440t-11.5 28.5Q337-400 320-400t-28.5-11.5ZM640-400q-17 0-28.5-11.5T600-440q0-17 11.5-28.5T640-480q17 0 28.5 11.5T680-440q0 17-11.5 28.5T640-400ZM480-240q-17 0-28.5-11.5T440-280q0-17 11.5-28.5T480-320q17 0 28.5 11.5T520-280q0 17-11.5 28.5T480-240Zm-188.5-11.5Q280-263 280-280t11.5-28.5Q303-320 320-320t28.5 11.5Q360-297 360-280t-11.5 28.5Q337-240 320-240t-28.5-11.5ZM640-240q-17 0-28.5-11.5T600-280q0-17 11.5-28.5T640-320q17 0 28.5 11.5T680-280q0 17-11.5 28.5T640-240Z",
     profile: "M367-527q-47-47-47-113t47-113q47-47 113-47t113 47q47 47 47 113t-47 113q-47 47-113 47t-113-47ZM160-160v-112q0-34 17.5-62.5T224-378q62-31 126-46.5T480-440q66 0 130 15.5T736-378q29 15 46.5 43.5T800-272v112H160Zm80-80h480v-32q0-11-5.5-20T700-306q-54-27-109-40.5T480-360q-56 0-111 13.5T260-306q-9 5-14.5 14t-5.5 20v32Zm296.5-343.5Q560-607 560-640t-23.5-56.5Q513-720 480-720t-56.5 23.5Q400-673 400-640t23.5 56.5Q447-560 480-560t56.5-23.5ZM480-640Zm0 400Z",
     add: "M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z",
+    // The drawer's own list. Same 960 box as the destinations above.
+    storyboard: "M320-200v-560l440 280-440 280Zm80-280Zm0 134 210-134-210-134v268Z",
+    saved: "M200-120v-640q0-33 23.5-56.5T280-840h400q33 0 56.5 23.5T760-760v640L480-240 200-120Zm80-122 200-86 200 86v-518H280v518Zm0-518h400-400Z",
+    plugins: "M760-600v-80h-80v-80h80v-80h80v80h80v80h-80v80h-80ZM280-80q-33 0-56.5-23.5T200-160v-160H80v-80q0-66 47-113t113-47h240q66 0 113 47t47 113v80H520v160q0 33-23.5 56.5T440-80H280Zm-120-320h440q0-33-23.5-56.5T520-480H280q-33 0-56.5 23.5T200-400h-40Zm120 240h160v-160H280v160Zm120-480q-50 0-85-35t-35-85q0-50 35-85t85-35q50 0 85 35t35 85q0 50-35 85t-85 35Zm0-80q17 0 28.5-11.5T440-760q0-17-11.5-28.5T400-800q-17 0-28.5 11.5T360-760q0 17 11.5 28.5T400-720Zm0-40Zm-40 440Z",
+    settings: "m370-80-16-128q-13-5-24.5-12T307-235l-119 50L78-375l103-78q-1-7-1-13.5v-27q0-6.5 1-13.5L78-585l110-190 119 50q11-8 23-15t24-12l16-128h220l16 128q13 5 24.5 12t22.5 15l119-50 110 190-103 78q1 7 1 13.5v27q0 6.5-2 13.5l103 78-110 190-118-50q-11 8-23 15t-24 12L590-80H370Zm70-80h79l14-106q31-8 57.5-23.5T639-327l99 41 39-68-86-65q5-14 7-29.5t2-31.5q0-16-2-31.5t-7-29.5l86-65-39-68-99 42q-22-23-48.5-38.5T533-694l-13-106h-79l-14 106q-31 8-57.5 23.5T321-633l-99-41-39 68 86 64q-5 15-7 30t-2 32q0 16 2 31t7 30l-86 65 39 68 99-42q22 23 48.5 38.5T427-266l13 106Zm42-180q58 0 99-41t41-99q0-58-41-99t-99-41q-59 0-99.5 41T342-480q0 58 40.5 99t99.5 41Zm-2-140Z",
+    about: "M440-280h80v-240h-80v240Zm40-320q17 0 28.5-11.5T520-640q0-17-11.5-28.5T480-680q-17 0-28.5 11.5T440-640q0 17 11.5 28.5T480-600Zm0 520q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-83 31.5-156T197-763q54-54 127-85.5T480-880q83 0 156 31.5T763-763q54 54 85.5 127T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm0-80q134 0 227-93t93-227q0-134-93-227t-227-93q-134 0-227 93t-93 227q0 134 93 227t227 93Zm0-320Z",
+    link: "M440-280H280q-83 0-141.5-58.5T80-480q0-83 58.5-141.5T280-680h160v80H280q-50 0-85 35t-35 85q0 50 35 85t85 35h160v80ZM320-440v-80h320v80H320Zm200 160v-80h160q50 0 85-35t35-85q0-50-35-85t-85-35H520v-80h160q83 0 141.5 58.5T880-480q0 83-58.5 141.5T680-280H520Z",
+    connect: "M160-160q-33 0-56.5-23.5T80-240v-480q0-33 23.5-56.5T160-800h240q33 0 56.5 23.5T480-720v480q0 33-23.5 56.5T400-160H160Zm0-80h240v-480H160v480Zm400 80v-80h80v80h-80Zm120-120v-80h80v80h-80Zm-120 0v-80h80v80h-80Zm120-120v-80h80v80h-80Zm-120 0v-80h80v80h-80Zm120-120v-80h80v80h-80Zm-120 0v-80h80v80h-80Zm120-120v-80h80v80h-80Zm-120 0v-80h80v80h-80ZM280-440Z",
+  };
+
+  /* Which glyph belongs to which drawer entry. Icons are a scanning aid in a
+     list people use constantly, so every row gets one: a list where only some
+     rows have an icon reads as a list with things missing from it. */
+  const MENU_ICONS = {
+    "#showBoards": "saved",
+    "#showAdd": "add",
+    "#showSync": "connect",
+    "#showSyncPhone": "connect",
+    "#showPinterest": "link",
+    "#showPlugins": "plugins",
+    "#showSettings": "settings",
+    "#showAbout": "about",
+    "#openNavylily": "link",
   };
 
   function icon(name) {
@@ -170,6 +193,7 @@
       text.className = "m3-nav-label";
       text.textContent = t("nav.profile", "Profile");
       item.append(bed, text);
+      item.dataset.drawer = "true";
       item.onclick = () => menu.click();
       nav.append(item);
     }
@@ -177,16 +201,63 @@
     syncNav();
   }
 
-  /** The tab buttons stay the truth about which panel is open. */
+  /**
+   * The tab buttons stay the truth about which panel is open, except for the
+   * last destination, which opens the drawer rather than a tab. It has no tab
+   * to ask, so it reads the drawer itself: without this it was the one item in
+   * the bar that could never light up, because syncNav only ever looked at
+   * items carrying data-for.
+   */
   function syncNav() {
+    const drawerOpen = $("#drawer")?.classList.contains("open");
     nav.querySelectorAll("[data-for]").forEach(item => {
       const tab = $(item.dataset.for);
-      const open = tab?.getAttribute("aria-selected") === "true";
+      const open = !drawerOpen && tab?.getAttribute("aria-selected") === "true";
       open ? item.setAttribute("aria-current", "page") : item.removeAttribute("aria-current");
     });
+    const drawerItem = nav.querySelector("[data-drawer]");
+    if (drawerItem) {
+      drawerOpen
+        ? drawerItem.setAttribute("aria-current", "page")
+        : drawerItem.removeAttribute("aria-current");
+    }
   }
 
   buildNav();
+
+  /*
+   * Icons down the drawer's own list.
+   *
+   * Prepended to the existing rows rather than written into index.html,
+   * because that page is also the desktop's, where this list is a plain text
+   * menu. The label stays whatever it already was, translated or not, so
+   * nothing here has to know what any row says. The storyboard link is matched
+   * by href since it is the one row with no id.
+   */
+  const menuList = $(".drawer-actions");
+  if (menuList) {
+    const decorate = (row, name) => {
+      if (!row || row.querySelector("svg")) return;
+      // The label has to move into a span first. i18n's apply() writes
+      // translations with element.textContent, which replaces everything inside
+      // the element it targets, icon included: a row translated after this ran
+      // would silently lose its icon, and the first render happens either side
+      // of that fetch depending on the network. Moving data-i18n onto a span
+      // gives the translator its own box to overwrite.
+      if (row.dataset.i18n) {
+        const label = document.createElement("span");
+        label.dataset.i18n = row.dataset.i18n;
+        label.textContent = row.textContent.trim();
+        row.removeAttribute("data-i18n");
+        row.replaceChildren(label);
+      }
+      row.prepend(icon(name));
+    };
+    decorate(menuList.querySelector('a[href="/practice"]'), "storyboard");
+    for (const [selector, name] of Object.entries(MENU_ICONS)) {
+      decorate(menuList.querySelector(selector), name);
+    }
+  }
 
   /*
    * The tab strip stays the single source of truth, so it is watched rather
@@ -201,6 +272,21 @@
    * Watching text as well as attributes is only affordable because the subtree
    * is four buttons. Nothing else in this file observes the document.
    */
+  /*
+   * The drawer opening is not a change to the tab strip, so the observer below
+   * never hears about it. Watching the drawer's own class is what keeps the
+   * last destination lit while its sheet is up, and unlit the moment any of
+   * the ways out of it (the close button, the scrim, another destination,
+   * anything that calls closeMenu) takes it down.
+   */
+  const drawer = $("#drawer");
+  if (drawer) {
+    new MutationObserver(syncNav).observe(drawer, {
+      attributes: true,
+      attributeFilter: ["class"],
+    });
+  }
+
   const tabStrip = $(".tabs");
   if (tabStrip) {
     new MutationObserver(records => {

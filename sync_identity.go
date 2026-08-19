@@ -97,7 +97,20 @@ func loadIdentity(dir, name string) (*identity, error) {
 }
 
 func newIdentity(signer crypto.Signer, name string) (*identity, error) {
-	id, err := deviceID(signer.Public())
+	public := signer.Public()
+	if public == nil {
+		// A bridged signer reports why here and nowhere else: crypto.Signer has
+		// no way to return an error from Public(), so without this the failure
+		// surfaces as "unsupported public key type: <nil>", which describes the
+		// symptom and names nothing that would help fix it.
+		if bridge, ok := signer.(*bridgeSigner); ok {
+			if reason := bridge.publicKeyError(); reason != nil {
+				return nil, reason
+			}
+		}
+		return nil, fmt.Errorf("this device has no usable signing key")
+	}
+	id, err := deviceID(public)
 	if err != nil {
 		return nil, err
 	}
