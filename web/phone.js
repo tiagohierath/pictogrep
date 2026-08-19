@@ -251,6 +251,35 @@
     });
   }
 
+  /*
+   * Swipe to move between pictures, replacing the ‹ › buttons this build
+   * hides. Left click and right click were the only way; this is the same
+   * move, made with a thumb instead of a target the width of a fingertip
+   * sitting on top of every photo.
+   */
+  const viewerPicture = $(".viewer-picture");
+  if (viewerPicture) {
+    let startX = null;
+    let startY = null;
+    viewerPicture.addEventListener("touchstart", event => {
+      const touch = event.touches[0];
+      startX = touch.clientX;
+      startY = touch.clientY;
+    }, { passive: true });
+    viewerPicture.addEventListener("touchend", event => {
+      if (startX === null) return;
+      const touch = event.changedTouches[0];
+      const dx = touch.clientX - startX;
+      const dy = touch.clientY - startY;
+      startX = null;
+      // Mostly horizontal and past a real flick, not a stray thumb wobble
+      // while pinching or just reading the picture.
+      if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        $(dx < 0 ? "#viewerNext" : "#viewerPrevious")?.click();
+      }
+    }, { passive: true });
+  }
+
   buildNav();
 
   /*

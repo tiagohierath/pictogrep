@@ -72,7 +72,16 @@
   background: var(--bg);
 }
 
-html { overflow-y: scroll; scrollbar-gutter: stable; overscroll-behavior: none; }
+/* scrollbar-gutter: stable used to reserve the width of the bar below so
+   content did not shift when one appeared; with no bar drawn anywhere, that
+   reserved strip is just dead space, so it is gone along with the bar. */
+html { overflow-y: scroll; overscroll-behavior: none; }
+
+/* No visible scrollbar anywhere, on any element that scrolls: the page, the
+   drawer, the folder list, any panel with its own overflow. Scrolling itself
+   is untouched, only the bar Chrome would otherwise draw over it. */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; }
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; overscroll-behavior: none; background: var(--bg); }
 button, input, select, textarea { font: inherit; color: inherit; }

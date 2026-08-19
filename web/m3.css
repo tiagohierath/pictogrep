@@ -1141,6 +1141,11 @@
 
 .is-phone .empty { padding: 48px 8px; }
 
+/* The arrows are gone from the picture itself; phone.js gives the same move
+   to a swipe on the picture instead, so nothing about moving between
+   pictures is lost, only the two buttons sitting on top of every photo. */
+.is-phone .viewer-nav { display: none; }
+
 /* Reachable only by pulling the photos down; phone.js starts every load
    already scrolled past it, so nothing about this shows up on its own, and
    the sticky header above it in the document never moves regardless. */
