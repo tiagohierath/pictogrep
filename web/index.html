@@ -185,8 +185,11 @@
       <p class="field-help" id="syncNoDevices" data-i18n="sync.no_devices">Nothing paired yet.</p>
       <ul class="sync-devices" id="syncDeviceList" hidden></ul>
 
+      <p class="sync-status" id="syncStatus" hidden></p>
+
       <div class="pinterest-actions">
-        <button type="button" id="syncPauseToggle" data-i18n="sync.pause">Pause sync</button>
+        <button type="button" class="phone-only" id="syncSendNow" data-i18n="sync.send_now" hidden>Send now</button>
+        <button type="button" class="desktop-only" id="syncPauseToggle" data-i18n="sync.pause">Pause sync</button>
         <button type="button" class="desktop-only" id="syncNewCode" data-i18n="sync.new_code">New code</button>
       </div>
       <small class="pinterest-return-help" data-i18n="sync.return_help">Use it again anytime from Menu → Connect phone.</small>

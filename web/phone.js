@@ -141,7 +141,14 @@
       text.className = "m3-nav-label";
       text.textContent = key ? t(key, english) : label(button);
       item.append(bed, text);
-      item.onclick = () => button.click();
+      // The drawer is a sheet drawn over everything, not one more tab: closing
+      // it is nobody's job but this one, because none of the four panels below
+      // know it is open, let alone that a tap here is a request to leave it.
+      // Without this, tapping Feed while the drawer covers the screen (from
+      // Menu, or from Connect phone, or from any drawer panel) reloads the
+      // pictures underneath a sheet that is still up, and looks like the
+      // button silently did nothing.
+      item.onclick = () => { closeMenu(); button.click(); };
       nav.append(item);
     });
 

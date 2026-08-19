@@ -484,6 +484,10 @@ body.show-filenames .image-filename { display: block; }
 .sync-device:last-child { border-bottom: 0; }
 .sync-device strong { overflow: hidden; flex: 1; font-size: var(--text-sm); text-overflow: ellipsis; white-space: nowrap; }
 .sync-device-status { color: var(--fg-subtle); font-size: var(--text-2xs); white-space: nowrap; }
+/* Quiet by default, because "everything is on your computer" is the state this
+   line is in almost all of the time and it is not news. */
+.sync-status { margin: 0 0 var(--space-4); color: var(--fg-subtle); font-size: var(--text-sm); }
+.sync-status-working { color: var(--fg); }
 .followed-board button { flex: none; }
 
 .commons-image-card { position: relative; margin: 0 0 var(--space-5); break-inside: avoid; }

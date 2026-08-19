@@ -264,11 +264,15 @@
   position: sticky;
   z-index: 20;
   top: 0;
-  display: flex;
+  /* Three columns rather than flex: a flex:1 wordmark between two buttons
+     centers only when both sides are the same width, and the sidebar button is
+     hidden by default. Fixed side columns keep the title on the true center of
+     the bar whether one button shows, both do, or neither does. */
+  display: grid;
+  grid-template-columns: var(--icon-size) 1fr var(--icon-size);
   height: var(--header-height);
   padding: 0 4px;
   border: 0;
-  gap: 4px;
   align-items: center;
   background: var(--m3-surface);
   transition: background 150ms linear;
@@ -279,12 +283,12 @@
 .is-phone .app-header.is-lifted { background: var(--m3-surface-container); }
 
 .is-phone .wordmark {
-  flex: 1;
-  padding-left: 12px;
+  grid-column: 2;
   color: var(--m3-on-surface);
   font-size: var(--text-xl);
   font-weight: 400;
   letter-spacing: 0;
+  text-align: center;
   text-transform: none;
 }
 
@@ -604,7 +608,12 @@
   padding: 0;
   border-radius: 50%;
   line-height: 1;
-  background: rgb(0 0 0 / .45);
+  /* A soft gradient rather than a flat dark disc: a solid circle sits on top
+     of a picture like a stray dot with nothing to do with the photo under it.
+     Faded at the edges, it reads as legibility help for the icon instead of a
+     shape of its own, and it holds up over both a light sky and a dark
+     doorway, which a single flat tone cannot do at one opacity. */
+  background: radial-gradient(circle, rgb(0 0 0 / .55) 0%, rgb(0 0 0 / .38) 55%, rgb(0 0 0 / 0) 100%);
   color: #fff;
 }
 

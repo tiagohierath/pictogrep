@@ -2949,6 +2949,21 @@ async function togglePinterestPlugin() {
 // one: it is the normal condition sync is designed to sit through.
 
 let syncExpiryTimer = null;
+let syncPollTimer = null;
+
+// While the panel is open, and only then. Pairing and a first transfer both
+// finish in seconds and the user is watching both happen, so the screen has to
+// move on its own; the moment the panel closes there is nothing to look at and
+// polling a LAN on a phone's battery stops being free.
+function startSyncPolling() {
+  clearInterval(syncPollTimer);
+  syncPollTimer = setInterval(refreshSyncState, 2000);
+}
+
+function stopSyncPolling() {
+  clearInterval(syncPollTimer);
+  syncPollTimer = null;
+}
 
 function openSyncPanel(title) {
   $("#addSection").hidden = true;
@@ -2960,6 +2975,7 @@ function openSyncPanel(title) {
   $("#pluginsSection").hidden = true;
   $("#syncSection").hidden = false;
   openMenu(title);
+  startSyncPolling();
 }
 
 function showSyncPairing() {
@@ -2997,14 +3013,42 @@ window.onPairingScanned = async function (text) {
 };
 
 async function refreshSyncState() {
+  if ($("#syncSection").hidden) {
+    stopSyncPolling();
+    return;
+  }
   let state;
   try {
     state = await (await fetch("/api/app/sync")).json();
   } catch {
     return; // The panel already shows what it had; nothing to update yet.
   }
-  renderSyncDevices(state.peers || []);
+  const peers = state.peers || [];
+  renderSyncDevices(peers);
+  renderSyncStatus(state.outbox || {}, peers);
   $("#syncPauseToggle").textContent = state.listening ? t("sync.pause") : t("sync.resume");
+}
+
+// The one line that says whether sync is doing its job. Not an error display:
+// a computer that is asleep or off the network is the ordinary case, and a
+// phone that shouted about it would be shouting most of the time. So the
+// server's failure, if there is one, is folded into the same sentence as the
+// count: pictures are waiting, which is true and actionable.
+function renderSyncStatus(outbox, peers) {
+  const line = $("#syncStatus");
+  const sendable = peers.some(peer => peer.listens);
+  $("#syncSendNow").hidden = !sendable;
+  if (!sendable) {
+    line.hidden = true;
+    return;
+  }
+  line.hidden = false;
+  const waiting = outbox.waiting || 0;
+  if (outbox.sending) line.textContent = t("sync.sending");
+  else if (waiting === 0) line.textContent = t("sync.all_sent");
+  else if (waiting === 1) line.textContent = t("sync.waiting_one");
+  else line.textContent = t("sync.waiting_many", {count: waiting});
+  line.classList.toggle("sync-status-working", Boolean(outbox.sending) || waiting > 0);
 }
 
 function renderSyncDevices(peers) {
@@ -3068,6 +3112,15 @@ async function beginSyncPairing() {
 }
 
 $("#syncNewCode").onclick = beginSyncPairing;
+$("#syncSendNow").onclick = async () => {
+  try {
+    await fetch("/api/app/sync/now", { method: "POST" });
+  } catch {
+    // The status line is the answer, and it comes from the server rather than
+    // from whether this request happened to land.
+  }
+  refreshSyncState();
+};
 $("#syncPauseToggle").onclick = async () => {
   const pausing = $("#syncPauseToggle").textContent === t("sync.pause");
   try {
