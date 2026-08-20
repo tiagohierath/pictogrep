@@ -250,8 +250,12 @@ func serve(app *application, args []string) error {
 	fmt.Println("Pictogrep:", url)
 	fmt.Printf("%d images available. Press Ctrl+C to stop.\n", len(paths))
 	if !options.noOpen {
+		// No delay needed: net.Listen has already put the socket in the
+		// kernel's accept queue, so a browser dialing in right now just waits
+		// there harmlessly until httpServer.Serve (a few lines below) starts
+		// pulling connections off it. The old fixed sleep was dead time on
+		// every single launch for no benefit.
 		go func() {
-			time.Sleep(120 * time.Millisecond)
 			if err := openBrowser(url); err != nil {
 				fmt.Fprintln(os.Stderr, "Open this URL in your browser:", url)
 			}
