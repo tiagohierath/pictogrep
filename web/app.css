@@ -345,8 +345,8 @@ body.show-filenames .image-filename { display: block; }
 .drawer-header strong { font-size: var(--text-lg); }
 .drawer.page { width: 100vw; max-width: none; border-left: 0; background: var(--bg-sunken); }
 .drawer.page .drawer-header { position: sticky; z-index: 2; top: 0; background: var(--bg); }
-.drawer.page .drawer-actions, .drawer.page > .drawer-section:not(#settingsSection):not(#pluginsSection):not(#pinterestSection):not(#webSection) { display: none; }
-.drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #pinterestSection:not([hidden]), .drawer.page #webSection:not([hidden]) { width: min(var(--panel-width), calc(100% - var(--space-8))); margin: var(--space-8) auto; padding: var(--space-8); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); }
+.drawer.page .drawer-actions, .drawer.page > .drawer-section:not(#settingsSection):not(#pluginsSection):not(#pinterestSection):not(#webSection):not(#syncSection) { display: none; }
+.drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #pinterestSection:not([hidden]), .drawer.page #webSection:not([hidden]), .drawer.page #syncSection:not([hidden]) { width: min(var(--panel-width), calc(100% - var(--space-8))); margin: var(--space-8) auto; padding: var(--space-8); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); }
 .drawer-actions { display: block; border-bottom: 1px solid var(--line); }
 .drawer-actions a, .drawer-actions button { display: flex; justify-content: space-between; width: 100%; padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--line); color: var(--fg); text-align: left; text-decoration: none; font-size: var(--text-md); }
 .drawer-actions a:hover, .drawer-actions button:hover { background: var(--bg-sunken); }
