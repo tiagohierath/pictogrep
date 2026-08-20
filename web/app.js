@@ -79,10 +79,18 @@ function rememberLoadedImage(url) {
   while (loadedImageURLs.size > 2048) loadedImageURLs.delete(loadedImageURLs.values().next().value);
 }
 
+/**
+ * Set for the one render that follows a picture arriving over sync, so those
+ * images resolve into place instead of appearing fully formed. Cleared by the
+ * first render that reads it: only the arrival earns this, not every later
+ * scroll through the same grid.
+ */
+let revealNextImages = false;
+
 function loadImage(image, url, {fallback = "", label = "", onload = null} = {}) {
   let activeURL = url;
   let finished = false;
-  let slow = false;
+  let slow = revealNextImages;
   let slowTimer = null;
 
   image.alt = "";
@@ -3050,6 +3058,10 @@ async function refreshSyncState() {
   renderSyncDevices(peers);
   renderSyncStatus(state.outbox || {}, peers);
   $("#syncPauseToggle").textContent = state.listening ? t("sync.pause") : t("sync.resume");
+  // Only once there is somewhere to send: a switch for a thing that cannot
+  // happen yet is a question nobody has the context to answer.
+  $("#syncAutoSendRow").hidden = !peers.some(peer => peer.listens);
+  $("#syncAutoSendToggle").checked = state.autoSend !== false;
 }
 
 // The one line that says whether sync is doing its job. Not an error display:
@@ -3141,6 +3153,20 @@ $("#syncSendNow").onclick = async () => {
   } catch {
     // The status line is the answer, and it comes from the server rather than
     // from whether this request happened to land.
+  }
+  refreshSyncState();
+};
+$("#syncAutoSendToggle").onchange = async () => {
+  const autoSend = $("#syncAutoSendToggle").checked;
+  try {
+    await request("/api/app/sync/auto-send", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({autoSend}),
+    });
+  } catch (error) {
+    $("#syncAutoSendToggle").checked = !autoSend;
+    showMessage(error.message, true);
   }
   refreshSyncState();
 };
@@ -4126,7 +4152,14 @@ function watchForArrivals() {
     catch { return; }
     const arrivals = state?.arrivals ?? 0;
     if (lastKnownArrivals !== null && arrivals > lastKnownArrivals) {
-      refreshLibraryIndex().catch(() => {});
+      // A picture that arrived on its own gets the unblur every slow load
+      // already gets. It is the one moment the effect is telling the truth
+      // rather than covering a wait: something really did just turn up, and
+      // resolving into place is how the eye is told which one is new.
+      revealNextImages = true;
+      refreshLibraryIndex()
+        .catch(() => {})
+        .finally(() => { revealNextImages = false; });
     }
     lastKnownArrivals = arrivals;
   }, 3000);
@@ -4171,8 +4204,12 @@ async function start() {
   lastJobState = appState.indexJob.state;
   renderState();
   watchImageScroll();
-  await loadImages();
-  await loadFolders();
+  // Together, not one after the other: the folder list is not built from the
+  // pictures and neither waits on the other's answer, so running them in
+  // series spent one whole request's latency on nothing. The pictures are
+  // still what the eye is waiting for, and they no longer queue behind a
+  // list that is off screen until the Folders tab is opened.
+  await Promise.all([loadImages(), loadFolders()]);
   await syncViewerFromHistory();
   if (appState?.index?.count) scheduleSemanticIndex(700);
   setTimeout(refreshLibraryWhenDue, 1400);
