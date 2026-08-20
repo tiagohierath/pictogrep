@@ -387,10 +387,38 @@
     const fab = document.createElement("button");
     fab.type = "button";
     fab.className = "m3-fab";
-    fab.setAttribute("aria-label", $("[data-i18n='add.choose_images']")?.textContent.trim() || "Add pictures");
-    fab.dataset.i18nAriaLabel = "add.choose_images";
     fab.append(icon("add"));
-    fab.onclick = () => picker.click();
+
+    // What "add" means depends on what is being looked at. Standing in
+    // Folders, the thing to add is a folder; the picture picker there offers
+    // to import into a list that does not hold pictures. Material calls this
+    // the action of the current screen rather than of the app, which is the
+    // same reason this button is one button and not a row of them.
+    const onFolders = () => $("#foldersTab")?.getAttribute("aria-selected") === "true";
+    const newFolder = $("#newFolderButton");
+
+    // Both the label and what a tap does are decided at tap time, not here:
+    // the destination changes under this button every time somebody moves
+    // between the two, and the tab strip is what knows, so nothing is cached.
+    const describe = () => {
+      const key = onFolders() && newFolder ? "folders.new_aria" : "add.choose_images";
+      fab.dataset.i18nAriaLabel = key;
+      fab.setAttribute("aria-label", t(key, onFolders() && newFolder ? "New folder" : "Add pictures"));
+    };
+    describe();
+    fab.onclick = () => (onFolders() && newFolder ? newFolder.click() : picker.click());
+
+    // The same observer that already keeps the navigation bar in step. The
+    // tab strip is the one thing that knows which destination is showing, and
+    // watching it is cheaper than every panel telling this button it changed.
+    if ($(".tabs")) {
+      new MutationObserver(describe).observe($(".tabs"), {
+        attributes: true,
+        attributeFilter: ["aria-selected"],
+        subtree: true,
+      });
+    }
+
     document.body.append(fab);
   }
 })();
