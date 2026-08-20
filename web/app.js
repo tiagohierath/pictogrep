@@ -2388,6 +2388,29 @@ async function importDroppedURLs(urls, destination) {
   finishImportProgress(saved, duplicates, failed, urls.length, destination, lastError);
 }
 
+/**
+ * The one intake method a drop or a share sheet cannot cover: a link with no
+ * picture attached to drag and no app to share it out of, just a URL someone
+ * has and wants in the library. Reuses the same single-picture fetch every
+ * other path already goes through (import-url, native_gallery.go where
+ * gallery-dl is not installed), so this adds no new server behaviour, only a
+ * place to type into.
+ */
+async function pasteImageURL(event) {
+  event.preventDefault();
+  const input = $("#pasteURLInput");
+  const url = input.value.trim();
+  if (!url) return;
+  const form = $("#pasteURLForm");
+  form.querySelectorAll("input, button").forEach(element => { element.disabled = true; });
+  try {
+    await importDroppedURLs([url], activeImportDestination());
+    input.value = "";
+  } finally {
+    form.querySelectorAll("input, button").forEach(element => { element.disabled = false; });
+  }
+}
+
 function dataTransferTypes(dataTransfer) {
   return Array.from(dataTransfer?.types || [], value => String(value).toLowerCase());
 }
@@ -3852,6 +3875,7 @@ $("#emptyAddImages").onclick = () => {
 $("#emptyPinterest").onclick = startPinterestOnboarding;
 $("#emptyPinterestPhone").onclick = startPinterestOnboarding;
 $("#imageFiles").onchange = event => uploadFiles(event.target.files);
+$("#pasteURLForm").onsubmit = pasteImageURL;
 $("#chooseFolder").onclick = openFolderPickerDialog;
 $("#addSourceFolder").onclick = openFolderPickerDialog;
 $("#autoSyncStop").onclick = async () => {

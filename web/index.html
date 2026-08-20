@@ -111,6 +111,7 @@
       <h2 data-i18n="add.title">Add pictures</h2>
       <button type="button" class="file-button desktop-only" id="chooseFolder"><span data-i18n="add.choose_folder">Choose a folder</span><small data-i18n="add.choose_folder_help">Read a folder where it is. Nothing is moved or copied.</small></button>
       <label class="file-button"><span data-i18n="add.choose_images">Copy pictures in</span><small data-i18n="add.choose_images_help">Saves the pictures you pick into Pictogrep's library.</small><input id="imageFiles" type="file" accept="image/*" multiple hidden></label>
+      <form class="pinterest-url" id="pasteURLForm"><label><span data-i18n="add.paste_url">Paste a picture's link</span><input id="pasteURLInput" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com/picture.jpg" required><small data-i18n="add.paste_url_help">Works for a direct link to one picture, not a page about one.</small></label><button type="submit" data-i18n="add.paste_url_go">Add it</button></form>
     </section>
 
     <section class="drawer-section pinterest-import" id="pinterestSection" hidden>
