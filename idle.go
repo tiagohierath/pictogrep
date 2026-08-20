@@ -51,6 +51,15 @@ func (watch *idleWatch) idleFor() time.Duration {
 	return time.Since(watch.last)
 }
 
+// heartbeat is also how a picture that arrived over sync gets noticed without
+// the page polling the whole library on a timer to find out. arrivals only
+// ever goes up, so the page has to remember what it last saw and compare;
+// this endpoint has nothing to compare against and just says where the count
+// is right now.
 func (s *server) heartbeat(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNoContent)
+	arrivals := int64(0)
+	if s.sync != nil {
+		arrivals = s.sync.arrivals.Load()
+	}
+	sendJSON(w, http.StatusOK, map[string]any{"arrivals": arrivals})
 }

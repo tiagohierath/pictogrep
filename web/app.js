@@ -4082,6 +4082,57 @@ function refreshLibraryWhenDue() {
   });
 }
 
+/** What /api/app/heartbeat last reported, so a repeat only means "still open" and a rise means "something arrived". */
+let lastKnownArrivals = null;
+
+/**
+ * A picture that arrives over sync should appear on its own, the same way one
+ * dropped on the window does, without anybody reloading the tab to go find
+ * it. The heartbeat this reuses already exists to keep the server from
+ * idling out an open tab, so this is one request doing two jobs rather than
+ * a second timer: a page sitting on the library sees new pictures inside a
+ * few seconds of a phone delivering them, at the cost of one small request
+ * this page was already sending.
+ */
+function watchForArrivals() {
+  setInterval(async () => {
+    if (document.visibilityState === "hidden") return;
+    let state;
+    try { state = await (await fetch("/api/app/heartbeat", {cache: "no-store"})).json(); }
+    catch { return; }
+    const arrivals = state?.arrivals ?? 0;
+    if (lastKnownArrivals !== null && arrivals > lastKnownArrivals) {
+      refreshLibraryIndex().catch(() => {});
+    }
+    lastKnownArrivals = arrivals;
+  }, 3000);
+}
+
+/** What /api/app/sync last reported waiting, so a fall to zero can be told apart from "nothing was ever waiting". */
+let lastKnownOutboxWaiting = null;
+
+/**
+ * The one confirmation a phone offers for a send it never asked the user to
+ * watch: waiting went from something to nothing, so whatever was held for
+ * the desktop is there now. Polled globally rather than only while the
+ * Connect to computer panel is open, because the whole point of the outbox
+ * is that nobody has to open that panel for a send to happen.
+ */
+function watchOutboxForConfirmation() {
+  setInterval(async () => {
+    if (document.visibilityState === "hidden") return;
+    let state;
+    try { state = await (await fetch("/api/app/sync", {cache: "no-store"})).json(); }
+    catch { return; }
+    const waiting = state?.outbox?.waiting ?? 0;
+    const hadSomethingWaiting = lastKnownOutboxWaiting !== null && lastKnownOutboxWaiting > 0;
+    if (hadSomethingWaiting && waiting === 0 && (state.peers || []).some(peer => peer.listens)) {
+      showMessage(t("sync.all_sent"));
+    }
+    lastKnownOutboxWaiting = waiting;
+  }, 4000);
+}
+
 async function start() {
   appState = await request("/api/app/state");
   await window.PictogrepI18n.init(appState.language);
@@ -4102,9 +4153,8 @@ async function start() {
   if (appState?.index?.count) scheduleSemanticIndex(700);
   setTimeout(refreshLibraryWhenDue, 1400);
   setInterval(refreshLibraryWhenDue, 5 * 60 * 1000);
-  // Tells the local server this window is still open, so it only closes itself
-  // once nothing is left to break.
-  setInterval(() => fetch("/api/app/heartbeat", {cache: "no-store"}).catch(() => {}), 60 * 1000);
+  watchForArrivals();
+  if (appState.mobile) watchOutboxForConfirmation();
   resumePinterestImport();
   // First run only, and only while there is nothing to look at. Once it has
   // been through, or closed, Pictogrep does not ask again.

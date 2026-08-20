@@ -251,6 +251,45 @@ func TestAPairedDeviceCanSendAPictureThatIsNotAlreadyThere(t *testing.T) {
 	}
 }
 
+// TestAnUploadBumpsArrivals is the other half of a desktop noticing a picture
+// on its own: the counter idle.go's heartbeat reports has to move, or a page
+// sitting on the library has nothing to compare against and never refreshes.
+func TestAnUploadBumpsArrivals(t *testing.T) {
+	desktop := newSyncPeer(t, "Laptop")
+	desktop.listen(t)
+	phone := newSyncPeer(t, "Phone")
+	if err := phone.sync.pairAsClient(desktop.offer(t)); err != nil {
+		t.Fatal(err)
+	}
+
+	if before := desktop.sync.arrivals.Load(); before != 0 {
+		t.Fatalf("a fresh desktop already had arrivals: %d", before)
+	}
+
+	picture := filepath.Join(t.TempDir(), "dune.png")
+	writeTestPNG(t, picture)
+	data, err := os.ReadFile(picture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(data)
+	digest := hex.EncodeToString(sum[:])
+
+	laptop, _ := phone.sync.peers.get(desktop.sync.identity.id)
+	client := phone.sync.peerClient(laptop)
+	base := "https://" + laptop.Address
+
+	response, err := client.Post(base+"/blobs/"+digest+"?name=dune.png", "application/octet-stream", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+
+	if after := desktop.sync.arrivals.Load(); after != 1 {
+		t.Fatalf("a received picture did not bump arrivals: %d", after)
+	}
+}
+
 func TestAnUploadThatDoesNotMatchItsHashIsRefused(t *testing.T) {
 	desktop := newSyncPeer(t, "Laptop")
 	desktop.listen(t)

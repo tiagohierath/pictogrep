@@ -101,5 +101,10 @@ func (s *syncServer) handleUploadBlob(w http.ResponseWriter, r *http.Request) {
 		sendError(w, status, err)
 		return
 	}
+	// Counted even for a duplicate the library already had: the desktop that
+	// polls this is deciding whether to bother checking at all, and a check
+	// that finds nothing new is a cheap no-op, where a picture that never
+	// bumped this because it happened to arrive twice is a real one missed.
+	s.arrivals.Add(1)
 	sendJSON(w, status, result)
 }
