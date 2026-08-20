@@ -166,6 +166,13 @@ func (b *outbox) flush() {
 }
 
 func (b *outbox) deliver() string {
+	// Checked here rather than by not scheduling the loop, so that turning it
+	// back on needs nothing restarted: the pass still runs on its timer and
+	// simply finds itself switched off. recount below still counts what is
+	// waiting, which is what lets the interface say how much would go.
+	if !b.server.app.sendsAutomatically() {
+		return ""
+	}
 	// Peers that listen: the device that dialled out during pairing knows where
 	// to find the other one. The device that was dialled saw only a source port,
 	// which is nowhere to send anything, so a desktop does not try to push to a

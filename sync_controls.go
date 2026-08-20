@@ -70,6 +70,7 @@ func (s *server) syncState(w http.ResponseWriter, r *http.Request) {
 		"listening":  sync.listener != nil,
 		"peers":      sync.peers.all(),
 		"outbox":     sync.outbox.snapshot(),
+		"autoSend":   s.app.sendsAutomatically(),
 	})
 }
 
@@ -182,6 +183,74 @@ func (s *server) syncNow(w http.ResponseWriter, r *http.Request) {
 	}
 	sync.outbox.nudge()
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// syncSettings is what a person is allowed to change about sending.
+//
+// One switch, not a direction: a desktop cannot push to a phone at all (see
+// peer.Listens, and the source port a dialled device sees is nowhere to send
+// anything), so the only real choice is whether this device sends or stays
+// quiet. Phone to desktop is also the direction that wants no arguing with:
+// the computer is where the disk is.
+type syncSettings struct {
+	// AutoSend is a pointer so that a config written before this existed
+	// reads as "not set" rather than as "off", and gets the default below.
+	AutoSend *bool `json:"autoSend,omitempty"`
+}
+
+// sendsAutomatically is the one place the default lives. On, because a sync
+// nobody switched on is a sync that silently never happens, and the feature
+// only pays for itself by being the thing you do not have to remember.
+func (a *application) sendsAutomatically() bool {
+	data, err := os.ReadFile(a.configPath)
+	if err != nil {
+		return true
+	}
+	var document struct {
+		Sync syncSettings `json:"sync"`
+	}
+	if json.Unmarshal(data, &document) != nil || document.Sync.AutoSend == nil {
+		return true
+	}
+	return *document.Sync.AutoSend
+}
+
+func (a *application) saveSyncSettings(autoSend bool) error {
+	document := map[string]any{}
+	if data, err := os.ReadFile(a.configPath); err == nil {
+		_ = json.Unmarshal(data, &document)
+	}
+	document["sync"] = syncSettings{AutoSend: &autoSend}
+	data, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFileAtomically(a.configPath, append(data, '\n'), 0o644)
+}
+
+// POST /api/app/sync/auto-send: the switch itself. Turning it back on nudges
+// the outbox, so everything held while it was off goes now rather than at the
+// next tick.
+func (s *server) setSyncAutoSend(w http.ResponseWriter, r *http.Request) {
+	sync, ok := s.requireSync(w)
+	if !ok {
+		return
+	}
+	var request struct {
+		AutoSend bool `json:"autoSend"`
+	}
+	if err := decodeJSON(r, &request, 1<<16); err != nil {
+		sendError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.app.saveSyncSettings(request.AutoSend); err != nil {
+		sendError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if request.AutoSend {
+		sync.outbox.nudge()
+	}
+	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "autoSend": request.AutoSend})
 }
 
 // POST /api/app/sync/rediscovered: "mDNS just answered for a peer I know."

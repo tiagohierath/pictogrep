@@ -162,6 +162,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/app/sync/peers/{id}", s.forgetSyncPeer)
 	mux.HandleFunc("POST /api/app/sync/pair-with", s.pairWithScanned)
 	mux.HandleFunc("POST /api/app/sync/rediscovered", s.peerRediscovered)
+	mux.HandleFunc("POST /api/app/sync/auto-send", s.setSyncAutoSend)
 	mux.HandleFunc("POST /api/app/upload", s.appUpload)
 	mux.HandleFunc("POST /api/app/import-url", s.importImageURL)
 	mux.HandleFunc("POST /api/app/tags", s.appTags)
