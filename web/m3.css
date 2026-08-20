@@ -397,7 +397,10 @@
   padding: var(--m3-search-pad) 0 var(--m3-search-pad) var(--m3-gutter);
   gap: 0;
   align-items: center;
-  background: var(--m3-surface);
+  /* No fill here: the pill inside (the shell plus the submit button) is
+     already opaque on its own. A background on this rectangle painted a
+     square-cornered box around that rounded pill, which showed as a stray
+     white edge over anything but a pale picture. */
 }
 
 .is-phone .search-input-shell {
