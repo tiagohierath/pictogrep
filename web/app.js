@@ -195,6 +195,12 @@ function getAIWorker() {
     if (message.type === "progress") {
       if (message.kind === "text" && quietTextWarmup && foregroundTextRequests === 0) return;
       if (message.kind === "image" && quietImageIndexing) return;
+      // Never on a phone. Getting ready to search is not a task the user
+      // started, cannot be hurried, and does not need answering, so on a
+      // screen this size it is a toast sitting over the library saying a
+      // number nobody can act on. The search field already says when it is
+      // still warming up, which is the only moment the wait is worth naming.
+      if (appState?.mobile) return;
       const detail = message.detail || {};
       if (detail.status === "progress" && Number.isFinite(detail.progress)) {
         // Once per whole percent. The worker reports on every chunk it reads
@@ -2744,6 +2750,36 @@ function renderPremium() {
   $("#premiumIntro").hidden = unlocked;
 }
 
+/**
+ * Hands the purchase to the Android shell, which hands it to Play.
+ *
+ * Nothing here takes money or names a price to charge: Play requires digital
+ * goods sold inside an app to go through its billing, and sending someone to
+ * a checkout of our own is the specific thing that gets an app removed. What
+ * comes back is not a return value but a changed answer from the core, once
+ * Play has told the shell what was bought, so this polls the state a few
+ * times rather than waiting on a promise that does not exist.
+ */
+function buyPremium() {
+  if (!window.AndroidBridge?.buyPremium) {
+    // No shell, which on a phone build means an old one. Nothing to sell
+    // through, and pretending otherwise would unlock without charging.
+    showMessage(t("premium.unavailable"), true);
+    return;
+  }
+  window.AndroidBridge.buyPremium();
+  let checks = 0;
+  const poll = setInterval(async () => {
+    if (++checks > 20) return clearInterval(poll);
+    await refreshState().catch(() => {});
+    if (appState?.premium?.unlocked) {
+      clearInterval(poll);
+      renderPremium();
+      showMessage(t("premium.thanks"));
+    }
+  }, 1500);
+}
+
 async function setPremium(unlocked) {
   try {
     await request("/api/app/premium", {
@@ -3893,7 +3929,7 @@ $("#showOnboarding").onclick = () => {
 };
 $("#showAbout").onclick = showAbout;
 $("#showPremium").onclick = showPremium;
-$("#premiumUnlock").onclick = () => setPremium(true);
+$("#premiumUnlock").onclick = buyPremium;
 $("#premiumLock").onclick = () => setPremium(false);
 $("#showSettings").onclick = showSettings;
 $("#languageSetting").onchange = saveLanguageSetting;
@@ -4745,4 +4781,15 @@ $("#webImportAnother").onclick = () => {
 window.addEventListener("popstate", syncViewerFromHistory);
 window.addEventListener("focus", refreshLibraryWhenDue);
 document.addEventListener("visibilitychange", refreshLibraryWhenDue);
+
+// Picking indexing back up the moment the app is looked at again.
+//
+// Android suspends a backgrounded WebView, which stops indexing mid-pass and
+// leaves the rest of the library unindexed until something asks for it. The
+// real fix is embedding outside the WebView entirely, which is a larger job
+// waiting on a measurement; this is the half that costs nothing: whatever was
+// missed resumes on its own, rather than waiting for a search to notice.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && appState?.index?.count) scheduleSemanticIndex(1200);
+});
 start();

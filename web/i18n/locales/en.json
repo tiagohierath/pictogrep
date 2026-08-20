@@ -137,6 +137,8 @@
   "premium.intro": "Import from web and the calendar are free. Premium turns on every other plugin.",
   "premium.price": "US$9.99 a year.",
   "premium.unlock": "Get Premium",
+  "premium.unavailable": "Premium cannot be bought in this version.",
+  "premium.thanks": "Premium is on. Every plugin is yours.",
   "premium.lock": "Turn Premium off",
   "premium.have": "Premium is on. Every plugin is available in Plugins.",
   "menu.choose_images": "Choose pictures",

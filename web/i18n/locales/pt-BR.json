@@ -137,6 +137,8 @@
   "premium.intro": "Importar da web e o calendário são gratuitos. O Premium liga todos os outros plugins.",
   "premium.price": "R$29,90 por ano.",
   "premium.unlock": "Assinar o Premium",
+  "premium.unavailable": "Não dá para assinar o Premium nesta versão.",
+  "premium.thanks": "O Premium está ligado. Todos os plugins são seus.",
   "premium.lock": "Desligar o Premium",
   "premium.have": "O Premium está ligado. Todos os plugins estão disponíveis em Plugins.",
   "menu.choose_images": "Escolher imagens",
