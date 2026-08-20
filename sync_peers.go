@@ -141,6 +141,34 @@ func (s *peerStore) seen(id, address string) error {
 	return s.save()
 }
 
+// rediscovered records where mDNS just found a peer answering right now,
+// which is the one case allowed to overwrite the address of a peer that
+// Listens.
+//
+// seen above refuses that on purpose: what arrives there is a source port
+// nothing can be sent to, so writing it over a good address would break a
+// working peer. mDNS is different in kind, not degree. The desktop
+// advertises _pictogrep._tcp with its device id in the TXT record (see
+// sync_mdns.go), so an answer naming this id is the desktop saying "here I
+// am now", the same fact pairing's QR supplied once and DHCP is free to make
+// stale at any later point: a new lease, a different network, sleep in one
+// room and wake in another. Returns whether the id was a peer at all, so a
+// caller can tell "updated" from "nothing here by that id".
+func (s *peerStore) rediscovered(id, address string) bool {
+	s.mu.Lock()
+	one, found := s.peers[id]
+	if !found {
+		s.mu.Unlock()
+		return false
+	}
+	one.Address = address
+	one.LastSeen = time.Now().Unix()
+	s.peers[id] = one
+	s.mu.Unlock()
+	_ = s.save()
+	return true
+}
+
 func (s *peerStore) save() error {
 	s.mu.RLock()
 	stored := make([]peer, 0, len(s.peers))

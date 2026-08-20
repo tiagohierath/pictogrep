@@ -12,6 +12,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -181,4 +182,39 @@ func (s *server) syncNow(w http.ResponseWriter, r *http.Request) {
 	}
 	sync.outbox.nudge()
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// POST /api/app/sync/rediscovered: "mDNS just answered for a peer I know."
+//
+// Nothing in this process runs NsdManager; that lives in the Android shell,
+// which calls this the moment a resolve names a device id already in the
+// peer store (see PeerDiscovery.kt). Landing it here rather than teaching Go
+// to speak mDNS on Android keeps one already-working implementation
+// (hashicorp/mdns, desktop side) instead of two, and NsdManager is what the
+// platform actually wants asked on a phone: it is backed by the system
+// resolver, works through Doze, and does not need a multicast lock held for
+// as long as the listener runs.
+func (s *server) peerRediscovered(w http.ResponseWriter, r *http.Request) {
+	sync, ok := s.requireSync(w)
+	if !ok {
+		return
+	}
+	var req struct {
+		ID      string `json:"id"`
+		Address string `json:"address"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&req); err != nil || req.ID == "" || req.Address == "" {
+		sendError(w, http.StatusBadRequest, fmt.Errorf("a rediscovery needs an id and an address"))
+		return
+	}
+	if !sync.peers.rediscovered(req.ID, req.Address) {
+		// Not an error: NsdManager answers for every _pictogrep._tcp on the
+		// LAN, including a device this one has never paired with.
+		sendJSON(w, http.StatusOK, map[string]any{"ok": true, "known": false})
+		return
+	}
+	// The stale address was very possibly the reason the last few passes had
+	// nothing to report; worth trying again now rather than on the next tick.
+	sync.outbox.nudge()
+	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "known": true})
 }
