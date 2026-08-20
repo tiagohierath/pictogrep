@@ -112,6 +112,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/app/heartbeat", s.heartbeat)
 	mux.HandleFunc("POST /api/app/log", s.appLog)
 	mux.HandleFunc("POST /api/app/plugins", s.savePlugin)
+	mux.HandleFunc("POST /api/app/premium", s.setPremium)
 	mux.HandleFunc("GET /api/app/plugins/wikimedia/search", s.wikimediaSearch)
 	mux.HandleFunc("GET /api/app/plugins/calendar", s.calendarView)
 	// Not registered where the build has no board importer, so the app answers
@@ -710,6 +711,7 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 		"updateMethod": updateMethod(),
 		"update":       s.updateStatePayload(),
 		"onboarding":   s.app.onboardingSettings(),
+		"premium":      map[string]any{"unlocked": s.app.premiumUnlocked(), "sold": runsOnPhone},
 		"pinterest":    s.app.pinterestSettings(),
 		"web":          s.app.webSettings(),
 		"index":        index, "indexJob": job, "sources": sources, "tags": tags,

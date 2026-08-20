@@ -1,6 +1,21 @@
 const $ = selector => document.querySelector(selector);
 const t = (key, values) => window.PictogrepI18n.t(key, values);
 
+/** Every plugin switch, by the name the server files it under. */
+const PLUGIN_TOGGLES = {
+  "#wikimediaPluginToggle": "wikimedia",
+  "#calendarPluginToggle": "calendar",
+  "#sidebarPluginToggle": "sidebar",
+  "#vimPluginToggle": "vim",
+  "#canvasPluginToggle": "canvas",
+  "#commandPalettePluginToggle": "commandPalette",
+  "#pinterestPluginToggle": "pinterest",
+  "#webPluginToggle": "web",
+};
+
+/** Free on a phone without Premium. Kept in step with freeOnPhone in premium.go. */
+const FREE_ON_PHONE = new Set(["web", "calendar"]);
+
 let appState = null;
 let currentTag = "";
 let currentSource = "";
@@ -629,6 +644,7 @@ function showMenuHome() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = true;
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
@@ -2080,6 +2096,18 @@ function renderState() {
   $("#commandPalettePluginToggle").checked = Boolean(appState.plugins?.commandPalette?.enabled);
   $("#showSync").hidden = appState.mobile || appState.sync?.available === false;
   $("#showSyncPhone").hidden = !appState.mobile || appState.sync?.available === false;
+  // Only where there is something to sell. A desktop keeps every plugin it
+  // already shipped with, so a Premium row there would offer nothing.
+  const premiumSold = Boolean(appState.premium?.sold);
+  $("#showPremium").hidden = !premiumSold;
+  if (!premiumSold) $("#premiumSection").hidden = true;
+  // A locked plugin's switch is not merely off, it is not a switch: the
+  // server refuses to enable it, so a toggle that moved would spring back
+  // and read as broken rather than as locked.
+  const locked = premiumSold && !appState.premium?.unlocked;
+  for (const [id, name] of Object.entries(PLUGIN_TOGGLES)) {
+    $(id).disabled = locked && !FREE_ON_PHONE.has(name);
+  }
   const pinterestEnabled = Boolean(appState.plugins?.pinterest?.enabled);
   $("#pinterestPluginToggle").checked = pinterestEnabled;
   $("#pinterestAutoSyncToggle").checked = appState.pinterest?.autoSync !== false;
@@ -2662,6 +2690,7 @@ async function loadBoards() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = true;
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
@@ -2691,10 +2720,51 @@ async function loadBoards() {
   }
 }
 
+function showPremium() {
+  $("#addSection").hidden = true;
+  $("#pinterestSection").hidden = true;
+  $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
+  $("#webSection").hidden = true;
+  $("#settingsSection").hidden = true;
+  $("#pluginsSection").hidden = true;
+  $("#boardsSection").hidden = true;
+  $("#aboutSection").hidden = true;
+  $("#premiumSection").hidden = false;
+  renderPremium();
+  openMenu();
+}
+
+/** The panel says one of two things, and which one is the only state here. */
+function renderPremium() {
+  const unlocked = Boolean(appState?.premium?.unlocked);
+  $("#premiumUnlock").hidden = unlocked;
+  $("#premiumLock").hidden = !unlocked;
+  $("#premiumHave").hidden = !unlocked;
+  $("#premiumIntro").hidden = unlocked;
+}
+
+async function setPremium(unlocked) {
+  try {
+    await request("/api/app/premium", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({unlocked}),
+    });
+    // The whole plugin list changes with this, so the state is re-read rather
+    // than patched: what is enabled is the server's answer, not this page's.
+    await refreshState();
+    renderPremium();
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
 function showAbout() {
 	$("#addSection").hidden = true;
 	$("#pinterestSection").hidden = true;
 	$("#syncSection").hidden = true;
+	$("#premiumSection").hidden = true;
 	$("#webSection").hidden = true;
 	$("#settingsSection").hidden = true;
 	$("#pluginsSection").hidden = true;
@@ -2709,6 +2779,7 @@ function showSettings() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = true;
   $("#boardsSection").hidden = true;
   $("#aboutSection").hidden = true;
@@ -2722,6 +2793,7 @@ function showPlugins() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = true;
   $("#boardsSection").hidden = true;
   $("#aboutSection").hidden = true;
@@ -3820,6 +3892,9 @@ $("#showOnboarding").onclick = () => {
   window.PictogrepOnboarding?.start();
 };
 $("#showAbout").onclick = showAbout;
+$("#showPremium").onclick = showPremium;
+$("#premiumUnlock").onclick = () => setPremium(true);
+$("#premiumLock").onclick = () => setPremium(false);
 $("#showSettings").onclick = showSettings;
 $("#languageSetting").onchange = saveLanguageSetting;
 $("#thumbnailSizeSetting").onchange = saveBrowserSettings;
@@ -3884,6 +3959,7 @@ $("#showAdd").onclick = () => {
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = true;
   $("#addSection").hidden = !$("#addSection").hidden;
 };
@@ -3894,6 +3970,7 @@ $("#emptyAddImages").onclick = () => {
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = true;
   $("#addSection").hidden = false;
   openMenu();
@@ -4409,6 +4486,7 @@ function showWebImport() {
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = false;
   openMenu(t("web.title"));
   renderFollowedWebSources();

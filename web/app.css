@@ -420,6 +420,9 @@ body.show-filenames .image-filename { display: block; }
 .settings-group em { color: var(--success); font-size: var(--text-2xs); font-style: normal; font-weight: 400; }
 .settings-list { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .page-intro { margin: calc(var(--space-1) * -1) 0 var(--space-5) !important; }
+.premium-list { margin: 0 0 var(--space-5); padding: 0 0 0 var(--space-5); color: var(--fg-muted); font-size: var(--text-sm); }
+.premium-list li { margin: 0 0 var(--space-1); }
+.premium-price { margin: 0 0 var(--space-4); font-size: var(--text-md); font-weight: 600; }
 .field-help { margin: var(--space-2) 0 0; color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-tight); }
 
 /* Import panels. The Pinterest one keeps Pinterest's red for its own action;

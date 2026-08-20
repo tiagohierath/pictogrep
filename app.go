@@ -342,6 +342,11 @@ func (a *application) pluginEnabled(name string) bool {
 	if name == "pinterest" && !offersPinterest {
 		return false
 	}
+	// Locked is locked: not merely hidden in the panel, but off for the routes
+	// it serves and the background work it schedules too. See premium.go.
+	if a.premiumLocks(name) {
+		return false
+	}
 	// The two importers ship with release installations and are ready on first
 	// launch, while remaining ordinary plugins that users can turn off.
 	defaultEnabled := name == "pinterest" || name == "web"

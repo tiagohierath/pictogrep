@@ -104,7 +104,7 @@
       <button id="showPlugins" data-i18n="menu.plugins">Plugins</button>
       <button id="showSettings" data-i18n="settings.title">Settings</button>
       <button id="showAbout" data-i18n="menu.about">About</button>
-      <a href="https://navylily.tv" id="openNavylily" target="_blank" rel="noopener noreferrer" data-i18n="menu.navylily">Navy Lily</a>
+      <button id="showPremium" class="phone-only" data-i18n="premium.title" hidden>Premium</button>
     </nav>
 
     <section class="drawer-section" id="addSection" hidden>
@@ -196,6 +196,24 @@
         <button type="button" class="desktop-only" id="syncNewCode" data-i18n="sync.new_code">New code</button>
       </div>
       <small class="pinterest-return-help" data-i18n="sync.return_help">Use it again anytime from Menu → Connect phone.</small>
+    </section>
+
+    <section class="drawer-section" id="premiumSection" hidden>
+      <h2 data-i18n="premium.title">Premium</h2>
+      <p class="page-intro" id="premiumIntro" data-i18n="premium.intro">Import from the web and the calendar are yours for free. Premium turns on everything else.</p>
+      <ul class="premium-list">
+        <li data-i18n="plugins.wikimedia">Wikimedia Commons</li>
+        <li data-i18n="plugins.sidebar">Sidebar</li>
+        <li data-i18n="plugins.canvas">Folder canvas</li>
+        <li data-i18n="plugins.command_palette">Command palette</li>
+        <li data-i18n="plugins.vim">Vim Mode</li>
+      </ul>
+      <p class="premium-price" id="premiumPrice" data-i18n="premium.price">US$9.99, once. Not a subscription.</p>
+      <div class="pinterest-actions">
+        <button type="button" class="primary" id="premiumUnlock" data-i18n="premium.unlock">Get Premium</button>
+        <button type="button" id="premiumLock" data-i18n="premium.lock" hidden>Turn Premium off</button>
+      </div>
+      <p class="field-help" id="premiumHave" data-i18n="premium.have" hidden>Premium is on. Every plugin is available in Plugins.</p>
     </section>
 
     <section class="drawer-section settings" id="settingsSection" hidden>

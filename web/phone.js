@@ -56,7 +56,7 @@
     "#showPlugins": "plugins",
     "#showSettings": "settings",
     "#showAbout": "about",
-    "#openNavylily": "link",
+    "#showPremium": "saved",
   };
 
   function icon(name) {
