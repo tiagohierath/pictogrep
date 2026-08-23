@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-var version = "0.8.6"
+var version = "0.9.0"
 
 const (
 	maxCachedQueries = 512
@@ -83,6 +83,7 @@ type application struct {
 	canvasDir          string
 	thumbnailDir       string
 	embeddingModel     embeddingModel
+	usage              *usageTracker
 
 	mu       sync.RWMutex
 	canvasMu sync.Mutex
@@ -204,6 +205,14 @@ func newApplicationWithEmbeddingModel(model embeddingModel) (*application, error
 	}
 	_ = a.loadEmbeddings()
 	_ = a.loadQueryEmbeddings()
+	if tracksDailyUsage {
+		tracker, err := newUsageTracker(filepath.Join(a.dataDir, "usage.json"), version)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "pictogrep: daily usage tracking disabled: %v\n", err)
+		} else {
+			a.usage = tracker
+		}
+	}
 	return a, nil
 }
 

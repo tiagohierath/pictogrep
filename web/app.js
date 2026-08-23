@@ -281,9 +281,29 @@ function clearSearchInput() {
   resizeSearchDraft();
 }
 
+let lastActivitySignalDate = "";
+
+// This reaches only Pictogrep's local Go server. The server persists and sends
+// the anonymous daily event in the background, so analytics never waits in the
+// interface and an offline day can be retried later.
+function reportMeaningfulActivity() {
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  if (lastActivitySignalDate === today) return;
+  lastActivitySignalDate = today;
+  fetch("/api/app/activity", {method: "POST", cache: "no-store", keepalive: true})
+    .then(response => {
+      if (!response.ok) throw new Error(`activity ${response.status}`);
+    })
+    .catch(() => {
+      if (lastActivitySignalDate === today) lastActivitySignalDate = "";
+    });
+}
+
 function performSearch(remember = false) {
   clearTimeout(queryPrimeTimer);
   currentQuery = searchQueryValue();
+  if (currentQuery) reportMeaningfulActivity();
   if (remember) rememberSearch(currentQuery);
   $("#recentSearches").hidden = true;
   if (!$("#commonsPanel").hidden) loadCommons();
@@ -833,6 +853,7 @@ function viewerURL(id = "") {
 }
 
 function openImageViewer(item, updateHistory = true) {
+  reportMeaningfulActivity();
   const viewer = $("#imageViewer");
   const wasOpen = viewer.open;
   showViewerImage(item, false);
@@ -1662,6 +1683,7 @@ function setFolderScope(folder) {
 }
 
 function openFolder(folder) {
+  reportMeaningfulActivity();
   closeCardMenus();
   setFolderScope(folder);
   loadImages();
@@ -2292,6 +2314,7 @@ async function refreshAfterImport(showLibrary) {
 async function uploadFiles(files, options = {}) {
   const images = Array.from(files).filter(isSupportedImage);
   if (!images.length) return showMessage(t("import.choose_supported"), true);
+  reportMeaningfulActivity();
   const destination = options.destination || activeImportDestination();
   const showLibrary = options.showLibrary ?? !$("#imagesPanel").hidden;
   // Only if it was already open. On a desktop this flow starts inside the
@@ -2497,6 +2520,7 @@ async function createFolder(event) {
   const prompt = $("#newFolderPrompt").value.trim();
   const files = Array.from($("#newFolderFiles").files || []).filter(isSupportedImage);
   if (!leafName) return;
+  reportMeaningfulActivity();
   try {
     await request("/api/app/tags", {
       method: "POST",
@@ -3952,6 +3976,7 @@ $("#searchQuery").addEventListener("input", event => {
   if (query.length < 2) return;
   queryPrimeTimer = setTimeout(() => {
     if (searchQueryValue() !== query || currentQuery === query) return;
+    reportMeaningfulActivity();
     currentQuery = query;
     if (!$("#commonsPanel").hidden) loadCommons();
     else if (!$("#calendarPanel").hidden) loadCalendar();

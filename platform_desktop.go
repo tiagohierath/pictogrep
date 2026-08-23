@@ -20,6 +20,8 @@ const (
 	// The board importer, which is a desktop feature and stays one. See
 	// platform_mobile.go for why the app build has none of it.
 	offersPinterest = true
+	// The desktop release records anonymous active days after meaningful use.
+	tracksDailyUsage = true
 )
 
 // A desktop launch has no parent watching it, and often no stdin at all: a

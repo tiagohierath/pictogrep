@@ -118,6 +118,15 @@ Imported images are copied into `library`; folder membership is stored under
 `collections`; canvas coordinates stay under `data`; drawings are saved under
 `storyboards`.
 
+### Anonymous daily usage
+
+Desktop releases keep a random installation UUID and its creation date in
+`data/usage.json`. After you view a picture, search, open a folder, or add
+pictures, Pictogrep records at most one anonymous active day. Offline days stay
+queued locally and are retried later. The event contains only the UUID, calendar
+date, Pictogrep version, and operating-system/CPU platform; pictures, filenames,
+searches, folders, account details, and IP addresses are not stored with it.
+
 ## Configuration
 
 Pictogrep also works without the Settings menu. Its user-editable configuration

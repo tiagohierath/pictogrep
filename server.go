@@ -110,6 +110,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /i18n/locales/{name}", s.locale)
 	mux.HandleFunc("GET /api/app/state", s.appState)
 	mux.HandleFunc("GET /api/app/heartbeat", s.heartbeat)
+	mux.HandleFunc("POST /api/app/activity", s.appActivity)
 	mux.HandleFunc("POST /api/app/log", s.appLog)
 	mux.HandleFunc("POST /api/app/plugins", s.savePlugin)
 	mux.HandleFunc("GET /api/app/plugins/wikimedia/search", s.wikimediaSearch)
@@ -182,6 +183,13 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /reference/{name}", s.reference)
 	mux.HandleFunc("POST /api/save", s.saveBoard)
 	return securityHeaders(mux)
+}
+
+func (s *server) appActivity(w http.ResponseWriter, _ *http.Request) {
+	if s.app.usage != nil {
+		s.app.usage.markActive()
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *server) appLog(w http.ResponseWriter, r *http.Request) {

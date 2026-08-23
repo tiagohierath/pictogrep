@@ -41,6 +41,8 @@ const (
 	// person runs on their own machine to fetch pictures they can already see is
 	// the thing every browser does with "save image".
 	offersPinterest = false
+	// Android has its own product analytics and release lifecycle.
+	tracksDailyUsage = false
 )
 
 // Android kills an app process without warning and without running anything on
