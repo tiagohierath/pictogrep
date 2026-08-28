@@ -206,6 +206,16 @@ func serve(app *application, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Loading the sync identity (a file read, and on first run a P-256 keygen
+	// plus an mDNS bind) used to run before the listener even opened, so a
+	// slow disk or network stack delayed the browser for a feature most
+	// launches never touch. It now runs on its own goroutine, overlapping
+	// with everything below down to the URL print and browser open; only
+	// httpServer.Serve, several lines down, waits for it to finish, which is
+	// early enough that no request ever sees a half-attached sync and late
+	// enough that the write to handler.sync happens-before any handler
+	// goroutine can read it.
+	//
 	// Best effort: a device that cannot get an identity (a read-only data
 	// directory, most likely) still gets a working library, just no sync tab.
 	//
@@ -216,11 +226,15 @@ func serve(app *application, args []string) error {
 	// scripts/launch-check.sh asserts it appears, which is the one check in
 	// this whole codebase that touches real Android Keystore rather than a
 	// desktop stand-in for it.
-	if err := handler.attachSync(deviceDisplayName()); err != nil {
-		log.Printf("sync unavailable: %v", err)
-	} else {
-		log.Printf("sync ready: device %s", handler.sync.identity.id)
-	}
+	syncAttached := make(chan struct{})
+	go func() {
+		defer close(syncAttached)
+		if err := handler.attachSync(deviceDisplayName()); err != nil {
+			log.Printf("sync unavailable: %v", err)
+		} else {
+			log.Printf("sync ready: device %s", handler.sync.identity.id)
+		}
+	}()
 	listener, err := net.Listen("tcp", "127.0.0.1:"+strconv.Itoa(options.port))
 	if err != nil && options.port == defaultPort {
 		instance := probeRunningInstance(options.port)
@@ -250,8 +264,12 @@ func serve(app *application, args []string) error {
 	fmt.Println("Pictogrep:", url)
 	fmt.Printf("%d images available. Press Ctrl+C to stop.\n", len(paths))
 	if !options.noOpen {
+		// No delay needed: net.Listen has already put the socket in the
+		// kernel's accept queue, so a browser dialing in right now just waits
+		// there harmlessly until httpServer.Serve (a few lines below) starts
+		// pulling connections off it. The old fixed sleep was dead time on
+		// every single launch for no benefit.
 		go func() {
-			time.Sleep(120 * time.Millisecond)
 			if err := openBrowser(url); err != nil {
 				fmt.Fprintln(os.Stderr, "Open this URL in your browser:", url)
 			}
@@ -293,6 +311,7 @@ func serve(app *application, args []string) error {
 			}
 		}()
 	}
+	<-syncAttached
 	err = httpServer.Serve(listener)
 	if err == http.ErrServerClosed {
 		return nil

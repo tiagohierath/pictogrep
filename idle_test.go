@@ -54,7 +54,7 @@ func TestHeartbeatFromAnOpenWindowResetsTheIdleTimer(t *testing.T) {
 	request.Host = "127.0.0.1"
 	response := httptest.NewRecorder()
 	routes.ServeHTTP(response, request)
-	if response.Code != http.StatusNoContent {
+	if response.Code != http.StatusOK {
 		t.Fatalf("heartbeat returned %d", response.Code)
 	}
 	if idle := watch.idleFor(); idle > time.Second {

@@ -912,7 +912,7 @@ func TestNativeSemanticIndexRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if missing := reloaded.missingEmbeddings(); len(missing) != 0 {
+	if missing := reloaded.missingEmbeddings(nil); len(missing) != 0 {
 		t.Fatalf("saved embedding did not survive restart: %#v", missing)
 	}
 	payload, _ = json.Marshal(map[string]any{"model": defaultEmbeddingModel.Key, "vector": vector, "limit": 10})
@@ -947,7 +947,7 @@ func TestFullReindexRequiresConfirmationAndClearsEmbeddings(t *testing.T) {
 	if value := responseJSON(t, response); response.StatusCode != http.StatusForbidden || value["ok"] != false {
 		t.Fatalf("unconfirmed full reindex was accepted: status=%d %#v", response.StatusCode, value)
 	}
-	if missing := app.missingEmbeddings(); len(missing) != 0 {
+	if missing := app.missingEmbeddings(nil); len(missing) != 0 {
 		t.Fatalf("unconfirmed reindex changed embeddings: %#v", missing)
 	}
 
@@ -961,7 +961,7 @@ func TestFullReindexRequiresConfirmationAndClearsEmbeddings(t *testing.T) {
 	if response.StatusCode != http.StatusOK || value["cleared"] != float64(1) || value["total"] != float64(1) {
 		t.Fatalf("full reindex failed: status=%d %#v", response.StatusCode, value)
 	}
-	missing := app.missingEmbeddings()
+	missing := app.missingEmbeddings(nil)
 	if len(missing) != 1 || missing[0]["path"] != picture {
 		t.Fatalf("full reindex did not queue the complete library: %#v", missing)
 	}
@@ -984,7 +984,7 @@ func TestLegacyEmbeddingTimestampIsUpgraded(t *testing.T) {
 	if value := responseJSON(t, response); response.StatusCode != http.StatusOK || value["saved"].(float64) != 1 {
 		t.Fatalf("legacy timestamp was rejected: status=%d %#v", response.StatusCode, value)
 	}
-	if missing := app.missingEmbeddings(); len(missing) != 0 {
+	if missing := app.missingEmbeddings(nil); len(missing) != 0 {
 		t.Fatalf("legacy timestamp was not normalized: %#v", missing)
 	}
 }

@@ -95,7 +95,7 @@
     <div class="drawer-header"><strong id="drawerTitle">Menu</strong><button id="closeMenu" aria-label="Close menu" data-i18n-aria-label="app.close_menu">×</button></div>
 
     <nav class="drawer-actions">
-      <a href="/practice" data-i18n="menu.open_storyboard">Open storyboard</a>
+      <a href="/practice" data-i18n="menu.open_storyboard">New storyboard</a>
       <button id="showBoards"><span data-i18n="menu.saved_boards">Saved storyboards</span> <span id="boardCount"></span></button>
       <button id="showAdd" data-i18n="menu.add_pictures">Add pictures</button>
       <button id="showSync" class="desktop-only" data-i18n="sync.title" hidden>Connect phone</button>
@@ -104,13 +104,14 @@
       <button id="showPlugins" data-i18n="menu.plugins">Plugins</button>
       <button id="showSettings" data-i18n="settings.title">Settings</button>
       <button id="showAbout" data-i18n="menu.about">About</button>
-      <a href="https://navylily.tv" id="openNavylily" target="_blank" rel="noopener noreferrer" data-i18n="menu.navylily">Navy Lily</a>
+      <button id="showPremium" class="phone-only" data-i18n="premium.title" hidden>Premium</button>
     </nav>
 
     <section class="drawer-section" id="addSection" hidden>
       <h2 data-i18n="add.title">Add pictures</h2>
       <button type="button" class="file-button desktop-only" id="chooseFolder"><span data-i18n="add.choose_folder">Choose a folder</span><small data-i18n="add.choose_folder_help">Read a folder where it is. Nothing is moved or copied.</small></button>
       <label class="file-button"><span data-i18n="add.choose_images">Copy pictures in</span><small data-i18n="add.choose_images_help">Saves the pictures you pick into Pictogrep's library.</small><input id="imageFiles" type="file" accept="image/*" multiple hidden></label>
+      <form class="pinterest-url" id="pasteURLForm"><label><span data-i18n="add.paste_url">Paste a picture's link</span><input id="pasteURLInput" type="url" inputmode="url" autocomplete="url" spellcheck="false" placeholder="https://example.com/picture.jpg" required><small data-i18n="add.paste_url_help">Works for a direct link to one picture, not a page about one.</small></label><button type="submit" data-i18n="add.paste_url_go">Add it</button></form>
     </section>
 
     <section class="drawer-section pinterest-import" id="pinterestSection" hidden>
@@ -183,6 +184,7 @@
       <p class="field-help desktop-only" id="syncExpiry" data-i18n="sync.expiry">This code is good for a few minutes.</p>
       <button type="button" class="primary phone-only" id="syncScanButton" data-i18n="sync.scan">Scan code</button>
 
+      <label class="settings-row phone-only" id="syncAutoSendRow" hidden><span><strong data-i18n="sync.auto_send">Send my pictures automatically</strong><small data-i18n="sync.auto_send_help">New pictures go to your computer on their own, whenever it is on the same network.</small></span><input type="checkbox" id="syncAutoSendToggle" checked></label>
       <p class="field-help" id="syncNoDevices" data-i18n="sync.no_devices">Nothing paired yet.</p>
       <ul class="sync-devices" id="syncDeviceList" hidden></ul>
 
@@ -196,11 +198,29 @@
       <small class="pinterest-return-help" data-i18n="sync.return_help">Use it again anytime from Menu → Connect phone.</small>
     </section>
 
+    <section class="drawer-section" id="premiumSection" hidden>
+      <h2 data-i18n="premium.title">Premium</h2>
+      <p class="page-intro" id="premiumIntro" data-i18n="premium.intro">Import from the web and the calendar are yours for free. Premium turns on everything else.</p>
+      <ul class="premium-list">
+        <li data-i18n="plugins.wikimedia">Wikimedia Commons</li>
+        <li data-i18n="plugins.sidebar">Sidebar</li>
+        <li data-i18n="plugins.canvas">Folder canvas</li>
+        <li data-i18n="plugins.command_palette">Command palette</li>
+        <li data-i18n="plugins.vim">Vim Mode</li>
+      </ul>
+      <p class="premium-price" id="premiumPrice" data-i18n="premium.price">US$9.99, once. Not a subscription.</p>
+      <div class="pinterest-actions">
+        <button type="button" class="primary" id="premiumUnlock" data-i18n="premium.unlock">Get Premium</button>
+        <button type="button" id="premiumLock" data-i18n="premium.lock" hidden>Turn Premium off</button>
+      </div>
+      <p class="field-help" id="premiumHave" data-i18n="premium.have" hidden>Premium is on. Every plugin is available in Plugins.</p>
+    </section>
+
     <section class="drawer-section settings" id="settingsSection" hidden>
       <div class="settings-group">
         <h2 data-i18n="settings.general">General</h2>
         <label class="settings-row"><span><strong data-i18n="settings.language">Language</strong><small data-i18n="settings.language_help">Choose the interface language.</small></span><select id="languageSetting"><option value="en" data-i18n="settings.english">English</option><option value="pt-BR">Português</option></select></label>
-        <div class="settings-action"><span><strong data-i18n="onboarding.menu">Setup guide</strong><small data-i18n="onboarding.menu_help">Open the first-run screen again to add another folder.</small></span><button type="button" id="showOnboarding" data-i18n="onboarding.menu_action">Open</button></div>
+        <div class="settings-action desktop-only"><span><strong data-i18n="onboarding.menu">Setup guide</strong><small data-i18n="onboarding.menu_help">Open the first-run screen again to add another folder.</small></span><button type="button" id="showOnboarding" data-i18n="onboarding.menu_action">Open</button></div>
         <label class="settings-row" id="autoUpdateRow"><span><strong data-i18n="update.auto">Keep Pictogrep up to date</strong><small id="autoUpdateHelp" data-i18n="update.auto_help">Checks for a new version a few times a day and installs it. The new version starts the next time you open Pictogrep.</small></span><input type="checkbox" id="autoUpdateToggle"></label>
       </div>
       <div class="settings-group">

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Connect phone shows its QR code even when another program already has Pictogrep's usual LAN port. Pairing already tells the phone which port was actually opened, so Pictogrep now takes any free one instead of leaving a blank code panel; if pairing cannot start at all, the panel says why rather than staying empty.
+- Pictures on the main screen stay where they were put. A quiet folder check, a picture arriving from a phone, or another picture becoming searchable used to deal the visible grid again and replace pictures while somebody was looking at them. Existing cards now keep their positions for the life of the view, and new arrivals are added after them.
+- Stat the library once per request instead of once per question asked about it, on the routes that ask more than one. Grid tiles at 1024px and under encode at a lower quality, since the last few points were being downscaled away before anyone saw them.
+- A picture arriving from a phone is spooled to disk while it uploads instead of held whole in memory, so a batch of phone uploads no longer stacks up peak memory with every concurrent transfer.
+- Two greys were under the accessibility contrast floor for normal text and UI borders; both move to a darker shade that clears it. The phone's bottom navigation now reaches a screen reader with the same words sighted users see, and its fourth destination is drawn and labelled as the menu it opens rather than a leftover profile icon.
+- "Open storyboard" is now "New storyboard," since that link opens an empty one rather than reopening a saved one.
+
 ## 0.9.0 - 2026-08-23
 
 - Desktop releases record one anonymous active day after meaningful use, never merely on launch. The local installation ID and offline queue contain no account, picture, filename, folder, or search information, and reporting never waits in the interface.

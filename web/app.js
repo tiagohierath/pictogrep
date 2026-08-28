@@ -1,6 +1,21 @@
 const $ = selector => document.querySelector(selector);
 const t = (key, values) => window.PictogrepI18n.t(key, values);
 
+/** Every plugin switch, by the name the server files it under. */
+const PLUGIN_TOGGLES = {
+  "#wikimediaPluginToggle": "wikimedia",
+  "#calendarPluginToggle": "calendar",
+  "#sidebarPluginToggle": "sidebar",
+  "#vimPluginToggle": "vim",
+  "#canvasPluginToggle": "canvas",
+  "#commandPalettePluginToggle": "commandPalette",
+  "#pinterestPluginToggle": "pinterest",
+  "#webPluginToggle": "web",
+};
+
+/** Free on a phone without Premium. Kept in step with freeOnPhone in premium.go. */
+const FREE_ON_PHONE = new Set(["web", "calendar"]);
+
 let appState = null;
 let currentTag = "";
 let currentSource = "";
@@ -79,10 +94,18 @@ function rememberLoadedImage(url) {
   while (loadedImageURLs.size > 2048) loadedImageURLs.delete(loadedImageURLs.values().next().value);
 }
 
+/**
+ * Set for the one render that follows a picture arriving over sync, so those
+ * images resolve into place instead of appearing fully formed. Cleared by the
+ * first render that reads it: only the arrival earns this, not every later
+ * scroll through the same grid.
+ */
+let revealNextImages = false;
+
 function loadImage(image, url, {fallback = "", label = "", onload = null} = {}) {
   let activeURL = url;
   let finished = false;
-  let slow = false;
+  let slow = revealNextImages;
   let slowTimer = null;
 
   image.alt = "";
@@ -172,6 +195,12 @@ function getAIWorker() {
     if (message.type === "progress") {
       if (message.kind === "text" && quietTextWarmup && foregroundTextRequests === 0) return;
       if (message.kind === "image" && quietImageIndexing) return;
+      // Never on a phone. Getting ready to search is not a task the user
+      // started, cannot be hurried, and does not need answering, so on a
+      // screen this size it is a toast sitting over the library saying a
+      // number nobody can act on. The search field already says when it is
+      // still warming up, which is the only moment the wait is worth naming.
+      if (appState?.mobile) return;
       const detail = message.detail || {};
       if (detail.status === "progress" && Number.isFinite(detail.progress)) {
         // Once per whole percent. The worker reports on every chunk it reads
@@ -421,7 +450,11 @@ async function refreshSemanticResults() {
   if (!query || !appState?.aiAvailable) return;
   try {
     const data = await requestSemanticResults(query, true);
-    if (query === currentQuery) renderImages(data.images, data.images.length);
+    // Preparing another picture can improve a live search, but it must not
+    // deal the results again underneath somebody who is looking through
+    // them. Keep every card already shown in its place and add newly matching
+    // pictures after it.
+    if (query === currentQuery) renderImages(data.images, data.images.length, {keepExisting: true});
   } catch (_) {
     // The active search already reports errors. Background refreshes stay quiet.
   }
@@ -641,6 +674,7 @@ function showMenuHome() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = true;
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
@@ -1168,13 +1202,25 @@ async function loadRelatedImages(item) {
   }
 }
 
-function renderImages(images, total = images.length) {
+function renderImages(images, total = images.length, {keepExisting = false} = {}) {
   const grid = $("#imageGrid");
   grid.classList.remove("is-loading");
   grid.removeAttribute("aria-busy");
-  browserImages = images;
-  grid.replaceChildren(...images.map(pictureCard));
-  $("#imageCount").textContent = total ? `(${total})` : "";
+  if (keepExisting) {
+    const incoming = new Map(images.map(item => [item.id, item]));
+    const shown = new Set(browserImages.map(item => item.id));
+    const added = images.filter(item => !shown.has(item.id));
+    // Refresh the records used by the viewer without replacing their DOM
+    // cards. Replacing even an identical card briefly swaps its thumbnail and
+    // is exactly the visual jump this path exists to avoid.
+    browserImages = browserImages.map(item => incoming.get(item.id) || item).concat(added);
+    grid.append(...added.map(pictureCard));
+  } else {
+    browserImages = images;
+    grid.replaceChildren(...images.map(pictureCard));
+  }
+  const visibleTotal = keepExisting ? Math.max(total, browserImages.length) : total;
+  $("#imageCount").textContent = visibleTotal ? `(${visibleTotal})` : "";
   // The welcome tutorial answers "how do I start a whole library", which is
   // the wrong answer inside a folder: an empty folder in an otherwise-empty
   // library used to show it anyway, because emptiness was read off the whole
@@ -1183,8 +1229,8 @@ function renderImages(images, total = images.length) {
   // the question being asked.
   const scoped = Boolean(currentTag || currentSource || currentQuery);
   const libraryEmpty = !scoped && (!appState?.index || appState.index.count === 0);
-  $("#imagesEmpty").hidden = !libraryEmpty || images.length !== 0;
-  if (images.length || libraryEmpty) showResultState();
+  $("#imagesEmpty").hidden = !libraryEmpty || browserImages.length !== 0;
+  if (browserImages.length || libraryEmpty) showResultState();
   else if (currentQuery) showResultState(t("search.no_results", {query: currentQuery}), t("search.try_fewer"), t("search.clear"), showAllImages);
   else if (currentTag || currentSource) showResultState(t("state.empty_folder"), t("state.empty_folder_text"), t("state.add_pictures"), () => { showMenuHome(); $("#showAdd").click(); });
   else showResultState(t("state.no_pictures"), t("state.try_view"), t("state.show_all"), showAllImages);
@@ -1279,8 +1325,14 @@ function forgetImage(id) {
 }
 
 function appendImages(images) {
-  browserImages = browserImages.concat(images);
-  $("#imageGrid").append(...images.map(pictureCard));
+  // A library can grow between pages. Its seeded shuffle is deterministic for
+  // one snapshot, but adding a path changes later page boundaries; ignore any
+  // card a later page consequently repeats instead of replacing or duplicating
+  // something the reader already saw.
+  const shown = new Set(browserImages.map(item => item.id));
+  const added = images.filter(item => !shown.has(item.id));
+  browserImages = browserImages.concat(added);
+  $("#imageGrid").append(...added.map(pictureCard));
   $("#imageCount").textContent = imagePaging?.total ? `(${imagePaging.total})` : "";
 }
 
@@ -1333,10 +1385,10 @@ function watchImageScroll() {
   imageScrollObserver.observe(sentinel);
 }
 
-// `keepOrder` is for refreshing after an edit rather than navigating. It holds
-// on to the shuffle already on screen and asks for the pages already scrolled
-// through in one go, so the library does not reorder itself and throw the
-// reader back to the top over an unrelated change.
+// `keepOrder` is for refreshing rather than navigating. A shuffle of a changed
+// library is a different permutation even with the same seed, so refetching
+// and replacing the first pages is not enough: cards already on screen stay in
+// their DOM positions and genuinely new ones are appended after them.
 async function loadImages({keepOrder = false} = {}) {
   const loadId = ++imageLoadId;
   const previous = imagePaging;
@@ -1353,7 +1405,7 @@ async function loadImages({keepOrder = false} = {}) {
         ? await semanticSearch(currentQuery)
         : await request(`/api/app/search?q=${encodeURIComponent(currentQuery)}&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}&limit=120`);
       if (loadId !== imageLoadId) return;
-      renderImages(data.images, data.images.length);
+      renderImages(data.images, data.images.length, {keepExisting: keepOrder});
       if (data.preparing) {
         $("#imagesEmpty").hidden = true;
         // renderImages has already written "No results" across the screen, and
@@ -1372,7 +1424,7 @@ async function loadImages({keepOrder = false} = {}) {
       const count = resumable ? Math.min(Math.max(previous.offset, pageSize), MAX_IMAGE_PAGE) : pageSize;
       const data = await request(imagePageURL({mode, pageSize: count, offset: 0, seed}));
       if (loadId !== imageLoadId) return;
-      renderImages(data.images, data.total);
+      renderImages(data.images, data.total, {keepExisting: resumable});
       imagePaging = {
         mode,
         pageSize,
@@ -2094,6 +2146,18 @@ function renderState() {
   $("#commandPalettePluginToggle").checked = Boolean(appState.plugins?.commandPalette?.enabled);
   $("#showSync").hidden = appState.mobile || appState.sync?.available === false;
   $("#showSyncPhone").hidden = !appState.mobile || appState.sync?.available === false;
+  // Only where there is something to sell. A desktop keeps every plugin it
+  // already shipped with, so a Premium row there would offer nothing.
+  const premiumSold = Boolean(appState.premium?.sold);
+  $("#showPremium").hidden = !premiumSold;
+  if (!premiumSold) $("#premiumSection").hidden = true;
+  // A locked plugin's switch is not merely off, it is not a switch: the
+  // server refuses to enable it, so a toggle that moved would spring back
+  // and read as broken rather than as locked.
+  const locked = premiumSold && !appState.premium?.unlocked;
+  for (const [id, name] of Object.entries(PLUGIN_TOGGLES)) {
+    $(id).disabled = locked && !FREE_ON_PHONE.has(name);
+  }
   const pinterestEnabled = Boolean(appState.plugins?.pinterest?.enabled);
   $("#pinterestPluginToggle").checked = pinterestEnabled;
   $("#pinterestAutoSyncToggle").checked = appState.pinterest?.autoSync !== false;
@@ -2161,7 +2225,7 @@ async function refreshState() {
       if (lastJobState === "complete") {
         lastLibraryRefreshAt = Date.now();
         if (indexJobAnnounce) showMessage(appState.indexJob.message);
-        await loadImages();
+        await loadImages({keepOrder: true});
         await loadFolders();
         failedSemanticPaths.clear();
         scheduleSemanticIndex(250, forceIndexAfterRefresh);
@@ -2306,7 +2370,7 @@ function finishImportProgress(saved, duplicates, failed, total, destination, las
 async function refreshAfterImport(showLibrary) {
   semanticResults.clear();
   await refreshState();
-  if (showLibrary) await loadImages();
+  if (showLibrary) await loadImages({keepOrder: true});
   await loadFolders();
   scheduleSemanticIndex(250);
 }
@@ -2409,6 +2473,29 @@ async function importDroppedURLs(urls, destination) {
   }
   if (changed) await refreshAfterImport(showLibrary);
   finishImportProgress(saved, duplicates, failed, urls.length, destination, lastError);
+}
+
+/**
+ * The one intake method a drop or a share sheet cannot cover: a link with no
+ * picture attached to drag and no app to share it out of, just a URL someone
+ * has and wants in the library. Reuses the same single-picture fetch every
+ * other path already goes through (import-url, native_gallery.go where
+ * gallery-dl is not installed), so this adds no new server behaviour, only a
+ * place to type into.
+ */
+async function pasteImageURL(event) {
+  event.preventDefault();
+  const input = $("#pasteURLInput");
+  const url = input.value.trim();
+  if (!url) return;
+  const form = $("#pasteURLForm");
+  form.querySelectorAll("input, button").forEach(element => { element.disabled = true; });
+  try {
+    await importDroppedURLs([url], activeImportDestination());
+    input.value = "";
+  } finally {
+    form.querySelectorAll("input, button").forEach(element => { element.disabled = false; });
+  }
 }
 
 function dataTransferTypes(dataTransfer) {
@@ -2655,6 +2742,7 @@ async function loadBoards() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = true;
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = true;
@@ -2684,10 +2772,81 @@ async function loadBoards() {
   }
 }
 
+function showPremium() {
+  $("#addSection").hidden = true;
+  $("#pinterestSection").hidden = true;
+  $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
+  $("#webSection").hidden = true;
+  $("#settingsSection").hidden = true;
+  $("#pluginsSection").hidden = true;
+  $("#boardsSection").hidden = true;
+  $("#aboutSection").hidden = true;
+  $("#premiumSection").hidden = false;
+  renderPremium();
+  openMenu();
+}
+
+/** The panel says one of two things, and which one is the only state here. */
+function renderPremium() {
+  const unlocked = Boolean(appState?.premium?.unlocked);
+  $("#premiumUnlock").hidden = unlocked;
+  $("#premiumLock").hidden = !unlocked;
+  $("#premiumHave").hidden = !unlocked;
+  $("#premiumIntro").hidden = unlocked;
+}
+
+/**
+ * Hands the purchase to the Android shell, which hands it to Play.
+ *
+ * Nothing here takes money or names a price to charge: Play requires digital
+ * goods sold inside an app to go through its billing, and sending someone to
+ * a checkout of our own is the specific thing that gets an app removed. What
+ * comes back is not a return value but a changed answer from the core, once
+ * Play has told the shell what was bought, so this polls the state a few
+ * times rather than waiting on a promise that does not exist.
+ */
+function buyPremium() {
+  if (!window.AndroidBridge?.buyPremium) {
+    // No shell, which on a phone build means an old one. Nothing to sell
+    // through, and pretending otherwise would unlock without charging.
+    showMessage(t("premium.unavailable"), true);
+    return;
+  }
+  window.AndroidBridge.buyPremium();
+  let checks = 0;
+  const poll = setInterval(async () => {
+    if (++checks > 20) return clearInterval(poll);
+    await refreshState().catch(() => {});
+    if (appState?.premium?.unlocked) {
+      clearInterval(poll);
+      renderPremium();
+      showMessage(t("premium.thanks"));
+    }
+  }, 1500);
+}
+
+async function setPremium(unlocked) {
+  try {
+    await request("/api/app/premium", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({unlocked}),
+    });
+    // The whole plugin list changes with this, so the state is re-read rather
+    // than patched: what is enabled is the server's answer, not this page's.
+    await refreshState();
+    renderPremium();
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
 function showAbout() {
 	$("#addSection").hidden = true;
 	$("#pinterestSection").hidden = true;
 	$("#syncSection").hidden = true;
+	$("#premiumSection").hidden = true;
 	$("#webSection").hidden = true;
 	$("#settingsSection").hidden = true;
 	$("#pluginsSection").hidden = true;
@@ -2702,6 +2861,7 @@ function showSettings() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = true;
   $("#boardsSection").hidden = true;
   $("#aboutSection").hidden = true;
@@ -2715,6 +2875,7 @@ function showPlugins() {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = true;
   $("#boardsSection").hidden = true;
   $("#aboutSection").hidden = true;
@@ -2974,6 +3135,7 @@ async function togglePinterestPlugin() {
 
 let syncExpiryTimer = null;
 let syncPollTimer = null;
+let syncPairingPeerIDs = null;
 
 // While the panel is open, and only then. Pairing and a first transfer both
 // finish in seconds and the user is watching both happen, so the screen has to
@@ -3002,10 +3164,9 @@ function openSyncPanel(title) {
   startSyncPolling();
 }
 
-function showSyncPairing() {
+async function showSyncPairing() {
   openSyncPanel(t("sync.title"));
-  refreshSyncState();
-  beginSyncPairing();
+  await requestNewSyncCode();
 }
 
 // The phone half of pairing. A phone shows no QR of its own, so this skips
@@ -3051,6 +3212,21 @@ async function refreshSyncState() {
   renderSyncDevices(peers);
   renderSyncStatus(state.outbox || {}, peers);
   $("#syncPauseToggle").textContent = state.listening ? t("sync.pause") : t("sync.resume");
+  // Only once there is somewhere to send: a switch for a thing that cannot
+  // happen yet is a question nobody has the context to answer.
+  $("#syncAutoSendRow").hidden = !peers.some(peer => peer.listens);
+  $("#syncAutoSendToggle").checked = state.autoSend !== false;
+  if (syncPairingPeerIDs) {
+    const connected = peers.find(peer => !syncPairingPeerIDs.has(peer.id));
+    if (connected) {
+      clearTimeout(syncExpiryTimer);
+      syncPairingPeerIDs = null;
+      const confirmation = t("sync.paired", {name: connected.name || ""});
+      $("#syncQR").replaceChildren(document.createTextNode(confirmation));
+      $("#syncExpiry").textContent = confirmation;
+    }
+  }
+  return state;
 }
 
 // The one line that says whether sync is doing its job. Not an error display:
@@ -3118,30 +3294,56 @@ async function forgetSyncPeer(id) {
 async function beginSyncPairing() {
   clearTimeout(syncExpiryTimer);
   $("#syncExpiry").textContent = t("sync.expiry");
-  let reply;
+  const qr = $("#syncQR");
+  qr.replaceChildren(document.createTextNode(t("state.loading_title")));
   try {
-    reply = await (await fetch("/api/app/sync/pairing", { method: "POST" })).json();
-  } catch {
-    // Sync is not reachable at all (attachSync failed at startup, most
-    // likely a read-only data directory). The menu button that opens this
-    // panel is already hidden in that case; reaching here regardless fails
-    // quietly rather than with a wall of red text over a QR code.
+    const reply = await request("/api/app/sync/pairing", {method: "POST"});
+    qr.innerHTML = reply.qrSVG;
+    if (!reply.qrSVG) throw new Error("Pictogrep did not make a pairing code.");
+    // Refreshed a little before the server's own deadline, so there is no
+    // moment where a phone might scan a code between it going stale on the
+    // server and this screen noticing.
+    syncExpiryTimer = setTimeout(beginSyncPairing, Math.max(5, (reply.expiresIn || 180) - 10) * 1000);
+  } catch (error) {
+    // A failed LAN bind used to be swallowed here, leaving a white empty box
+    // forever. Keep the New code button usable and put the actual obstruction
+    // where the code should have been so it can be fixed or retried.
+    qr.replaceChildren(document.createTextNode(error.message));
+    showMessage(error.message, true, true);
     return;
   }
-  $("#syncQR").innerHTML = reply.qrSVG || "";
-  // Refreshed a little before the server's own deadline, so there is no
-  // moment where a phone might scan a code between it going stale on the
-  // server and this screen noticing.
-  syncExpiryTimer = setTimeout(beginSyncPairing, Math.max(5, (reply.expiresIn || 180) - 10) * 1000);
 }
 
-$("#syncNewCode").onclick = beginSyncPairing;
+async function requestNewSyncCode() {
+  // Take the baseline before minting the code. The polling response that first
+  // contains a new peer can then turn the QR into a confirmation immediately,
+  // instead of leaving a spent code on the desktop for three minutes.
+  const state = await refreshSyncState();
+  syncPairingPeerIDs = new Set((state?.peers || []).map(peer => peer.id));
+  await beginSyncPairing();
+}
+
+$("#syncNewCode").onclick = requestNewSyncCode;
 $("#syncSendNow").onclick = async () => {
   try {
     await fetch("/api/app/sync/now", { method: "POST" });
   } catch {
     // The status line is the answer, and it comes from the server rather than
     // from whether this request happened to land.
+  }
+  refreshSyncState();
+};
+$("#syncAutoSendToggle").onchange = async () => {
+  const autoSend = $("#syncAutoSendToggle").checked;
+  try {
+    await request("/api/app/sync/auto-send", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({autoSend}),
+    });
+  } catch (error) {
+    $("#syncAutoSendToggle").checked = !autoSend;
+    showMessage(error.message, true);
   }
   refreshSyncState();
 };
@@ -3795,6 +3997,9 @@ $("#showOnboarding").onclick = () => {
   window.PictogrepOnboarding?.start();
 };
 $("#showAbout").onclick = showAbout;
+$("#showPremium").onclick = showPremium;
+$("#premiumUnlock").onclick = buyPremium;
+$("#premiumLock").onclick = () => setPremium(false);
 $("#showSettings").onclick = showSettings;
 $("#languageSetting").onchange = saveLanguageSetting;
 $("#thumbnailSizeSetting").onchange = saveBrowserSettings;
@@ -3859,6 +4064,7 @@ $("#showAdd").onclick = () => {
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = true;
   $("#addSection").hidden = !$("#addSection").hidden;
 };
@@ -3869,6 +4075,7 @@ $("#emptyAddImages").onclick = () => {
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = true;
   $("#addSection").hidden = false;
   openMenu();
@@ -3876,6 +4083,7 @@ $("#emptyAddImages").onclick = () => {
 $("#emptyPinterest").onclick = startPinterestOnboarding;
 $("#emptyPinterestPhone").onclick = startPinterestOnboarding;
 $("#imageFiles").onchange = event => uploadFiles(event.target.files);
+$("#pasteURLForm").onsubmit = pasteImageURL;
 $("#chooseFolder").onclick = openFolderPickerDialog;
 $("#addSourceFolder").onclick = openFolderPickerDialog;
 $("#autoSyncStop").onclick = async () => {
@@ -4107,6 +4315,64 @@ function refreshLibraryWhenDue() {
   });
 }
 
+/** What /api/app/heartbeat last reported, so a repeat only means "still open" and a rise means "something arrived". */
+let lastKnownArrivals = null;
+
+/**
+ * A picture that arrives over sync should appear on its own, the same way one
+ * dropped on the window does, without anybody reloading the tab to go find
+ * it. The heartbeat this reuses already exists to keep the server from
+ * idling out an open tab, so this is one request doing two jobs rather than
+ * a second timer: a page sitting on the library sees new pictures inside a
+ * few seconds of a phone delivering them, at the cost of one small request
+ * this page was already sending.
+ */
+function watchForArrivals() {
+  setInterval(async () => {
+    if (document.visibilityState === "hidden") return;
+    let state;
+    try { state = await (await fetch("/api/app/heartbeat", {cache: "no-store"})).json(); }
+    catch { return; }
+    const arrivals = state?.arrivals ?? 0;
+    if (lastKnownArrivals !== null && arrivals > lastKnownArrivals) {
+      // A picture that arrived on its own gets the unblur every slow load
+      // already gets. It is the one moment the effect is telling the truth
+      // rather than covering a wait: something really did just turn up, and
+      // resolving into place is how the eye is told which one is new.
+      revealNextImages = true;
+      refreshLibraryIndex()
+        .catch(() => {})
+        .finally(() => { revealNextImages = false; });
+    }
+    lastKnownArrivals = arrivals;
+  }, 3000);
+}
+
+/** What /api/app/sync last reported waiting, so a fall to zero can be told apart from "nothing was ever waiting". */
+let lastKnownOutboxWaiting = null;
+
+/**
+ * The one confirmation a phone offers for a send it never asked the user to
+ * watch: waiting went from something to nothing, so whatever was held for
+ * the desktop is there now. Polled globally rather than only while the
+ * Connect to computer panel is open, because the whole point of the outbox
+ * is that nobody has to open that panel for a send to happen.
+ */
+function watchOutboxForConfirmation() {
+  setInterval(async () => {
+    if (document.visibilityState === "hidden") return;
+    let state;
+    try { state = await (await fetch("/api/app/sync", {cache: "no-store"})).json(); }
+    catch { return; }
+    const waiting = state?.outbox?.waiting ?? 0;
+    const hadSomethingWaiting = lastKnownOutboxWaiting !== null && lastKnownOutboxWaiting > 0;
+    if (hadSomethingWaiting && waiting === 0 && (state.peers || []).some(peer => peer.listens)) {
+      showMessage(t("sync.all_sent"));
+    }
+    lastKnownOutboxWaiting = waiting;
+  }, 4000);
+}
+
 async function start() {
   appState = await request("/api/app/state");
   await window.PictogrepI18n.init(appState.language);
@@ -4121,15 +4387,18 @@ async function start() {
   lastJobState = appState.indexJob.state;
   renderState();
   watchImageScroll();
-  await loadImages();
-  await loadFolders();
+  // Together, not one after the other: the folder list is not built from the
+  // pictures and neither waits on the other's answer, so running them in
+  // series spent one whole request's latency on nothing. The pictures are
+  // still what the eye is waiting for, and they no longer queue behind a
+  // list that is off screen until the Folders tab is opened.
+  await Promise.all([loadImages(), loadFolders()]);
   await syncViewerFromHistory();
   if (appState?.index?.count) scheduleSemanticIndex(700);
   setTimeout(refreshLibraryWhenDue, 1400);
   setInterval(refreshLibraryWhenDue, 5 * 60 * 1000);
-  // Tells the local server this window is still open, so it only closes itself
-  // once nothing is left to break.
-  setInterval(() => fetch("/api/app/heartbeat", {cache: "no-store"}).catch(() => {}), 60 * 1000);
+  watchForArrivals();
+  if (appState.mobile) watchOutboxForConfirmation();
   resumePinterestImport();
   // First run only, and only while there is nothing to look at. Once it has
   // been through, or closed, Pictogrep does not ask again.
@@ -4323,6 +4592,7 @@ function showWebImport() {
   $("#pluginsSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#syncSection").hidden = true;
+  $("#premiumSection").hidden = true;
   $("#webSection").hidden = false;
   openMenu(t("web.title"));
   renderFollowedWebSources();
@@ -4581,4 +4851,15 @@ $("#webImportAnother").onclick = () => {
 window.addEventListener("popstate", syncViewerFromHistory);
 window.addEventListener("focus", refreshLibraryWhenDue);
 document.addEventListener("visibilitychange", refreshLibraryWhenDue);
+
+// Picking indexing back up the moment the app is looked at again.
+//
+// Android suspends a backgrounded WebView, which stops indexing mid-pass and
+// leaves the rest of the library unindexed until something asks for it. The
+// real fix is embedding outside the WebView entirely, which is a larger job
+// waiting on a measurement; this is the half that costs nothing: whatever was
+// missed resumes on its own, rather than waiting for a search to notice.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible" && appState?.index?.count) scheduleSemanticIndex(1200);
+});
 start();

@@ -287,17 +287,25 @@
 .is-phone .app-header.is-lifted { background: var(--m3-surface-container); }
 
 .is-phone .wordmark {
-  /* Centered on the header's own box, not balanced against its neighbours.
-     The three-column grid should have done this and reportedly still did not
-     land as centered on the device it was checked against, so this instead
-     answers only to the header, which is already the positioning context
-     here via its own position: sticky. Nothing about either button, shown,
-     hidden, or a different width than assumed, can move this off-centre. */
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  /* A grid item in the header's own middle column, not an absolutely
+     positioned box floating over it. That was tried first, centred on the
+     header via left: 50% inside the header's position: sticky, and measured
+     off-centre by about 19dp on a real phone regardless: Chromium does not
+     reliably make a sticky element the containing block for an absolutely
+     positioned descendant, so the 50% was answering to something other than
+     the header's own width. The three-column grid the header already had
+     does not have that problem, because it never asks a containing block a
+     question: the middle column is bounded by two columns of the same fixed
+     icon-size on either side, so it is centred by construction, whether
+     either button is shown, hidden, or a different width than assumed. */
+  /* app.css's desktop rule puts this out of flow with position: absolute,
+     and this selector wins on specificity but never says position at all, so
+     that absolute would otherwise survive onto the phone and take the grid
+     placement below with it. */
+  position: static;
   grid-column: 2;
+  grid-row: 1;
+  width: 100%;
   color: var(--m3-on-surface);
   font-size: var(--text-xl);
   font-weight: 400;
@@ -397,7 +405,10 @@
   padding: var(--m3-search-pad) 0 var(--m3-search-pad) var(--m3-gutter);
   gap: 0;
   align-items: center;
-  background: var(--m3-surface);
+  /* No fill here: the pill inside (the shell plus the submit button) is
+     already opaque on its own. A background on this rectangle painted a
+     square-cornered box around that rounded pill, which showed as a stray
+     white edge over anything but a pale picture. */
 }
 
 .is-phone .search-input-shell {
@@ -628,12 +639,12 @@
      falls into normal flow, and lands under the card as a grey pill. Any other
      button that is positioned by a single class needs the same treatment. */
   position: absolute;
-  right: 4px;
-  top: 4px;
+  right: 0;
+  top: 0;
   display: grid;
-  width: 32px;
+  width: 44px;
   min-width: 0;
-  height: 32px;
+  height: 44px;
   min-height: 0;
   place-items: center;
   padding: 0;

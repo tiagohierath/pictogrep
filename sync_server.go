@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 )
 
@@ -65,6 +66,13 @@ type syncServer struct {
 	// instances can pair inside one process without fighting over the one fixed
 	// port a real installation wants.
 	port int
+
+	// arrivals counts pictures this device has received over sync, ever. Not
+	// the interesting number on its own: what matters is whether it moved
+	// since the page last asked, which is what tells a desktop something
+	// showed up without it having to compare its whole library on a timer.
+	// See idle.go's heartbeat, which is what carries this out.
+	arrivals atomic.Int64
 }
 
 // newSyncServer loads or creates the device's identity and certificate, and
@@ -124,6 +132,14 @@ func (s *syncServer) start() error {
 		port = syncPort
 	}
 	listener, err := tls.Listen("tcp", fmt.Sprintf(":%d", port), config)
+	if err != nil && s.port == 0 {
+		// The well-known port is a convenience, not part of the protocol: the
+		// pairing code and mDNS record both carry the port actually opened. A
+		// second Pictogrep install, a stale process, or another application can
+		// already own 58217; leaving the pairing panel blank in that case makes
+		// sync look absent even though any free port works just as well.
+		listener, err = tls.Listen("tcp", ":0", config)
+	}
 	if err != nil {
 		return err
 	}

@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,6 +75,36 @@ func freePort(t *testing.T) int {
 		t.Fatal(err)
 	}
 	return port
+}
+
+func TestSyncUsesAFreePortWhenTheUsualOneIsOccupied(t *testing.T) {
+	occupied, err := net.Listen("tcp", fmt.Sprintf(":%d", syncPort))
+	if err != nil {
+		t.Skipf("sync port is already unavailable for another reason: %v", err)
+	}
+	defer occupied.Close()
+
+	device := newSyncPeer(t, "Laptop")
+	if err := device.sync.start(); err != nil {
+		t.Fatalf("sync refused to use another port: %v", err)
+	}
+	defer device.sync.stop()
+	if port := device.sync.listeningPort(); port == 0 || port == syncPort {
+		t.Fatalf("fallback sync port = %d, wanted a free dynamic port", port)
+	}
+
+	response := httptest.NewRecorder()
+	device.server.beginSyncPairing(response, httptest.NewRequest(http.MethodPost, "/api/app/sync/pairing", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("pairing code failed on fallback port: status=%d body=%s", response.Code, response.Body)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["qrSVG"] == "" {
+		t.Fatal("pairing succeeded on a fallback port but returned a blank QR code")
+	}
 }
 
 // offer is the QR a desktop would draw, as a struct rather than as pixels.
@@ -248,6 +279,45 @@ func TestAPairedDeviceCanSendAPictureThatIsNotAlreadyThere(t *testing.T) {
 	// reinstall, is told not to bother sending it.
 	if missing := askManifest(t, client, base, digest); len(missing) != 0 {
 		t.Errorf("a picture already in the library was still reported missing: %#v", missing)
+	}
+}
+
+// TestAnUploadBumpsArrivals is the other half of a desktop noticing a picture
+// on its own: the counter idle.go's heartbeat reports has to move, or a page
+// sitting on the library has nothing to compare against and never refreshes.
+func TestAnUploadBumpsArrivals(t *testing.T) {
+	desktop := newSyncPeer(t, "Laptop")
+	desktop.listen(t)
+	phone := newSyncPeer(t, "Phone")
+	if err := phone.sync.pairAsClient(desktop.offer(t)); err != nil {
+		t.Fatal(err)
+	}
+
+	if before := desktop.sync.arrivals.Load(); before != 0 {
+		t.Fatalf("a fresh desktop already had arrivals: %d", before)
+	}
+
+	picture := filepath.Join(t.TempDir(), "dune.png")
+	writeTestPNG(t, picture)
+	data, err := os.ReadFile(picture)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(data)
+	digest := hex.EncodeToString(sum[:])
+
+	laptop, _ := phone.sync.peers.get(desktop.sync.identity.id)
+	client := phone.sync.peerClient(laptop)
+	base := "https://" + laptop.Address
+
+	response, err := client.Post(base+"/blobs/"+digest+"?name=dune.png", "application/octet-stream", bytes.NewReader(data))
+	if err != nil {
+		t.Fatal(err)
+	}
+	response.Body.Close()
+
+	if after := desktop.sync.arrivals.Load(); after != 1 {
+		t.Fatalf("a received picture did not bump arrivals: %d", after)
 	}
 }
 

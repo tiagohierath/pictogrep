@@ -12,6 +12,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -69,6 +70,7 @@ func (s *server) syncState(w http.ResponseWriter, r *http.Request) {
 		"listening":  sync.listener != nil,
 		"peers":      sync.peers.all(),
 		"outbox":     sync.outbox.snapshot(),
+		"autoSend":   s.app.sendsAutomatically(),
 	})
 }
 
@@ -181,4 +183,107 @@ func (s *server) syncNow(w http.ResponseWriter, r *http.Request) {
 	}
 	sync.outbox.nudge()
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+// syncSettings is what a person is allowed to change about sending.
+//
+// One switch, not a direction: a desktop cannot push to a phone at all (see
+// peer.Listens, and the source port a dialled device sees is nowhere to send
+// anything), so the only real choice is whether this device sends or stays
+// quiet. Phone to desktop is also the direction that wants no arguing with:
+// the computer is where the disk is.
+type syncSettings struct {
+	// AutoSend is a pointer so that a config written before this existed
+	// reads as "not set" rather than as "off", and gets the default below.
+	AutoSend *bool `json:"autoSend,omitempty"`
+}
+
+// sendsAutomatically is the one place the default lives. On, because a sync
+// nobody switched on is a sync that silently never happens, and the feature
+// only pays for itself by being the thing you do not have to remember.
+func (a *application) sendsAutomatically() bool {
+	data, err := os.ReadFile(a.configPath)
+	if err != nil {
+		return true
+	}
+	var document struct {
+		Sync syncSettings `json:"sync"`
+	}
+	if json.Unmarshal(data, &document) != nil || document.Sync.AutoSend == nil {
+		return true
+	}
+	return *document.Sync.AutoSend
+}
+
+func (a *application) saveSyncSettings(autoSend bool) error {
+	document := map[string]any{}
+	if data, err := os.ReadFile(a.configPath); err == nil {
+		_ = json.Unmarshal(data, &document)
+	}
+	document["sync"] = syncSettings{AutoSend: &autoSend}
+	data, err := json.MarshalIndent(document, "", "  ")
+	if err != nil {
+		return err
+	}
+	return writeFileAtomically(a.configPath, append(data, '\n'), 0o644)
+}
+
+// POST /api/app/sync/auto-send: the switch itself. Turning it back on nudges
+// the outbox, so everything held while it was off goes now rather than at the
+// next tick.
+func (s *server) setSyncAutoSend(w http.ResponseWriter, r *http.Request) {
+	sync, ok := s.requireSync(w)
+	if !ok {
+		return
+	}
+	var request struct {
+		AutoSend bool `json:"autoSend"`
+	}
+	if err := decodeJSON(r, &request, 1<<16); err != nil {
+		sendError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.app.saveSyncSettings(request.AutoSend); err != nil {
+		sendError(w, http.StatusInternalServerError, err)
+		return
+	}
+	if request.AutoSend {
+		sync.outbox.nudge()
+	}
+	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "autoSend": request.AutoSend})
+}
+
+// POST /api/app/sync/rediscovered: "mDNS just answered for a peer I know."
+//
+// Nothing in this process runs NsdManager; that lives in the Android shell,
+// which calls this the moment a resolve names a device id already in the
+// peer store (see PeerDiscovery.kt). Landing it here rather than teaching Go
+// to speak mDNS on Android keeps one already-working implementation
+// (hashicorp/mdns, desktop side) instead of two, and NsdManager is what the
+// platform actually wants asked on a phone: it is backed by the system
+// resolver, works through Doze, and does not need a multicast lock held for
+// as long as the listener runs.
+func (s *server) peerRediscovered(w http.ResponseWriter, r *http.Request) {
+	sync, ok := s.requireSync(w)
+	if !ok {
+		return
+	}
+	var req struct {
+		ID      string `json:"id"`
+		Address string `json:"address"`
+	}
+	if err := json.NewDecoder(io.LimitReader(r.Body, 1<<10)).Decode(&req); err != nil || req.ID == "" || req.Address == "" {
+		sendError(w, http.StatusBadRequest, fmt.Errorf("a rediscovery needs an id and an address"))
+		return
+	}
+	if !sync.peers.rediscovered(req.ID, req.Address) {
+		// Not an error: NsdManager answers for every _pictogrep._tcp on the
+		// LAN, including a device this one has never paired with.
+		sendJSON(w, http.StatusOK, map[string]any{"ok": true, "known": false})
+		return
+	}
+	// The stale address was very possibly the reason the last few passes had
+	// nothing to report; worth trying again now rather than on the next tick.
+	sync.outbox.nudge()
+	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "known": true})
 }
