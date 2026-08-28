@@ -2882,6 +2882,7 @@ function showPlugins() {
   $("#settingsSection").hidden = true;
   $("#pluginsSection").hidden = false;
   renderState();
+  renderInstalledPlugins();
   renderFollowedBoards();
   renderFollowedWebSources();
   openMenu(t("menu.plugins"));
@@ -4610,6 +4611,49 @@ async function fetchFollowedWebSources() {
 
 // The same list is useful in two places: while deciding whether to follow a new
 // site, and later in settings when deciding to stop.
+// Plugins loaded from disk at startup rather than compiled in, so this list is
+// whatever is actually installed and says nothing about what could be. Failing
+// quietly to an empty list is deliberate: an older core with no plugin runtime
+// answers 404 here, and that should read as "none installed", not as an error
+// on a settings page.
+async function renderInstalledPlugins() {
+  const list = $("#installedPluginList");
+  const empty = $("#installedPluginsEmpty");
+  if (!list) return;
+  let plugins = [];
+  try {
+    const response = await fetch("/api/app/plugins/installed");
+    if (response.ok) plugins = (await response.json()).plugins || [];
+  } catch (error) {
+    plugins = [];
+  }
+  if (!plugins.length) {
+    list.replaceChildren();
+    list.hidden = true;
+    if (empty) empty.hidden = false;
+    return;
+  }
+  list.replaceChildren(...plugins.map(plugin => installedPluginRow(plugin)));
+  list.hidden = false;
+  if (empty) empty.hidden = true;
+}
+
+function installedPluginRow(plugin) {
+  const row = document.createElement("div");
+  row.className = "installed-plugin";
+  const text = document.createElement("span");
+  const name = document.createElement("strong");
+  name.textContent = plugin.name || plugin.id;
+  const detail = document.createElement("small");
+  const identity = document.createElement("code");
+  identity.textContent = plugin.id;
+  detail.append(identity);
+  if (plugin.version) detail.append(" · " + plugin.version);
+  text.append(name, detail);
+  row.append(text);
+  return row;
+}
+
 async function renderFollowedWebSources() {
   const sources = await fetchFollowedWebSources();
   const summary = $("#webSourceSummary");

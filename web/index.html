@@ -256,23 +256,39 @@
     <section class="drawer-section settings" id="pluginsSection" hidden>
       <h2 data-i18n="plugins.title">Plugins</h2>
       <p class="page-intro" data-i18n="plugins.intro">Extra features made and maintained for Pictogrep. You are always in control of which ones stay on.</p>
-      <div class="settings-list">
-        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.wikimedia">Wikimedia Commons</strong><small data-i18n="plugins.wikimedia_help">Browse random Commons pictures or search for something specific.</small></span><input type="checkbox" id="wikimediaPluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.calendar">Calendar view</strong><small data-i18n="plugins.calendar_help">Browse your pictures grouped by date and month.</small></span><input type="checkbox" id="calendarPluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.sidebar">Sidebar</strong><small data-i18n="plugins.sidebar_help">Drag pictures into folders from a quick side panel.</small></span><input type="checkbox" id="sidebarPluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.vim">Vim Mode</strong><small data-i18n="plugins.vim_help">Use Vim-style keyboard navigation in the library and storyboard.</small></span><input type="checkbox" id="vimPluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.canvas">Folder canvas</strong><small data-i18n="plugins.canvas_help">Adds an action for spreading a folder's pictures out on a flat workspace and dragging them around. The files never move.</small></span><input type="checkbox" id="canvasPluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="plugins.command_palette">Command palette</strong><small data-i18n="plugins.command_palette_help">Open navigation and picture search with Ctrl+K or Command+K.</small></span><input type="checkbox" id="commandPalettePluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.title">Import from Pinterest</strong><small data-i18n="plugins.pinterest_help">On by default. Copy a public board into your library with the included downloader.</small></span><input type="checkbox" id="pinterestPluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.auto_sync">Keep imported boards up to date</strong><small data-i18n="pinterest.auto_sync_help">Checks the boards you have already imported about once a week and adds only what is new. Nothing is ever deleted.</small></span><input type="checkbox" id="pinterestAutoSyncToggle"></label>
-        <div class="followed-boards" id="pinterestBoardList" hidden></div>
-        <label class="settings-row plugin-row"><span><strong data-i18n="web.title">Import from web</strong><small data-i18n="web.plugin_help">On by default. Download a gallery from any site the included downloader supports.</small></span><input type="checkbox" id="webPluginToggle"></label>
-        <label class="settings-row plugin-row"><span><strong data-i18n="web.auto_sync">Keep followed websites up to date</strong><small data-i18n="web.auto_sync_help">Checks each website you follow about once a day and adds only new work. Nothing is ever deleted.</small></span><input type="checkbox" id="webAutoSyncToggle"></label>
-        <div class="settings-action" id="webImportRow"><span><strong data-i18n="web.open_panel">Follow a website</strong><small data-i18n="web.settings_help">Paste an artist's gallery, profile, or tag page to download it or follow it.</small></span><button type="button" id="showWebImport" data-i18n="web.open">Open</button></div>
-        <p class="field-help" id="webSourceSummary" data-i18n="web.none_followed" hidden>You are not following any websites yet.</p>
-        <div class="followed-boards" id="webSourceList" hidden></div>
+
+      <div class="plugin-group">
+        <h3 class="plugin-group-title" data-i18n="plugins.group_installed">Installed</h3>
+        <div class="settings-list" id="installedPluginList" hidden></div>
+        <p class="field-help" id="installedPluginsEmpty" data-i18n="plugins.installed_empty">Nothing installed yet. Plugins you add show up here.</p>
       </div>
-      <p class="field-help" data-i18n="plugins.help">Plugins add optional tools and picture sources. Import plugins copy only the pictures you choose.</p>
+
+      <div class="plugin-group">
+        <h3 class="plugin-group-title" data-i18n="plugins.group_builtin">Built in</h3>
+        <div class="settings-list">
+          <label class="settings-row plugin-row"><span><strong data-i18n="plugins.wikimedia">Wikimedia Commons</strong><small data-i18n="plugins.wikimedia_help">Browse random Commons pictures or search for something specific.</small></span><input type="checkbox" id="wikimediaPluginToggle"></label>
+          <label class="settings-row plugin-row"><span><strong data-i18n="plugins.calendar">Calendar view</strong><small data-i18n="plugins.calendar_help">Browse your pictures grouped by date and month.</small></span><input type="checkbox" id="calendarPluginToggle"></label>
+          <label class="settings-row plugin-row"><span><strong data-i18n="plugins.sidebar">Sidebar</strong><small data-i18n="plugins.sidebar_help">Drag pictures into folders from a quick side panel.</small></span><input type="checkbox" id="sidebarPluginToggle"></label>
+          <label class="settings-row plugin-row"><span><strong data-i18n="plugins.vim">Vim Mode</strong><small data-i18n="plugins.vim_help">Use Vim-style keyboard navigation in the library and storyboard.</small></span><input type="checkbox" id="vimPluginToggle"></label>
+          <label class="settings-row plugin-row"><span><strong data-i18n="plugins.canvas">Folder canvas</strong><small data-i18n="plugins.canvas_help">Adds an action for spreading a folder's pictures out on a flat workspace and dragging them around. The files never move.</small></span><input type="checkbox" id="canvasPluginToggle"></label>
+          <label class="settings-row plugin-row"><span><strong data-i18n="plugins.command_palette">Command palette</strong><small data-i18n="plugins.command_palette_help">Open navigation and picture search with Ctrl+K or Command+K.</small></span><input type="checkbox" id="commandPalettePluginToggle"></label>
+        </div>
+      </div>
+
+      <div class="plugin-group">
+        <h3 class="plugin-group-title" data-i18n="plugins.group_sources">Picture sources</h3>
+        <p class="field-help plugin-group-help" data-i18n="plugins.group_sources_help">Ways of getting pictures in. These are part of Pictogrep itself, and only ever copy the pictures you choose.</p>
+        <div class="settings-list">
+          <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.title">Import from Pinterest</strong><small data-i18n="plugins.pinterest_help">On by default. Copy a public board into your library with the included downloader.</small></span><input type="checkbox" id="pinterestPluginToggle"></label>
+          <label class="settings-row plugin-row"><span><strong data-i18n="pinterest.auto_sync">Keep imported boards up to date</strong><small data-i18n="pinterest.auto_sync_help">Checks the boards you have already imported about once a week and adds only what is new. Nothing is ever deleted.</small></span><input type="checkbox" id="pinterestAutoSyncToggle"></label>
+          <div class="followed-boards" id="pinterestBoardList" hidden></div>
+          <label class="settings-row plugin-row"><span><strong data-i18n="web.title">Import from web</strong><small data-i18n="web.plugin_help">On by default. Download a gallery from any site the included downloader supports.</small></span><input type="checkbox" id="webPluginToggle"></label>
+          <label class="settings-row plugin-row"><span><strong data-i18n="web.auto_sync">Keep followed websites up to date</strong><small data-i18n="web.auto_sync_help">Checks each website you follow about once a day and adds only new work. Nothing is ever deleted.</small></span><input type="checkbox" id="webAutoSyncToggle"></label>
+          <div class="settings-action" id="webImportRow"><span><strong data-i18n="web.open_panel">Follow a website</strong><small data-i18n="web.settings_help">Paste an artist's gallery, profile, or tag page to download it or follow it.</small></span><button type="button" id="showWebImport" data-i18n="web.open">Open</button></div>
+          <p class="field-help" id="webSourceSummary" data-i18n="web.none_followed" hidden>You are not following any websites yet.</p>
+          <div class="followed-boards" id="webSourceList" hidden></div>
+        </div>
+      </div>
     </section>
 
     <section class="drawer-section" id="boardsSection" hidden>

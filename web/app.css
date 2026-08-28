@@ -426,6 +426,22 @@ body.show-filenames .image-filename { display: block; }
 .settings-group em { color: var(--success); font-size: var(--text-2xs); font-style: normal; font-weight: 400; }
 .settings-list { border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
 .page-intro { margin: calc(var(--space-1) * -1) 0 var(--space-5) !important; }
+/* The plugins page used to be one undivided run of eleven rows, which put a
+   picture importer and a keyboard shortcut in the same visual list with
+   nothing saying they are different kinds of thing. The groups below are the
+   only structure: a heading, optional help, then the ordinary settings-list
+   the rest of the app already uses. */
+.plugin-group { margin: 0 0 var(--space-6); }
+.plugin-group:last-of-type { margin-bottom: 0; }
+.plugin-group-title { margin: 0 0 var(--space-2); font-size: var(--text-sm); font-weight: 600; }
+.plugin-group-help { margin: 0 0 var(--space-3); }
+/* An installed plugin has no toggle yet, so the row is text alone and would
+   otherwise sit at a different height from every built-in row beside it. */
+.installed-plugin { display: flex; gap: var(--space-4); align-items: center; justify-content: space-between; padding: var(--space-3) 0; border-bottom: 1px solid var(--line); }
+.installed-plugin:last-child { border-bottom: 0; }
+.installed-plugin strong { display: block; font-weight: 600; }
+.installed-plugin small { display: block; margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-tight); }
+.installed-plugin code { color: var(--fg-subtle); font: var(--text-2xs)/1.5 var(--font-mono); overflow-wrap: anywhere; }
 .premium-list { margin: 0 0 var(--space-5); padding: 0 0 0 var(--space-5); color: var(--fg-muted); font-size: var(--text-sm); }
 .premium-list li { margin: 0 0 var(--space-1); }
 .premium-price { margin: 0 0 var(--space-4); font-size: var(--text-md); font-weight: 600; }
