@@ -21,13 +21,20 @@ curl --fail --location --proto '=https' --tlsv1.2 \
 printf '%s  %s\n' "$TRANSFORMERS_SHA512" "$archive" | sha512sum --check --status
 tar -xzf "$archive" -C "$vendor_tmp"
 
+# Rewrite one property access whose minified spelling matches the legacy
+# HashiCorp Vault service-token shape (s. followed by 24 alphanumerics).
 sed \
   -e 's#from"onnxruntime-common"#from"./ort.wasm.bundle.min.mjs"#' \
   -e 's#from"onnxruntime-web"#from"./ort.wasm.bundle.min.mjs"#' \
+  -e 's#s[.]DebertaV2PreTrainedModel#s["DebertaV2PreTrainedModel"]#g' \
   "$vendor_tmp/package/dist/transformers.web.min.js" \
   > "$vendor_tmp/transformers.web.min.js"
 if grep -q 'from"onnxruntime-' "$vendor_tmp/transformers.web.min.js"; then
   printf '%s\n' 'Unresolved ONNX Runtime import in Transformers.js.' >&2
+  exit 1
+fi
+if grep -q 's[.]DebertaV2PreTrainedModel' "$vendor_tmp/transformers.web.min.js"; then
+  printf '%s\n' 'Vault token false positive remains in Transformers.js.' >&2
   exit 1
 fi
 install -Dm644 "$vendor_tmp/transformers.web.min.js" \
