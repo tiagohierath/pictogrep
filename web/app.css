@@ -257,7 +257,13 @@ body[data-thumbnail-size="large"] .image-grid { columns: 300px; }
 .grid-retry { font-size: var(--text-sm); }
 .grid-sentinel { height: 1px; }
 .image-card { position: relative; width: 100%; margin: 0 0 var(--space-5); break-inside: avoid; background: var(--bg); }
-.image-card > img { display: block; width: 100%; height: auto; background: var(--bg-hover); border-radius: var(--radius-md); cursor: pointer; }
+/* object-fit: cover, not the default fill, matters here specifically: a
+   picture with no stored dimensions falls back to a forced 4/3 box below
+   (see pictureCard in app.js), and without cover the image's own content
+   gets squashed to that box's shape instead of the box cropping around the
+   image's real proportions. Every other card in the app (folder previews,
+   board cards, canvas) already does this; this one was the one gap. */
+.image-card > img { display: block; width: 100%; height: auto; object-fit: cover; background: var(--bg-hover); border-radius: var(--radius-md); cursor: pointer; }
 .loading-image { background: var(--bg-skeleton); }
 .loading-image.is-slow-loading { animation: skeleton-pulse 1.1s ease-in-out infinite alternate; }
 img.is-revealing { animation: image-unblur .22s ease-out both; }
