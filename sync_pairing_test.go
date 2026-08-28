@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -74,6 +75,36 @@ func freePort(t *testing.T) int {
 		t.Fatal(err)
 	}
 	return port
+}
+
+func TestSyncUsesAFreePortWhenTheUsualOneIsOccupied(t *testing.T) {
+	occupied, err := net.Listen("tcp", fmt.Sprintf(":%d", syncPort))
+	if err != nil {
+		t.Skipf("sync port is already unavailable for another reason: %v", err)
+	}
+	defer occupied.Close()
+
+	device := newSyncPeer(t, "Laptop")
+	if err := device.sync.start(); err != nil {
+		t.Fatalf("sync refused to use another port: %v", err)
+	}
+	defer device.sync.stop()
+	if port := device.sync.listeningPort(); port == 0 || port == syncPort {
+		t.Fatalf("fallback sync port = %d, wanted a free dynamic port", port)
+	}
+
+	response := httptest.NewRecorder()
+	device.server.beginSyncPairing(response, httptest.NewRequest(http.MethodPost, "/api/app/sync/pairing", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("pairing code failed on fallback port: status=%d body=%s", response.Code, response.Body)
+	}
+	var body map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body["qrSVG"] == "" {
+		t.Fatal("pairing succeeded on a fallback port but returned a blank QR code")
+	}
 }
 
 // offer is the QR a desktop would draw, as a struct rather than as pixels.

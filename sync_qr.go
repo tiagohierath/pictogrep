@@ -36,8 +36,11 @@ func encodeQR(data []byte) (string, error) {
 	return qrSVG(bitmap), nil
 }
 
-// qrSVG draws a QR bitmap (true = dark module) as SVG, one module per unit
-// plus the quiet zone most scanners assume rather than discover.
+// qrSVG draws a QR bitmap (true = dark module) as SVG plus the quiet zone most
+// scanners assume rather than discover. Adjacent dark modules are one path
+// segment instead of one <rect> each: a real pairing code has thousands of
+// modules, and handing the browser a 160 KB DOM tree made opening Connect phone
+// visibly lag on slower machines.
 func qrSVG(bitmap [][]bool) string {
 	size := len(bitmap)
 	const quiet = 4
@@ -46,13 +49,22 @@ func qrSVG(bitmap [][]bool) string {
 	var out bytes.Buffer
 	fmt.Fprintf(&out, `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 %d %d" shape-rendering="crispEdges">`, total, total)
 	out.WriteString(`<rect width="100%" height="100%" fill="#fff"/>`)
+	out.WriteString(`<path fill="#000" d="`)
 	for r, row := range bitmap {
-		for c, dark := range row {
-			if dark {
-				fmt.Fprintf(&out, `<rect x="%d" y="%d" width="1" height="1" fill="#000"/>`, c+quiet, r+quiet)
+		for start := 0; start < len(row); {
+			for start < len(row) && !row[start] {
+				start++
 			}
+			end := start
+			for end < len(row) && row[end] {
+				end++
+			}
+			if end > start {
+				fmt.Fprintf(&out, "M%d %dh%dv1H%dz", start+quiet, r+quiet, end-start, start+quiet)
+			}
+			start = end
 		}
 	}
-	out.WriteString(`</svg>`)
+	out.WriteString(`"/></svg>`)
 	return out.String()
 }

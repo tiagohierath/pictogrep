@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Connect phone shows its QR code even when another program already has Pictogrep's usual LAN port. Pairing already tells the phone which port was actually opened, so Pictogrep now takes any free one instead of leaving a blank code panel; if pairing cannot start at all, the panel says why rather than staying empty.
 - Pictures on the main screen stay where they were put. A quiet folder check, a picture arriving from a phone, or another picture becoming searchable used to deal the visible grid again and replace pictures while somebody was looking at them. Existing cards now keep their positions for the life of the view, and new arrivals are added after them.
 - Preparing pictures for search uses more than one core. The search runtime will not start a second thread unless the page it runs in is allowed shared memory, Pictogrep never sent the two headers that allow it, and so every release so far prepared a library on one core no matter how many the machine had. Nothing about what gets prepared changed, only how much of the computer works on it.
 - Preparing a picture reads a preview of it instead of the whole file. The model looks at a 224 pixel square, so a 24 megapixel photograph was decoded in full to produce something the size of a postage stamp. A picture too large to preview safely is still read whole, so nothing drops out of search, and pictures already prepared stay prepared.

@@ -3111,6 +3111,7 @@ async function togglePinterestPlugin() {
 
 let syncExpiryTimer = null;
 let syncPollTimer = null;
+let syncPairingPeerIDs = null;
 
 // While the panel is open, and only then. Pairing and a first transfer both
 // finish in seconds and the user is watching both happen, so the screen has to
@@ -3139,10 +3140,9 @@ function openSyncPanel(title) {
   startSyncPolling();
 }
 
-function showSyncPairing() {
+async function showSyncPairing() {
   openSyncPanel(t("sync.title"));
-  refreshSyncState();
-  beginSyncPairing();
+  await requestNewSyncCode();
 }
 
 // The phone half of pairing. A phone shows no QR of its own, so this skips
@@ -3192,6 +3192,17 @@ async function refreshSyncState() {
   // happen yet is a question nobody has the context to answer.
   $("#syncAutoSendRow").hidden = !peers.some(peer => peer.listens);
   $("#syncAutoSendToggle").checked = state.autoSend !== false;
+  if (syncPairingPeerIDs) {
+    const connected = peers.find(peer => !syncPairingPeerIDs.has(peer.id));
+    if (connected) {
+      clearTimeout(syncExpiryTimer);
+      syncPairingPeerIDs = null;
+      const confirmation = t("sync.paired", {name: connected.name || ""});
+      $("#syncQR").replaceChildren(document.createTextNode(confirmation));
+      $("#syncExpiry").textContent = confirmation;
+    }
+  }
+  return state;
 }
 
 // The one line that says whether sync is doing its job. Not an error display:
@@ -3259,24 +3270,36 @@ async function forgetSyncPeer(id) {
 async function beginSyncPairing() {
   clearTimeout(syncExpiryTimer);
   $("#syncExpiry").textContent = t("sync.expiry");
-  let reply;
+  const qr = $("#syncQR");
+  qr.replaceChildren(document.createTextNode(t("state.loading_title")));
   try {
-    reply = await (await fetch("/api/app/sync/pairing", { method: "POST" })).json();
-  } catch {
-    // Sync is not reachable at all (attachSync failed at startup, most
-    // likely a read-only data directory). The menu button that opens this
-    // panel is already hidden in that case; reaching here regardless fails
-    // quietly rather than with a wall of red text over a QR code.
+    const reply = await request("/api/app/sync/pairing", {method: "POST"});
+    qr.innerHTML = reply.qrSVG;
+    if (!reply.qrSVG) throw new Error("Pictogrep did not make a pairing code.");
+    // Refreshed a little before the server's own deadline, so there is no
+    // moment where a phone might scan a code between it going stale on the
+    // server and this screen noticing.
+    syncExpiryTimer = setTimeout(beginSyncPairing, Math.max(5, (reply.expiresIn || 180) - 10) * 1000);
+  } catch (error) {
+    // A failed LAN bind used to be swallowed here, leaving a white empty box
+    // forever. Keep the New code button usable and put the actual obstruction
+    // where the code should have been so it can be fixed or retried.
+    qr.replaceChildren(document.createTextNode(error.message));
+    showMessage(error.message, true, true);
     return;
   }
-  $("#syncQR").innerHTML = reply.qrSVG || "";
-  // Refreshed a little before the server's own deadline, so there is no
-  // moment where a phone might scan a code between it going stale on the
-  // server and this screen noticing.
-  syncExpiryTimer = setTimeout(beginSyncPairing, Math.max(5, (reply.expiresIn || 180) - 10) * 1000);
 }
 
-$("#syncNewCode").onclick = beginSyncPairing;
+async function requestNewSyncCode() {
+  // Take the baseline before minting the code. The polling response that first
+  // contains a new peer can then turn the QR into a confirmation immediately,
+  // instead of leaving a spent code on the desktop for three minutes.
+  const state = await refreshSyncState();
+  syncPairingPeerIDs = new Set((state?.peers || []).map(peer => peer.id));
+  await beginSyncPairing();
+}
+
+$("#syncNewCode").onclick = requestNewSyncCode;
 $("#syncSendNow").onclick = async () => {
   try {
     await fetch("/api/app/sync/now", { method: "POST" });

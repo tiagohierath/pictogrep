@@ -22,6 +22,9 @@ func TestQREncodesAPairingURL(t *testing.T) {
 			t.Errorf("the rendered SVG is missing %q", want)
 		}
 	}
+	if len(svg) > 50_000 {
+		t.Fatalf("QR SVG is %d bytes; rendering one element per module has returned", len(svg))
+	}
 }
 
 func TestQRRejectsNothing(t *testing.T) {
