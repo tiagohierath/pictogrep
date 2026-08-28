@@ -249,7 +249,15 @@ input[type="file"] { padding: var(--space-1) var(--space-2); }
 .tabs button.active { border-color: var(--fg); color: var(--fg); }
 .tabs span { color: var(--fg-subtle); font-size: var(--text-xs); }
 
-.image-grid { columns: 220px; column-gap: var(--space-4); }
+/* column-fill: auto, not the balance default, matters here specifically:
+   infinite scroll appends new cards to this grid as you scroll, and with
+   balance (the default for a multi-column box with no fixed height) Chrome
+   rebalances column heights on every append, which can move already-visible
+   cards into a different column. The picture never changed, only which
+   column it landed in, but scrolling made it look like pictures were
+   switching under you. auto fills columns in document order and never moves
+   what's already placed. */
+.image-grid { columns: 220px; column-gap: var(--space-4); column-fill: auto; }
 body[data-thumbnail-size="small"] .image-grid { columns: 160px; }
 body[data-thumbnail-size="large"] .image-grid { columns: 300px; }
 .image-grid.is-loading { columns: auto; }
@@ -638,7 +646,7 @@ kbd { padding: 2px var(--space-2); border: 1px solid var(--line-strong); border-
 .viewer-tag { padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--bg-hover); color: var(--fg-muted); font-size: var(--text-xs); }
 .viewer-add-tag { min-height: 28px; padding: 0 var(--space-2); font-size: var(--text-xs); }
 .viewer-tags-empty, #relatedStatus { color: var(--fg-subtle); font-size: var(--text-sm); }
-.related-grid { columns: 180px; column-gap: var(--space-3); }
+.related-grid { columns: 180px; column-gap: var(--space-3); column-fill: auto; }
 .related-card { display: block; width: 100%; margin: 0 0 var(--space-3); padding: 0; overflow: hidden; break-inside: avoid; border-radius: var(--radius); background: var(--bg-hover); }
 .related-card img { display: block; width: 100%; height: auto; }
 .related-card:hover, .related-card:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
