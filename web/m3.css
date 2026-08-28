@@ -639,12 +639,12 @@
      falls into normal flow, and lands under the card as a grey pill. Any other
      button that is positioned by a single class needs the same treatment. */
   position: absolute;
-  right: 4px;
-  top: 4px;
+  right: 0;
+  top: 0;
   display: grid;
-  width: 32px;
+  width: 44px;
   min-width: 0;
-  height: 32px;
+  height: 44px;
   min-height: 0;
   place-items: center;
   padding: 0;

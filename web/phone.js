@@ -33,6 +33,7 @@
     commons: "M324-111.5Q251-143 197-197t-85.5-127Q80-397 80-480t31.5-156Q143-709 197-763t127-85.5Q397-880 480-880t156 31.5Q709-817 763-763t85.5 127Q880-563 880-480t-31.5 156Q817-251 763-197t-127 85.5Q563-80 480-80t-156-31.5ZM440-162v-78q-33 0-56.5-23.5T360-320v-40L168-552q-3 18-5.5 36t-2.5 36q0 121 79.5 212T440-162Zm276-102q41-45 62.5-100.5T800-480q0-98-54.5-179T600-776v16q0 33-23.5 56.5T520-680h-80v80q0 17-11.5 28.5T400-560h-80v80h240q17 0 28.5 11.5T600-440v120h40q26 0 47 15.5t29 40.5Z",
     calendar: "M200-80q-33 0-56.5-23.5T120-160v-560q0-33 23.5-56.5T200-800h40v-80h80v80h320v-80h80v80h40q33 0 56.5 23.5T840-720v560q0 33-23.5 56.5T760-80H200Zm0-80h560v-400H200v400Zm0-480h560v-80H200v80Zm0 0v-80 80Zm280 240q-17 0-28.5-11.5T440-440q0-17 11.5-28.5T480-480q17 0 28.5 11.5T520-440q0 17-11.5 28.5T480-400Zm-188.5-11.5Q280-423 280-440t11.5-28.5Q303-480 320-480t28.5 11.5Q360-457 360-440t-11.5 28.5Q337-400 320-400t-28.5-11.5ZM640-400q-17 0-28.5-11.5T600-440q0-17 11.5-28.5T640-480q17 0 28.5 11.5T680-440q0 17-11.5 28.5T640-400ZM480-240q-17 0-28.5-11.5T440-280q0-17 11.5-28.5T480-320q17 0 28.5 11.5T520-280q0 17-11.5 28.5T480-240Zm-188.5-11.5Q280-263 280-280t11.5-28.5Q303-320 320-320t28.5 11.5Q360-297 360-280t-11.5 28.5Q337-240 320-240t-28.5-11.5ZM640-240q-17 0-28.5-11.5T600-280q0-17 11.5-28.5T640-320q17 0 28.5 11.5T680-280q0 17-11.5 28.5T640-240Z",
     profile: "M367-527q-47-47-47-113t47-113q47-47 113-47t113 47q47 47 47 113t-47 113q-47 47-113 47t-113-47ZM160-160v-112q0-34 17.5-62.5T224-378q62-31 126-46.5T480-440q66 0 130 15.5T736-378q29 15 46.5 43.5T800-272v112H160Zm80-80h480v-32q0-11-5.5-20T700-306q-54-27-109-40.5T480-360q-56 0-111 13.5T260-306q-9 5-14.5 14t-5.5 20v32Zm296.5-343.5Q560-607 560-640t-23.5-56.5Q513-720 480-720t-56.5 23.5Q400-673 400-640t23.5 56.5Q447-560 480-560t56.5-23.5ZM480-640Zm0 400Z",
+    menu: "M120-240v-80h720v80H120Zm0-200v-80h720v80H120Zm0-200v-80h720v80H120Z",
     add: "M440-440H200v-80h240v-240h80v240h240v80H520v240h-80v-240Z",
     // The drawer's own list. Same 960 box as the destinations above.
     storyboard: "M320-200v-560l440 280-440 280Zm80-280Zm0 134 210-134-210-134v268Z",
@@ -163,6 +164,10 @@
       const text = document.createElement("span");
       text.className = "m3-nav-label";
       text.textContent = key ? t(key, english) : label(button);
+      // The label is display:none in this bar and the icon is aria-hidden, so
+      // without this the destination reaches a screen reader as an unnamed
+      // button. Same words either way; only the route to them differs.
+      item.setAttribute("aria-label", text.textContent);
       item.append(bed, text);
       // The drawer is a sheet drawn over everything, not one more tab: closing
       // it is nobody's job but this one, because none of the four panels below
@@ -188,10 +193,15 @@
       item.className = "m3-nav-item";
       const bed = document.createElement("span");
       bed.className = "m3-nav-icon";
-      bed.append(icon("profile"));
+      // This destination opens the hamburger drawer (storyboards, settings,
+      // plugins, about), not a profile screen, so it is drawn and labelled as
+      // the menu it actually is rather than the person icon that used to sit
+      // here and mismatch what a tap does.
+      bed.append(icon("menu"));
       const text = document.createElement("span");
       text.className = "m3-nav-label";
-      text.textContent = t("nav.profile", "Profile");
+      text.textContent = t("app.menu", "Menu");
+      item.setAttribute("aria-label", text.textContent);
       item.append(bed, text);
       item.dataset.drawer = "true";
       item.onclick = () => menu.click();

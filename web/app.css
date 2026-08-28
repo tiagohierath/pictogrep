@@ -33,13 +33,19 @@
   /* Colour */
   --fg: #171717;
   --fg-muted: #5f5f5f;
-  --fg-subtle: #7a7a7a;
+  /* #7a7a7a used to sit here: 4.29:1 on white and 3.66:1 on --bg-hover, both
+     below the 4.5:1 WCAG AA floor for normal text. #666 clears AA on both
+     backgrounds while staying visibly lighter than --fg-muted. */
+  --fg-subtle: #666;
   --bg: #fff;
   --bg-sunken: #f6f6f5;
   --bg-hover: #ededec;
   --bg-skeleton: #ececea;
   --line: #dcdcda;
-  --line-strong: #999;
+  /* #999 was 2.85:1 on white, under the 3:1 AA floor for UI component
+     borders (e.g. .search-scope). #767676 clears 3:1 against every
+     background this theme puts a border on. */
+  --line-strong: #767676;
   --focus: #3157dc;
   --danger: #8a1f1f;
   --danger-strong: #b42323;
