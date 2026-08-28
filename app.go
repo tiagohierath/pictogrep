@@ -97,6 +97,42 @@ type application struct {
 	queries    map[string]queryEmbeddingRecord
 }
 
+// mtimeOf reads a path's mtime from cache when the caller supplies one, or
+// stats it directly otherwise. Deciding whether an embedding is still current
+// costs one stat per picture, and a handler that asks two of these questions
+// about the same library pays for the same stats twice: the related-pictures
+// route counts what is indexed and then ranks it, which on a large library is
+// two full passes over the disk for one request. mtimeSnapshot up front and
+// this in the loop makes it one.
+//
+// A nil cache is not a degraded mode, it is the default: every caller that
+// asks only one question passes nil and stats live, which is what keeps an
+// edited picture out of the very next search rather than the one after it.
+// Unknown paths fall through to a live stat for the same reason, so a cache
+// taken before an import still sees what the import added.
+func mtimeOf(path string, cache map[string]int64) int64 {
+	if cache != nil {
+		if mtime, ok := cache[path]; ok {
+			return mtime
+		}
+	}
+	return embeddingMtime(path)
+}
+
+// mtimeSnapshot stats every path in the library once. Pass the result to
+// missingEmbeddings/indexedEmbeddingCount/vectorSearch when calling more than
+// one of them for the same logical request.
+func (a *application) mtimeSnapshot() map[string]int64 {
+	a.mu.RLock()
+	paths := append([]string(nil), a.paths...)
+	a.mu.RUnlock()
+	cache := make(map[string]int64, len(paths))
+	for _, path := range paths {
+		cache[path] = embeddingMtime(path)
+	}
+	return cache
+}
+
 type embeddingRecord struct {
 	Mtime  int64     `json:"mtime"`
 	Vector []float32 `json:"vector"`
@@ -827,12 +863,12 @@ func embeddingPreviewURL(id string) string {
 	return "/thumbnail/" + id + "?size=" + embeddingPreviewSize
 }
 
-func (a *application) missingEmbeddings() []map[string]any {
+func (a *application) missingEmbeddings(mtimeCache map[string]int64) []map[string]any {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	items := []map[string]any{}
 	for _, path := range a.paths {
-		mtime := embeddingMtime(path)
+		mtime := mtimeOf(path, mtimeCache)
 		record, found := a.embeddings[path]
 		if !found || record.Mtime != mtime || len(record.Vector) != a.embeddingModel.Dimensions {
 			id := stableImageID(path)
@@ -863,20 +899,20 @@ func (a *application) imageEmbedding(path string) ([]float32, bool) {
 	return append([]float32(nil), record.Vector...), true
 }
 
-func (a *application) indexedEmbeddingCount() int {
+func (a *application) indexedEmbeddingCount(mtimeCache map[string]int64) int {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	count := 0
 	for _, path := range a.paths {
 		record, found := a.embeddings[path]
-		if found && record.Mtime == embeddingMtime(path) && len(record.Vector) == a.embeddingModel.Dimensions {
+		if found && record.Mtime == mtimeOf(path, mtimeCache) && len(record.Vector) == a.embeddingModel.Dimensions {
 			count++
 		}
 	}
 	return count
 }
 
-func (a *application) vectorSearch(vector []float32, limit int) []searchResult {
+func (a *application) vectorSearch(vector []float32, limit int, mtimeCache map[string]int64) []searchResult {
 	a.mu.RLock()
 	defer a.mu.RUnlock()
 	if len(vector) != a.embeddingModel.Dimensions {
@@ -885,7 +921,7 @@ func (a *application) vectorSearch(vector []float32, limit int) []searchResult {
 	results := make([]searchResult, 0, len(a.embeddings))
 	for _, path := range a.paths {
 		record, found := a.embeddings[path]
-		if !found || record.Mtime != embeddingMtime(path) || len(record.Vector) != len(vector) {
+		if !found || record.Mtime != mtimeOf(path, mtimeCache) || len(record.Vector) != len(vector) {
 			continue
 		}
 		var score float64

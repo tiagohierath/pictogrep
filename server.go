@@ -685,7 +685,7 @@ func (s *server) imagePathByID(id string) (string, bool) {
 
 func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 	paths, sources, job := s.app.snapshot()
-	missing := s.app.missingEmbeddings()
+	missing := s.app.missingEmbeddings(nil)
 	indexing := s.app.indexingSettings()
 	tags := []map[string]any{}
 	for _, name := range s.collectionNames() {
@@ -900,7 +900,7 @@ func (s *server) saveStorageSettings(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) aiState(w http.ResponseWriter, _ *http.Request) {
 	paths, _, _ := s.app.snapshot()
-	missing := s.app.missingEmbeddings()
+	missing := s.app.missingEmbeddings(nil)
 	sendJSON(w, 200, map[string]any{
 		"ok": true, "ready": len(paths) > 0 && len(missing) == 0,
 		"indexed": len(paths) - len(missing), "total": len(paths), "missing": missing, "model": s.app.embeddingModel,
@@ -1034,7 +1034,7 @@ func (s *server) aiSearch(w http.ResponseWriter, r *http.Request) {
 	for _, path := range allowed {
 		allow[path] = true
 	}
-	results := s.app.vectorSearch(request.Vector, len(allowed))
+	results := s.app.vectorSearch(request.Vector, len(allowed), nil)
 	images := []imageRecord{}
 	for _, result := range results {
 		if !allow[result.Path] {
@@ -1192,12 +1192,13 @@ func (s *server) appRelated(w http.ResponseWriter, r *http.Request) {
 	// Paging walks further down the same ranking, so the viewer can keep
 	// showing less and less similar pictures as you scroll.
 	offset := boundedInt(r.URL.Query().Get("offset"), 0, 0, 5000)
-	indexed := s.app.indexedEmbeddingCount()
+	mtimes := s.app.mtimeSnapshot()
+	indexed := s.app.indexedEmbeddingCount(mtimes)
 	vector, ready := s.app.imageEmbedding(path)
 	images := []imageRecord{}
 	if ready {
 		skipped := 0
-		for _, result := range s.app.vectorSearch(vector, limit+offset+1) {
+		for _, result := range s.app.vectorSearch(vector, limit+offset+1, mtimes) {
 			if result.Path == path {
 				continue
 			}
@@ -1763,7 +1764,8 @@ func (s *server) appTags(w http.ResponseWriter, r *http.Request) {
 			request.Limit = 50
 		}
 		paths, _, _ := s.app.snapshot()
-		results := s.app.vectorSearch(request.Vector, request.Limit)
+		mtimes := s.app.mtimeSnapshot()
+		results := s.app.vectorSearch(request.Vector, request.Limit, mtimes)
 		selected := make([]string, 0, len(results))
 		for _, result := range results {
 			selected = append(selected, result.Path)
@@ -1781,7 +1783,7 @@ func (s *server) appTags(w http.ResponseWriter, r *http.Request) {
 		}
 		sendJSON(w, 200, map[string]any{
 			"ok": true, "tag": name, "prompt": prompt, "added": len(combined) - len(existing),
-			"matched": len(selected), "indexed": s.app.indexedEmbeddingCount(), "total": len(paths),
+			"matched": len(selected), "indexed": s.app.indexedEmbeddingCount(mtimes), "total": len(paths),
 		})
 	case "merge":
 		// The dragged folder keeps its name and swallows the one it was
@@ -2057,7 +2059,16 @@ func (s *server) thumbnail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	temporary := output.Name()
-	err = jpeg.Encode(output, thumbnail, &jpeg.Options{Quality: 96})
+	// A grid tile is displayed a fraction of the size it is encoded at, so the
+	// last few quality points are downscaled away before anyone sees them and
+	// cost roughly half the file size to keep. The viewer's larger sizes stay
+	// near-lossless: that image is looked at closely, and it is the one a
+	// reference gets drawn from.
+	quality := 96
+	if maximum <= 1024 {
+		quality = 82
+	}
+	err = jpeg.Encode(output, thumbnail, &jpeg.Options{Quality: quality})
 	closeErr := output.Close()
 	if err != nil || closeErr != nil || os.Rename(temporary, target) != nil {
 		_ = os.Remove(temporary)

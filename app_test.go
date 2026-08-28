@@ -327,7 +327,7 @@ func TestIncrementalRefreshPreservesExistingEmbeddings(t *testing.T) {
 	if _, ready := app.imageEmbedding(first); !ready {
 		t.Fatal("incremental refresh discarded an existing embedding")
 	}
-	missing := app.missingEmbeddings()
+	missing := app.missingEmbeddings(nil)
 	if len(missing) != 1 || missing[0]["path"] != second {
 		t.Fatalf("incremental refresh did not queue only the new image: %#v", missing)
 	}
@@ -370,7 +370,7 @@ func TestCompactEmbeddingStoreSurvivesRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if missing := reloaded.missingEmbeddings(); len(missing) != 0 {
+	if missing := reloaded.missingEmbeddings(nil); len(missing) != 0 {
 		t.Fatalf("compact embedding did not survive restart: %#v", missing)
 	}
 }
@@ -403,7 +403,7 @@ func TestEmbeddingModelsUseIndependentStoresAndDimensions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if missing := alternateApp.missingEmbeddings(); len(missing) != 1 {
+	if missing := alternateApp.missingEmbeddings(nil); len(missing) != 1 {
 		t.Fatalf("alternate model reused default vectors: %#v", missing)
 	}
 	if _, found := alternateApp.queryEmbedding("ocean"); found {
@@ -415,7 +415,7 @@ func TestEmbeddingModelsUseIndependentStoresAndDimensions(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if results := alternateApp.vectorSearch(alternateVector, 1); len(results) != 1 {
+	if results := alternateApp.vectorSearch(alternateVector, 1, nil); len(results) != 1 {
 		t.Fatalf("alternate model was not searchable: %#v", results)
 	}
 	if app.embeddingStorePath == alternateApp.embeddingStorePath {
@@ -441,7 +441,7 @@ func TestLegacyEmbeddingMigratesWithoutReindexing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if missing := reloaded.missingEmbeddings(); len(missing) != 0 {
+	if missing := reloaded.missingEmbeddings(nil); len(missing) != 0 {
 		t.Fatalf("legacy embedding was not preserved: %#v", missing)
 	}
 	if _, err := os.Stat(reloaded.embeddingStorePath); err != nil {
@@ -481,7 +481,7 @@ func TestVectorSearchSkipsEmbeddingAfterImageChanges(t *testing.T) {
 	if err := app.updateEmbeddings(map[string]embeddingRecord{picture: record}); err != nil {
 		t.Fatal(err)
 	}
-	if results := app.vectorSearch(vector, 10); len(results) != 1 {
+	if results := app.vectorSearch(vector, 10, nil); len(results) != 1 {
 		t.Fatalf("current embedding was not searchable: %#v", results)
 	}
 
@@ -489,7 +489,7 @@ func TestVectorSearchSkipsEmbeddingAfterImageChanges(t *testing.T) {
 	if err := os.Chtimes(picture, changed, changed); err != nil {
 		t.Fatal(err)
 	}
-	if results := app.vectorSearch(vector, 10); len(results) != 0 {
+	if results := app.vectorSearch(vector, 10, nil); len(results) != 0 {
 		t.Fatalf("stale embedding remained searchable: %#v", results)
 	}
 }
@@ -613,7 +613,7 @@ func TestPreparingAPictureReadsItsPreview(t *testing.T) {
 	writeTestPNG(t, picture)
 	app.addPath(picture)
 
-	missing := app.missingEmbeddings()
+	missing := app.missingEmbeddings(nil)
 	if len(missing) != 1 {
 		t.Fatalf("the library did not queue its only picture: %#v", missing)
 	}
