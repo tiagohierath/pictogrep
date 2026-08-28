@@ -14,13 +14,13 @@ package main
 // recognized before its bytes ever cross the network.
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 )
 
 // manifestRequest lists what the phone is offering, by content hash.
@@ -71,10 +71,20 @@ func (s *syncServer) handleUploadBlob(w http.ResponseWriter, r *http.Request) {
 		name = wanted + ".jpg"
 	}
 
+	// Spooled to a temp file rather than read fully into memory: a phone can
+	// batch-upload many pictures in a row, and buffering each one whole would
+	// stack up peak memory with every concurrent transfer.
+	spool, err := os.CreateTemp(s.app.dataDir, "sync-upload-*.tmp")
+	if err != nil {
+		sendError(w, http.StatusInternalServerError, fmt.Errorf("could not spool upload"))
+		return
+	}
+	defer os.Remove(spool.Name())
+	defer spool.Close()
+
 	body := io.LimitReader(r.Body, maxUploadBytes+1)
 	hasher := sha256.New()
-	data, err := io.ReadAll(io.TeeReader(body, hasher))
-	if err != nil {
+	if _, err := io.Copy(io.MultiWriter(spool, hasher), body); err != nil {
 		sendError(w, http.StatusBadRequest, fmt.Errorf("could not read upload"))
 		return
 	}
@@ -87,6 +97,10 @@ func (s *syncServer) handleUploadBlob(w http.ResponseWriter, r *http.Request) {
 		sendError(w, http.StatusUnprocessableEntity, fmt.Errorf("upload did not match its declared hash"))
 		return
 	}
+	if _, err := spool.Seek(0, io.SeekStart); err != nil {
+		sendError(w, http.StatusInternalServerError, fmt.Errorf("could not read upload"))
+		return
+	}
 
 	// No source directory: a picture arriving from a phone belongs in the
 	// library itself, exactly like one dropped on the window or saved from the
@@ -95,7 +109,7 @@ func (s *syncServer) handleUploadBlob(w http.ResponseWriter, r *http.Request) {
 	// sending device, say) is read as a path, fails to stat, and turns every
 	// upload into "unknown destination folder".
 	result, status, err := s.appServer.saveImportedImageWithOptions(
-		bytes.NewReader(data), name, folder, "", true, true, nil,
+		spool, name, folder, "", true, true, nil,
 	)
 	if err != nil {
 		sendError(w, status, err)
