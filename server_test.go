@@ -482,6 +482,9 @@ func TestFoldersAPIIncludesNestedSourceStructure(t *testing.T) {
 
 func TestFolderCanvasPositionsPersistWithoutMovingImages(t *testing.T) {
 	app, server := testHTTPServer(t)
+	if err := app.setPluginEnabled("canvas", true); err != nil {
+		t.Fatal(err)
+	}
 	source := t.TempDir()
 	paths := []string{filepath.Join(source, "one.png"), filepath.Join(source, "nested", "two.png")}
 	if err := os.MkdirAll(filepath.Dir(paths[1]), 0o755); err != nil {
@@ -532,7 +535,10 @@ func TestFolderCanvasPositionsPersistWithoutMovingImages(t *testing.T) {
 }
 
 func TestCanvasRejectsFoldersOutsideIndexedSources(t *testing.T) {
-	_, server := testHTTPServer(t)
+	app, server := testHTTPServer(t)
+	if err := app.setPluginEnabled("canvas", true); err != nil {
+		t.Fatal(err)
+	}
 	response, err := http.Get(server.URL + "/api/app/canvas?source=" + url.QueryEscape(t.TempDir()))
 	if err != nil {
 		t.Fatal(err)

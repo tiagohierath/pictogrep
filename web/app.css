@@ -442,6 +442,9 @@ body.show-filenames .image-filename { display: block; }
 .installed-plugin strong { display: block; font-weight: 600; }
 .installed-plugin small { display: block; margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-tight); }
 .installed-plugin code { color: var(--fg-subtle); font: var(--text-2xs)/1.5 var(--font-mono); overflow-wrap: anywhere; }
+.installed-plugin button { flex: none; }
+.plugin-host-section { display: flex; flex-direction: column; height: 100%; }
+.plugin-host-frame { flex: 1; width: 100%; min-height: 0; border: 0; border-radius: var(--radius-md); background: var(--bg-sunken); }
 .premium-list { margin: 0 0 var(--space-5); padding: 0 0 0 var(--space-5); color: var(--fg-muted); font-size: var(--text-sm); }
 .premium-list li { margin: 0 0 var(--space-1); }
 .premium-price { margin: 0 0 var(--space-4); font-size: var(--text-md); font-weight: 600; }

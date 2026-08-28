@@ -1899,7 +1899,17 @@
     collection.onchange = loadImages;
 
     async function loadCollections() {
-      const res = await fetch('/api/collections');
+      // A rejected fetch (network error, not just a non-OK status) used to
+      // throw out of this function uncaught, and startup does
+      // loadCollections().then(loadImages), so one network hiccup here meant
+      // loadImages never ran at all: the board looked like an empty library
+      // even with pictures on disk, with nothing telling you why.
+      let res;
+      try {
+        res = await fetch('/api/collections');
+      } catch (error) {
+        return;
+      }
       if (!res.ok) return;
       const data = await res.json();
       const escapeHTML = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));

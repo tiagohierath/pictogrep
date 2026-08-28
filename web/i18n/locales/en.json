@@ -299,6 +299,7 @@
   "plugins.group_sources": "Picture sources",
   "plugins.group_sources_help": "Ways of getting pictures in. These are part of Pictogrep itself, and only ever copy the pictures you choose.",
   "plugins.installed_empty": "Nothing installed yet. Plugins you add show up here.",
+  "plugins.open": "Open",
   "plugins.wikimedia": "Wikimedia Commons",
   "plugins.wikimedia_help": "Browse random Commons pictures or search for something specific.",
   "plugins.calendar": "Calendar view",

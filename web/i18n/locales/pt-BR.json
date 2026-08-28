@@ -299,6 +299,7 @@
   "plugins.group_sources": "Fontes de imagens",
   "plugins.group_sources_help": "Formas de trazer imagens para cá. Fazem parte do próprio Pictogrep e só copiam as imagens que você escolher.",
   "plugins.installed_empty": "Nada instalado ainda. Os plugins que você adicionar aparecem aqui.",
+  "plugins.open": "Abrir",
   "plugins.wikimedia": "Wikimedia Commons",
   "plugins.wikimedia_help": "Explore imagens aleatórias do Commons ou pesquise algo específico.",
   "plugins.calendar": "Visualização por calendário",

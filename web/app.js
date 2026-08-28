@@ -668,6 +668,17 @@ function closeMenu() {
   $("#drawer").setAttribute("aria-hidden", "true");
   $("#drawerScrim").hidden = true;
   $("#menuButton").setAttribute("aria-expanded", "false");
+  // The X and the scrim tap are the only two ways out of the drawer that
+  // don't already hide #syncSection (every other panel switch does, see
+  // showMenuHome and the openXPanel functions). Left open, refreshSyncState's
+  // own hidden-check would never fire, so its poll timer and the pairing
+  // code's refresh timer would run forever in the background.
+  if (!$("#syncSection").hidden) {
+    $("#syncSection").hidden = true;
+    stopSyncPolling();
+    clearTimeout(syncExpiryTimer);
+    syncExpiryTimer = null;
+  }
 }
 
 function showMenuHome() {
@@ -1102,15 +1113,35 @@ async function loadMoreRelated() {
     paging.offset += images.length;
     $("#relatedGrid").append(...images.map(relatedCard));
     if (images.length < paging.limit) paging.done = true;
-  } catch (_) {
-    // Same as the library grid: a slice that failed is not the end of the
-    // ranking, so the next scroll gets to ask for it again.
+  } catch (error) {
+    // Unlike the library grid, nothing here previously showed this: the
+    // scroll watcher and fillRelatedViewport both gate on !paging.failed, so
+    // a failed slice silently looked identical to having reached the end of
+    // the ranking, with no way to resume short of reopening the viewer.
     paging.failed = true;
+    showRelatedRetry(error.message);
   } finally {
     paging.loading = false;
-    $("#relatedMore").hidden = true;
+    if (!paging.failed) $("#relatedMore").hidden = true;
   }
   if (paging === relatedPaging && !paging.done && !paging.failed) fillRelatedViewport();
+}
+
+function showRelatedRetry(message) {
+  const more = $("#relatedMore");
+  if (!more) return;
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "grid-retry";
+  retry.textContent = t("state.try_again");
+  retry.onclick = () => {
+    if (!relatedPaging) return;
+    relatedPaging.failed = false;
+    more.hidden = true;
+    loadMoreRelated();
+  };
+  more.replaceChildren(document.createTextNode(`${t("state.load_more_failed", {error: message})} `), retry);
+  more.hidden = false;
 }
 
 function fillRelatedViewport() {
@@ -2239,6 +2270,15 @@ async function refreshState() {
   } catch (error) {
     if (indexJobAnnounce) showMessage(error.message, true, true);
     else logBackground("state-refresh", error.message);
+    // A dropped request here used to be the end of polling: the reschedule
+    // above only runs on success, so one blip (sleep/wake, a brief backend
+    // restart) left the progress bar frozen even while a job kept running
+    // server-side. Retry on the same cadence rather than give up, unless the
+    // job was never running to begin with.
+    if (lastJobState === "running") {
+      clearTimeout(pollTimer);
+      pollTimer = setTimeout(refreshState, 800);
+    }
   }
 }
 
@@ -4651,7 +4691,36 @@ function installedPluginRow(plugin) {
   if (plugin.version) detail.append(" · " + plugin.version);
   text.append(name, detail);
   row.append(text);
+  const open = document.createElement("button");
+  open.type = "button";
+  open.textContent = t("plugins.open");
+  open.onclick = () => openInstalledPlugin(plugin);
+  row.append(open);
   return row;
+}
+
+// The runtime (plugins.go) has served a plugin's UI at
+// /plugin/{id}/{path...} since it landed, but nothing in this page ever
+// opened that iframe: the Installed list showed name/id/version and had no
+// action at all. This is that action. The iframe's sandbox has no
+// allow-same-origin, so its document gets an opaque origin with no access to
+// this page's cookie or API; window.mountPlugin (web/plugin-host.js) is the
+// one channel out, and it only answers calls the plugin's own manifest
+// permissions cover.
+function openInstalledPlugin(plugin) {
+  $("#addSection").hidden = true;
+  $("#pinterestSection").hidden = true;
+  $("#webSection").hidden = true;
+  $("#boardsSection").hidden = true;
+  $("#aboutSection").hidden = true;
+  $("#settingsSection").hidden = true;
+  $("#pluginsSection").hidden = true;
+  $("#pluginHostSection").hidden = false;
+  $("#pluginHostTitle").textContent = plugin.name || plugin.id;
+  const frame = $("#pluginHostFrame");
+  frame.src = `/plugin/${encodeURIComponent(plugin.id)}/${plugin.entry || ""}`;
+  if (window.mountPlugin) window.mountPlugin(frame, plugin);
+  openMenu(plugin.name || plugin.id);
 }
 
 async function renderFollowedWebSources() {

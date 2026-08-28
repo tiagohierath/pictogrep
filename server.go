@@ -1291,6 +1291,10 @@ func (s *server) canvasImageRecords(paths []string) []imageRecord {
 }
 
 func (s *server) appCanvas(w http.ResponseWriter, r *http.Request) {
+	if !s.app.pluginEnabled("canvas") {
+		sendError(w, http.StatusNotFound, fmt.Errorf("Folder canvas plugin is disabled"))
+		return
+	}
 	scope, paths, err := s.canvasScope(r.URL.Query().Get("tag"), r.URL.Query().Get("source"))
 	if err != nil {
 		sendError(w, 400, err)
@@ -1312,6 +1316,10 @@ func (s *server) appCanvas(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) saveAppCanvas(w http.ResponseWriter, r *http.Request) {
+	if !s.app.pluginEnabled("canvas") {
+		sendError(w, http.StatusNotFound, fmt.Errorf("Folder canvas plugin is disabled"))
+		return
+	}
 	var request struct {
 		Tag       string `json:"tag"`
 		Source    string `json:"source"`

@@ -260,7 +260,7 @@
       <div class="plugin-group">
         <h3 class="plugin-group-title" data-i18n="plugins.group_installed">Installed</h3>
         <div class="settings-list" id="installedPluginList" hidden></div>
-        <p class="field-help" id="installedPluginsEmpty" data-i18n="plugins.installed_empty">Nothing installed yet. Plugins you add show up here.</p>
+        <p class="field-help" id="installedPluginsEmpty" data-i18n="plugins.installed_empty" hidden>Nothing installed yet. Plugins you add show up here.</p>
       </div>
 
       <div class="plugin-group">
@@ -289,6 +289,11 @@
           <div class="followed-boards" id="webSourceList" hidden></div>
         </div>
       </div>
+    </section>
+
+    <section class="drawer-section plugin-host-section" id="pluginHostSection" hidden>
+      <div class="section-title"><h2 id="pluginHostTitle">Plugin</h2></div>
+      <iframe id="pluginHostFrame" class="plugin-host-frame" sandbox="allow-scripts"></iframe>
     </section>
 
     <section class="drawer-section" id="boardsSection" hidden>
@@ -501,6 +506,7 @@
 
   <script src="/i18n/i18n.js" defer></script>
   <script src="/assets/onboarding.js" defer></script>
+  <script src="/assets/plugin-host.js" defer></script>
   <script src="/assets/app.js" defer></script>
 </body>
 </html>
