@@ -430,7 +430,11 @@ async function refreshSemanticResults() {
   if (!query || !appState?.aiAvailable) return;
   try {
     const data = await requestSemanticResults(query, true);
-    if (query === currentQuery) renderImages(data.images, data.images.length);
+    // Preparing another picture can improve a live search, but it must not
+    // deal the results again underneath somebody who is looking through
+    // them. Keep every card already shown in its place and add newly matching
+    // pictures after it.
+    if (query === currentQuery) renderImages(data.images, data.images.length, {keepExisting: true});
   } catch (_) {
     // The active search already reports errors. Background refreshes stay quiet.
   }
@@ -1177,13 +1181,25 @@ async function loadRelatedImages(item) {
   }
 }
 
-function renderImages(images, total = images.length) {
+function renderImages(images, total = images.length, {keepExisting = false} = {}) {
   const grid = $("#imageGrid");
   grid.classList.remove("is-loading");
   grid.removeAttribute("aria-busy");
-  browserImages = images;
-  grid.replaceChildren(...images.map(pictureCard));
-  $("#imageCount").textContent = total ? `(${total})` : "";
+  if (keepExisting) {
+    const incoming = new Map(images.map(item => [item.id, item]));
+    const shown = new Set(browserImages.map(item => item.id));
+    const added = images.filter(item => !shown.has(item.id));
+    // Refresh the records used by the viewer without replacing their DOM
+    // cards. Replacing even an identical card briefly swaps its thumbnail and
+    // is exactly the visual jump this path exists to avoid.
+    browserImages = browserImages.map(item => incoming.get(item.id) || item).concat(added);
+    grid.append(...added.map(pictureCard));
+  } else {
+    browserImages = images;
+    grid.replaceChildren(...images.map(pictureCard));
+  }
+  const visibleTotal = keepExisting ? Math.max(total, browserImages.length) : total;
+  $("#imageCount").textContent = visibleTotal ? `(${visibleTotal})` : "";
   // The welcome tutorial answers "how do I start a whole library", which is
   // the wrong answer inside a folder: an empty folder in an otherwise-empty
   // library used to show it anyway, because emptiness was read off the whole
@@ -1192,8 +1208,8 @@ function renderImages(images, total = images.length) {
   // the question being asked.
   const scoped = Boolean(currentTag || currentSource || currentQuery);
   const libraryEmpty = !scoped && (!appState?.index || appState.index.count === 0);
-  $("#imagesEmpty").hidden = !libraryEmpty || images.length !== 0;
-  if (images.length || libraryEmpty) showResultState();
+  $("#imagesEmpty").hidden = !libraryEmpty || browserImages.length !== 0;
+  if (browserImages.length || libraryEmpty) showResultState();
   else if (currentQuery) showResultState(t("search.no_results", {query: currentQuery}), t("search.try_fewer"), t("search.clear"), showAllImages);
   else if (currentTag || currentSource) showResultState(t("state.empty_folder"), t("state.empty_folder_text"), t("state.add_pictures"), () => { showMenuHome(); $("#showAdd").click(); });
   else showResultState(t("state.no_pictures"), t("state.try_view"), t("state.show_all"), showAllImages);
@@ -1288,8 +1304,14 @@ function forgetImage(id) {
 }
 
 function appendImages(images) {
-  browserImages = browserImages.concat(images);
-  $("#imageGrid").append(...images.map(pictureCard));
+  // A library can grow between pages. Its seeded shuffle is deterministic for
+  // one snapshot, but adding a path changes later page boundaries; ignore any
+  // card a later page consequently repeats instead of replacing or duplicating
+  // something the reader already saw.
+  const shown = new Set(browserImages.map(item => item.id));
+  const added = images.filter(item => !shown.has(item.id));
+  browserImages = browserImages.concat(added);
+  $("#imageGrid").append(...added.map(pictureCard));
   $("#imageCount").textContent = imagePaging?.total ? `(${imagePaging.total})` : "";
 }
 
@@ -1342,10 +1364,10 @@ function watchImageScroll() {
   imageScrollObserver.observe(sentinel);
 }
 
-// `keepOrder` is for refreshing after an edit rather than navigating. It holds
-// on to the shuffle already on screen and asks for the pages already scrolled
-// through in one go, so the library does not reorder itself and throw the
-// reader back to the top over an unrelated change.
+// `keepOrder` is for refreshing rather than navigating. A shuffle of a changed
+// library is a different permutation even with the same seed, so refetching
+// and replacing the first pages is not enough: cards already on screen stay in
+// their DOM positions and genuinely new ones are appended after them.
 async function loadImages({keepOrder = false} = {}) {
   const loadId = ++imageLoadId;
   const previous = imagePaging;
@@ -1362,7 +1384,7 @@ async function loadImages({keepOrder = false} = {}) {
         ? await semanticSearch(currentQuery)
         : await request(`/api/app/search?q=${encodeURIComponent(currentQuery)}&tag=${encodeURIComponent(currentTag)}&source=${encodeURIComponent(currentSource)}&limit=120`);
       if (loadId !== imageLoadId) return;
-      renderImages(data.images, data.images.length);
+      renderImages(data.images, data.images.length, {keepExisting: keepOrder});
       if (data.preparing) {
         $("#imagesEmpty").hidden = true;
         // renderImages has already written "No results" across the screen, and
@@ -1381,7 +1403,7 @@ async function loadImages({keepOrder = false} = {}) {
       const count = resumable ? Math.min(Math.max(previous.offset, pageSize), MAX_IMAGE_PAGE) : pageSize;
       const data = await request(imagePageURL({mode, pageSize: count, offset: 0, seed}));
       if (loadId !== imageLoadId) return;
-      renderImages(data.images, data.total);
+      renderImages(data.images, data.total, {keepExisting: resumable});
       imagePaging = {
         mode,
         pageSize,
@@ -2181,7 +2203,7 @@ async function refreshState() {
       if (lastJobState === "complete") {
         lastLibraryRefreshAt = Date.now();
         if (indexJobAnnounce) showMessage(appState.indexJob.message);
-        await loadImages();
+        await loadImages({keepOrder: true});
         await loadFolders();
         failedSemanticPaths.clear();
         scheduleSemanticIndex(250, forceIndexAfterRefresh);
@@ -2326,7 +2348,7 @@ function finishImportProgress(saved, duplicates, failed, total, destination, las
 async function refreshAfterImport(showLibrary) {
   semanticResults.clear();
   await refreshState();
-  if (showLibrary) await loadImages();
+  if (showLibrary) await loadImages({keepOrder: true});
   await loadFolders();
   scheduleSemanticIndex(250);
 }
