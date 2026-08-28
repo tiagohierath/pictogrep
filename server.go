@@ -153,6 +153,10 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/app/plugins/web/sources", s.appWebSources)
 	mux.HandleFunc("POST /api/app/plugins/web/sources", s.forgetWebSourceRequest)
 	mux.HandleFunc("POST /api/app/onboarding", s.saveOnboarding)
+	mux.HandleFunc("GET /api/app/plugins/installed", s.pluginsInstalled)
+	mux.HandleFunc("GET /plugin/{id}/{path...}", s.servePlugin)
+	mux.HandleFunc("GET /api/plugins/{id}/storage", s.handlePluginStorage)
+	mux.HandleFunc("POST /api/plugins/{id}/storage", s.handlePluginStorage)
 	// LAN sync with a paired phone or desktop. See sync_controls.go for what
 	// each one does and why it exists as a button rather than only happening on
 	// its own.
