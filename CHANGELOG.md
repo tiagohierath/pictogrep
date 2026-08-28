@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+## 0.10.1 - 2026-08-28
+
+- The plugins page is grouped now: what is installed, what is built in, and picture sources, instead of eleven rows in one undivided list. Importing from Pinterest and from the web are shown as part of Pictogrep itself rather than as optional extras that happen to default on.
+- An installed plugin can be opened. It previously only showed a name, an id and a version with nothing to click; opening one now loads its own screen.
+- Connect phone stops polling and reissuing pairing codes the moment the panel is closed, on every way of closing it. It previously kept doing both in the background indefinitely unless you switched to a different settings panel first.
+- Indexing progress no longer freezes on one dropped request. A single network hiccup used to stop the progress bar from ever updating again, even while indexing kept going.
+- The similar-pictures strip in the picture viewer shows an error and a retry button on a failed request instead of silently looking like there was nothing more to show.
+- The folder canvas plugin's on/off setting is enforced by the server now, not only hidden in the interface.
+- A storyboard could look like an empty library after a brief network error at startup, even with a full library on disk. Fixed.
+
 ## 0.10.0 - 2026-08-28
 
 - Connect phone shows its QR code even when another program already has Pictogrep's usual LAN port. Pairing already tells the phone which port was actually opened, so Pictogrep now takes any free one instead of leaving a blank code panel; if pairing cannot start at all, the panel says why rather than staying empty.
