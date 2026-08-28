@@ -82,6 +82,8 @@ type application struct {
 	queryCacheDir      string
 	canvasDir          string
 	thumbnailDir       string
+	pluginsDir         string
+	pluginDataDir      string
 	embeddingModel     embeddingModel
 	usage              *usageTracker
 
@@ -91,11 +93,12 @@ type application struct {
 	paths []string
 	// Bumped by every replacement of paths, so a cache built from the library
 	// can tell in one integer comparison whether it is out of date.
-	edits      uint64
-	sources    []string
-	job        jobState
-	embeddings map[string]embeddingRecord
-	queries    map[string]queryEmbeddingRecord
+	edits            uint64
+	sources          []string
+	job              jobState
+	embeddings       map[string]embeddingRecord
+	queries          map[string]queryEmbeddingRecord
+	installedPlugins map[string]pluginManifest
 }
 
 type embeddingRecord struct {
@@ -182,16 +185,20 @@ func newApplicationWithEmbeddingModel(model embeddingModel) (*application, error
 		queryCacheDir:      filepath.Join(home, "data", "queries"),
 		canvasDir:          filepath.Join(home, "data", "canvases"),
 		thumbnailDir:       filepath.Join(home, "data", "thumbnails"),
+		pluginsDir:         filepath.Join(home, "plugins"),
+		pluginDataDir:      filepath.Join(home, "data", "plugins"),
 		embeddingModel:     model,
 		embeddings:         map[string]embeddingRecord{},
 		queries:            map[string]queryEmbeddingRecord{},
+		installedPlugins:   map[string]pluginManifest{},
 		job:                jobState{State: "idle", Message: "Ready", UpdatedAt: time.Now().Unix()},
 	}
-	for _, directory := range []string{a.dataDir, a.embeddingsDir, a.queryCacheDir, a.canvasDir, a.thumbnailDir, a.libraryDir, a.tagsDir, a.boardsDir, a.referenceDir, filepath.Dir(a.configPath)} {
+	for _, directory := range []string{a.dataDir, a.embeddingsDir, a.queryCacheDir, a.canvasDir, a.thumbnailDir, a.libraryDir, a.tagsDir, a.boardsDir, a.referenceDir, a.pluginsDir, a.pluginDataDir, filepath.Dir(a.configPath)} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return nil, err
 		}
 	}
+	a.reloadPlugins()
 	if err := a.loadLibrary(); err != nil {
 		return nil, err
 	}
