@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.10.2 - 2026-08-28
+
+- Some pictures in the main library grid were stretched instead of cropped: any picture with no recorded width and height fell back to a fixed box shape, and the picture inside it was squashed to fit rather than cropped around. Fixed.
+
 ## 0.10.1 - 2026-08-28
 
 - The plugins page is grouped now: what is installed, what is built in, and picture sources, instead of eleven rows in one undivided list. Importing from Pinterest and from the web are shown as part of Pictogrep itself rather than as optional extras that happen to default on.
