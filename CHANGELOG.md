@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Installed plugins now open and render correctly on desktop. Their sandbox can load its own CSS and JavaScript, picture capabilities return protected media URLs that work inside the sandbox, API errors reach the plugin instead of looking successful, and closing or switching away from a plugin unloads it cleanly. The Plugins page rescans installs when opened and no longer offers half-copied plugins or unreleased `0.0.0` scaffolds.
 - Right-clicking a picture now offers a real menu: open in a new tab, find similar pictures, remove it from the folder you are in, use it as that folder's cover, copy the picture itself, its link or its file path, and show it in your file manager. Every entry has an icon, the menu is grouped, and it tells you the picture's size and type under its name. Entries that cannot apply where you are simply are not there.
 - The ⋯ menu on a picture card now carries the same icons and the same order as the right-click menu.
 

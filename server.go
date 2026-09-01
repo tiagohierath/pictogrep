@@ -37,11 +37,17 @@ const (
 )
 
 type server struct {
-	app           *application
-	practice      []byte
-	remoteFetcher remoteImageFetcher
-	galleryDL     galleryDLRunner
-	pinterest     pinterestImport
+	app      *application
+	practice []byte
+	// A bearer URL is the only safe way for a sandboxed plugin frame to put a
+	// library picture in an <img>. The frame deliberately has an opaque origin,
+	// so it has neither this page's cookie nor permission to use the ordinary
+	// same-origin /image route. The token is only handed through the capability
+	// broker after an images.* permission has been checked.
+	pluginMediaToken string
+	remoteFetcher    remoteImageFetcher
+	galleryDL        galleryDLRunner
+	pinterest        pinterestImport
 	// The automatic check reaches GitHub and can rewrite the running binary, so
 	// both halves are swappable and the tests never touch either.
 	checkUpdate func() (updateState, error)
@@ -94,8 +100,12 @@ func newServer(app *application) (*server, error) {
 	if err != nil {
 		return nil, err
 	}
+	pluginMediaToken, err := randomUUID()
+	if err != nil {
+		return nil, err
+	}
 	return &server{
-		app: app, practice: practice, remoteFetcher: downloadRemoteImage,
+		app: app, practice: practice, pluginMediaToken: pluginMediaToken, remoteFetcher: downloadRemoteImage,
 		galleryDL: downloadGallery, checkUpdate: checkForUpdate, applyUpdate: installUpdate,
 	}, nil
 }
@@ -159,6 +169,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/app/onboarding", s.saveOnboarding)
 	mux.HandleFunc("GET /api/app/plugins/installed", s.pluginsInstalled)
 	mux.HandleFunc("GET /plugin/{id}/{path...}", s.servePlugin)
+	mux.HandleFunc("GET /plugin-media/{image}", s.servePluginMedia)
 	mux.HandleFunc("GET /api/plugins/{id}/storage", s.handlePluginStorage)
 	mux.HandleFunc("POST /api/plugins/{id}/storage", s.handlePluginStorage)
 	// LAN sync with a paired phone or desktop. See sync_controls.go for what
@@ -193,7 +204,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/references", s.deleteReference)
 	mux.HandleFunc("GET /reference/{name}", s.reference)
 	mux.HandleFunc("POST /api/save", s.saveBoard)
-	return securityHeaders(mux)
+	return securityHeadersWithPluginMedia(mux, s.pluginMediaToken)
 }
 
 func (s *server) appActivity(w http.ResponseWriter, _ *http.Request) {
@@ -266,6 +277,10 @@ func (s *server) installAppUpdate(w http.ResponseWriter, r *http.Request) {
 }
 
 func securityHeaders(next http.Handler) http.Handler {
+	return securityHeadersWithPluginMedia(next, "")
+}
+
+func securityHeadersWithPluginMedia(next http.Handler, pluginMediaToken string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Security-Policy", "frame-ancestors 'none'")
 		w.Header().Set("X-Frame-Options", "DENY")
@@ -291,7 +306,9 @@ func securityHeaders(next http.Handler) http.Handler {
 			sendError(w, http.StatusForbidden, fmt.Errorf("Pictogrep only accepts local requests"))
 			return
 		}
-		if !hasAccessToken(r) {
+		mediaRequest := r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/plugin-media/") &&
+			validPluginMediaToken(r.URL.Query().Get("token"), pluginMediaToken)
+		if !hasAccessToken(r) && !mediaRequest {
 			rejectUntrustedCaller(w)
 			return
 		}
@@ -627,6 +644,12 @@ func (s *server) asset(w http.ResponseWriter, r *http.Request) {
 		contentType = "text/javascript; charset=utf-8"
 	case ".wasm":
 		contentType = "application/wasm"
+	}
+	// A plugin frame has a deliberately opaque origin. It can execute the SDK
+	// only when this public, data-free asset opts into cross-origin embedding;
+	// every other app asset keeps the default same-origin resource policy.
+	if name == "plugin-sdk.js" {
+		w.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
 	}
 	serveBytes(w, r, name, contentType, data)
 }

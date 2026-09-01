@@ -748,9 +748,19 @@ function showResultState(title = "", text = "", action = "", onclick = null) {
   button.onclick = onclick;
 }
 
-function openMenu(pageTitle = "") {
+function closeInstalledPlugin() {
+  const section = $("#pluginHostSection");
+  const frame = $("#pluginHostFrame");
+  if (section.hidden && !frame.getAttribute("src")) return;
+  window.unmountPlugin?.(frame);
+  section.hidden = true;
+  frame.removeAttribute("src");
+}
+
+function openMenu(pageTitle = "", pluginPage = false) {
   const drawer = $("#drawer");
-  drawer.classList.remove("plugin-page");
+  if (!pluginPage) closeInstalledPlugin();
+  drawer.classList.toggle("plugin-page", pluginPage);
   drawer.classList.toggle("page", Boolean(pageTitle));
   $("#drawerTitle").textContent = pageTitle || t("app.menu");
   drawer.classList.add("open");
@@ -768,6 +778,7 @@ function closeMenu() {
   $("#drawer").setAttribute("aria-hidden", "true");
   $("#drawerScrim").hidden = true;
   $("#menuButton").setAttribute("aria-expanded", "false");
+  closeInstalledPlugin();
   // The X and the scrim tap are the only two ways out of the drawer that
   // don't already hide #syncSection (every other panel switch does, see
   // showMenuHome and the openXPanel functions). Left open, refreshSyncState's
@@ -5320,7 +5331,7 @@ function installedPluginRow(plugin) {
 // this page's cookie or API; window.mountPlugin (web/plugin-host.js) is the
 // one channel out, and it only answers calls the plugin's own manifest
 // permissions cover.
-function openInstalledPlugin(plugin) {
+async function openInstalledPlugin(plugin) {
   $("#addSection").hidden = true;
   $("#pinterestSection").hidden = true;
   $("#webSection").hidden = true;
@@ -5331,10 +5342,28 @@ function openInstalledPlugin(plugin) {
   $("#pluginHostSection").hidden = false;
   $("#pluginHostTitle").textContent = plugin.name || plugin.id;
   const frame = $("#pluginHostFrame");
-  frame.src = `/plugin/${encodeURIComponent(plugin.id)}/${plugin.entry || ""}`;
-  if (window.mountPlugin) window.mountPlugin(frame, plugin);
-  openMenu(plugin.name || plugin.id);
-  $("#drawer").classList.add("plugin-page");
+  const error = $("#pluginHostError");
+  error.hidden = true;
+  // Mount before loading. The broker has to be listening by the time the
+  // plugin's own script runs, and a frame that loads from cache can get there
+  // inside the same task.
+  window.mountPlugin?.(frame, plugin);
+  openMenu(plugin.name || plugin.id, true);
+  const entry = `/plugin/${encodeURIComponent(plugin.id)}/${plugin.entry || ""}`;
+  // The frame is sandboxed into an opaque origin, so this page cannot read
+  // whether its document loaded. Ask for the entry file here first: a plugin
+  // whose files are missing or unreadable otherwise shows an empty white panel
+  // with nothing saying why.
+  try {
+    const response = await fetch(entry, {method: "GET", headers: {Range: "bytes=0-0"}});
+    if (!response.ok && response.status !== 206) throw new Error(`${response.status}`);
+  } catch (reason) {
+    frame.removeAttribute("src");
+    error.hidden = false;
+    error.textContent = t("plugins.entry_missing", {name: plugin.name || plugin.id, entry: plugin.entry || ""});
+    return;
+  }
+  frame.src = entry;
 }
 
 async function renderFollowedWebSources() {

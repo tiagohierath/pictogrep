@@ -183,6 +183,9 @@ A plugin is a directory. It has a manifest and web assets, and that is all.
       permissions   list of capability names, see below
       panel         { title, icon }
 
+`version` must name an actual plugin build. `0.0.0` is reserved for source-tree
+scaffolds and is not shown as an installed plugin.
+
 No backend entry point in v1. No commands, no context menu actions, no
 dependency resolution. Those are all additive later and none of them can be
 removed once shipped.
@@ -214,7 +217,7 @@ the real token, and posts the result back. Plugins never see the token.
 The plugin side ships as an OSS SDK, a single file that wraps postMessage in
 promises:
 
-    const images = await pictogrep.images.search("hands");
+    const { images } = await pictogrep.images.search("hands");
     await pictogrep.images.tag(images[0].id, ["gesture"]);
     await pictogrep.storage.set("streak", 7);
 
@@ -233,6 +236,11 @@ Deliberately small. Adding is cheap, removing is not.
     storage.kv        plugin-scoped JSON file, core owns the atomic write
     ui.panel          implied by having a panel at all
 
+Image records returned through the SDK carry `url` and `thumbnailUrl` values
+that are authorized for the sandboxed frame. Plugins must use those values
+rather than constructing `/image/` or `/thumbnail/` paths themselves; the
+ordinary paths deliberately remain same-origin-only.
+
 Not in v1, on purpose: folder creation, image deletion, storyboard writes,
 canvas writes, settings, sync, AI queries, network access. Each one gets added
 when a real plugin cannot be written without it, and each addition is a public
@@ -248,7 +256,9 @@ A plugin package is a ZIP of the plugin directory, named
 filename is a convenience.
 
 Install is: download, verify SHA-256 against the value in the store index,
-unzip into the plugins directory, show the permission list, enable.
+unzip into the plugins directory, show the permission list, enable. The core
+rescans that directory whenever the Plugins page opens, so a new or replaced
+plugin does not require restarting Pictogrep.
 
 **No signing in v1.** Signing buys provenance, which matters when third parties
 publish plugins and users install bundles that did not come from you. For

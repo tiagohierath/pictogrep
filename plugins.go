@@ -12,6 +12,7 @@ package main
 // enforces the manifest's declared permissions before calling through.
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -51,10 +52,9 @@ var pluginCapabilities = map[string]bool{
 }
 
 // loadPlugins scans pluginsDir for one level of subdirectories, each expected
-// to hold a plugin.json. A subdirectory with no manifest, or a manifest that
-// fails to parse, is skipped rather than failing the scan: one broken plugin
-// should not take the others down, and the app has no user to report a parse
-// error to at startup.
+// to hold a plugin.json. A subdirectory with no valid manifest or entry file is
+// skipped rather than failing the scan: one half-copied plugin should not take
+// the others down or leave an Open button that can only render a 404 page.
 func loadPlugins(pluginsDir string) map[string]pluginManifest {
 	found := map[string]pluginManifest{}
 	entries, err := os.ReadDir(pluginsDir)
@@ -74,9 +74,27 @@ func loadPlugins(pluginsDir string) map[string]pluginManifest {
 		if json.Unmarshal(data, &manifest) != nil {
 			continue
 		}
-		if manifest.ID == "" || manifest.Entry == "" {
+		// 0.0.0 is the repository convention for a scaffold that has a manifest
+		// but no usable release yet. Do not turn private design placeholders into
+		// broken buttons in somebody's installed list.
+		if manifest.ID == "" || manifest.Entry == "" || manifest.Version == "" || manifest.Version == "0.0.0" {
 			continue
 		}
+		entryPath := filepath.Join(dir, filepath.Clean("/"+manifest.Entry))
+		if !strings.HasPrefix(entryPath, dir+string(filepath.Separator)) {
+			continue
+		}
+		info, err := os.Stat(entryPath)
+		if err != nil || !info.Mode().IsRegular() {
+			continue
+		}
+		permissions := manifest.Permissions[:0]
+		for _, permission := range manifest.Permissions {
+			if pluginCapabilities[permission] {
+				permissions = append(permissions, permission)
+			}
+		}
+		manifest.Permissions = permissions
 		manifest.dir = dir
 		found[manifest.ID] = manifest
 	}
@@ -135,18 +153,57 @@ func (s *server) servePlugin(w http.ResponseWriter, r *http.Request) {
 		sendError(w, http.StatusForbidden, fmt.Errorf("path escapes the plugin directory"))
 		return
 	}
-	w.Header().Set("Content-Security-Policy",
-		"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; frame-ancestors 'self'")
+	// Name the local origin explicitly as well as with 'self'. Browsers give the
+	// sandboxed document an opaque origin, and the explicit source leaves no
+	// ambiguity about loading files from the URL that delivered the document.
+	localOrigin := "http://" + r.Host
+	w.Header().Set("Content-Security-Policy", fmt.Sprintf(
+		"default-src 'none'; script-src 'self' 'unsafe-inline' %s; style-src 'self' 'unsafe-inline' %s; img-src 'self' data: %s; connect-src 'none'; frame-ancestors 'self'",
+		localOrigin, localOrigin, localOrigin))
+	// securityHeaders denies framing and cross-origin subresource use by
+	// default. A plugin is the one intentional exception: its document is
+	// framed by this same app, then sandboxed into an opaque origin. SAMEORIGIN
+	// still prevents any website from framing it, while cross-origin CORP lets
+	// that opaque document load its own CSS and JavaScript files.
+	w.Header().Set("X-Frame-Options", "SAMEORIGIN")
+	w.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
 	http.ServeFile(w, r, target)
 }
 
+// servePluginMedia returns a library picture to a sandboxed plugin without
+// opening the ordinary /image and /thumbnail routes to cross-origin embeds.
+// The unguessable token reaches a plugin only in image records returned by the
+// host broker after it has enforced an images.* manifest permission.
+func (s *server) servePluginMedia(w http.ResponseWriter, r *http.Request) {
+	if !validPluginMediaToken(r.URL.Query().Get("token"), s.pluginMediaToken) {
+		sendError(w, http.StatusForbidden, fmt.Errorf("invalid plugin media token"))
+		return
+	}
+	w.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
+	r.SetPathValue("id", r.PathValue("image"))
+	if r.URL.Query().Get("original") == "1" {
+		s.image(w, r)
+		return
+	}
+	s.thumbnail(w, r)
+}
+
+func validPluginMediaToken(provided, expected string) bool {
+	return expected != "" && subtle.ConstantTimeCompare([]byte(provided), []byte(expected)) == 1
+}
+
 func (s *server) pluginsInstalled(w http.ResponseWriter, _ *http.Request) {
+	// Plugins are ordinary directories and are often installed by replacing a
+	// development copy in place. Rescanning here makes that replacement visible
+	// the next time the Plugins page opens instead of requiring an app restart.
+	s.app.reloadPlugins()
 	list := s.app.pluginList()
 	response := make([]map[string]any, 0, len(list))
 	for _, manifest := range list {
 		response = append(response, map[string]any{
 			"id": manifest.ID, "name": manifest.Name, "version": manifest.Version,
 			"entry": manifest.Entry, "permissions": manifest.Permissions, "panel": manifest.Panel,
+			"mediaToken": s.pluginMediaToken,
 		})
 	}
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "plugins": response})

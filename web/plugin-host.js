@@ -9,6 +9,8 @@
 // See web/plugin-sdk.js for the plugin-side half of the same channel.
 
 (function () {
+  const mounts = new WeakMap();
+
   function imageListPath(args) {
     const query = new URLSearchParams();
     for (const name of ["mode", "count", "offset", "seed", "tag", "source"]) {
@@ -22,7 +24,11 @@
     "images.list": { method: "GET", path: imageListPath },
     "images.search": { method: "GET", path: (args) => "/api/app/search?q=" + encodeURIComponent(args.query || "") },
     "images.read": { method: "GET", path: (args) => "/api/app/images/" + encodeURIComponent(args.id) },
-    "images.tag": { method: "POST", path: () => "/api/app/tags", body: (args) => args },
+    "images.tag": {
+      method: "POST",
+      path: () => "/api/app/tags",
+      body: (args) => ({action: "add", imageId: args.id, tag: args.tag}),
+    },
     "storage.kv.get": { method: "GET", path: (_args, id) => "/api/plugins/" + id + "/storage" },
     "storage.kv.set": { method: "POST", path: (_args, id) => "/api/plugins/" + id + "/storage", body: (args) => args },
   };
@@ -44,7 +50,28 @@
       init.body = JSON.stringify(capability.body(args));
     }
     const response = await fetch(capability.path(args, id), init);
-    return response.json();
+    const result = await response.json();
+    if (!response.ok || result?.ok === false) {
+      throw new Error(result?.error || `Pictogrep returned ${response.status}`);
+    }
+    return result;
+  }
+
+  // Library media cannot use the normal /image URL from an opaque sandboxed
+  // origin: that route intentionally carries same-origin CORP so websites
+  // cannot probe a local library. Give the plugin a short-lived bearer URL
+  // instead. Only image records returned through an allowed images.* call are
+  // rewritten, so the token never crosses the broker on an unrelated call.
+  function withPluginMedia(result, mediaToken) {
+    if (!mediaToken || !result) return result;
+    const rewrite = image => {
+      if (!image?.id) return image;
+      const base = `/plugin-media/${encodeURIComponent(image.id)}?token=${encodeURIComponent(mediaToken)}`;
+      return {...image, url: `${base}&original=1`, thumbnailUrl: `${base}&size=960`};
+    };
+    if (Array.isArray(result.images)) return {...result, images: result.images.map(rewrite)};
+    if (result.image) return {...result, image: rewrite(result.image)};
+    return result;
   }
 
   // One listener per mounted plugin iframe, scoped to that iframe's
@@ -52,16 +79,28 @@
   // table, and a manifest fetched once at mount time so permission checks
   // don't trust anything the iframe claims about itself at call time.
   window.mountPlugin = function mountPlugin(iframe, manifest) {
-    window.addEventListener("message", async (event) => {
+    const previous = mounts.get(iframe);
+    if (previous) window.removeEventListener("message", previous);
+    const listener = async (event) => {
       if (event.source !== iframe.contentWindow) return;
       const { callId, method, args } = event.data || {};
       if (!callId || !method) return;
       try {
-        const result = await handle(manifest.id, manifest.permissions || [], method, args || {});
+        let result = await handle(manifest.id, manifest.permissions || [], method, args || {});
+        if (method.startsWith("images.")) result = withPluginMedia(result, manifest.mediaToken);
         iframe.contentWindow.postMessage({ callId, ok: true, result }, "*");
       } catch (error) {
         iframe.contentWindow.postMessage({ callId, ok: false, error: String(error.message || error) }, "*");
       }
-    });
+    };
+    mounts.set(iframe, listener);
+    window.addEventListener("message", listener);
+  };
+
+  window.unmountPlugin = function unmountPlugin(iframe) {
+    const listener = mounts.get(iframe);
+    if (!listener) return;
+    window.removeEventListener("message", listener);
+    mounts.delete(iframe);
   };
 })();

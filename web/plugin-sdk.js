@@ -4,7 +4,8 @@
 // web/plugin-host.js's capability table; there is no method on this object
 // that reaches anywhere the host does not explicitly allow.
 //
-// Loaded by a plugin's own HTML with a plain <script src="/plugin-sdk.js">;
+// Loaded by a plugin's own HTML with a plain
+// <script src="/assets/plugin-sdk.js"></script>;
 // it has no dependency on anything else in this app.
 
 window.pictogrep = (function () {
@@ -34,8 +35,10 @@ window.pictogrep = (function () {
       // than whichever first 120 records happen to fit the endpoint default.
       list: (options = {}) => call("images.list", options),
       search: (query) => call("images.search", { query }),
-      read: (id) => call("images.read", { id }),
-      tag: (id, tags) => call("images.tag", { id, tags }),
+      read: async (id) => (await call("images.read", { id })).image,
+      tag: (id, tags) => Promise.all(
+        (Array.isArray(tags) ? tags : [tags]).map(tag => call("images.tag", { id, tag })),
+      ),
     },
     storage: {
       get: async (key) => (await call("storage.kv.get", {})).value?.[key],

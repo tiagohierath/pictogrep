@@ -606,5 +606,6 @@
   "update.auto_help": "Checks for a new version a few times a day and installs it. The new version starts the next time you open Pictogrep.",
   "update.auto_managed": "{method} installs Pictogrep on this system, so updates come from there. Pictogrep will still say when a new version exists.",
   "update.installed_restart": "Pictogrep {version} is installed. Close and open Pictogrep to start using it.",
-  "update.automatic": "Pictogrep checks for updates on its own and installs them."
+  "update.automatic": "Pictogrep checks for updates on its own and installs them.",
+  "plugins.entry_missing": "{name} could not be opened: its entry file {entry} is missing or unreadable. Reinstall the plugin."
 }
