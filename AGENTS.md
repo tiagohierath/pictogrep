@@ -1,5 +1,10 @@
 # Pictogrep development workflow
 
+## UI
+
+- `docs/ui.md` is the UI blueprint: spacing, control sizes, radii, type scale, states, density. Read it before adding any new size, style, or component, and reuse what is already there.
+- The home page and the folders page are approved as they are. Do not restyle them unless asked.
+
 ## Integration
 
 - `main` moves continuously. Commit and merge completed work whenever useful; multiple integrations per day are expected.
