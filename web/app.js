@@ -26,6 +26,10 @@ let commandPaletteItems = [];
 let sidebarMode = "random";
 let draggedFolder = null;
 let folderPendingDelete = null;
+let folderPendingRename = null;
+let folderPendingCover = null;
+let folderRecords = [];
+let folderView = {cardSize: "medium", sort: "custom", order: []};
 let vimPendingG = false;
 let messageTimer = null;
 let pollTimer = null;
@@ -1777,76 +1781,183 @@ async function loadCalendar() {
   }
 }
 
+function folderDate(timestamp) {
+  if (!timestamp) return "";
+  return new Intl.DateTimeFormat(document.documentElement.lang || undefined, {month: "short", day: "numeric"}).format(new Date(timestamp * 1000));
+}
+
+function folderAction(label, glyph, handler, className = "") {
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = className;
+  button.title = label;
+  button.setAttribute("aria-label", label);
+  button.textContent = glyph;
+  button.draggable = false;
+  button.onclick = event => {
+    event.preventDefault();
+    event.stopPropagation();
+    handler();
+  };
+  return button;
+}
+
 function folderCard(folder) {
-  const card = document.createElement("button");
+  const card = document.createElement("article");
   card.className = "folder-card";
-  card.type = "button";
-  const depth = Number(folder.depth) || 0;
-  card.dataset.depth = String(depth);
+  card.dataset.folderKey = folder.key;
   card.dataset.folderKind = folder.kind;
   card.dataset.folderValue = folder.value;
-  card.dataset.folderName = folder.name;
-  card.style.setProperty("--folder-depth", depth);
   card.title = folder.kind === "source" ? folder.value : folder.name;
+  card.draggable = true;
+
+  const open = document.createElement("button");
+  open.className = "folder-open-target";
+  open.type = "button";
+  open.setAttribute("aria-label", `Open ${folder.name}`);
   const preview = document.createElement("span");
   preview.className = `folder-preview images-${Math.min(4, folder.images.length)}`;
   folder.images.forEach(item => {
     const image = document.createElement("img");
     image.loading = "lazy";
     image.decoding = "async";
-    loadImage(image, thumbnailURL(item, 640));
+    image.draggable = false;
+    loadImage(image, thumbnailURL(item, folderView.cardSize === "huge" ? 960 : 640));
     preview.append(image);
   });
-  if (!folder.images.length) {
-    const placeholder = document.createElement("span");
-    placeholder.className = "folder-placeholder";
-    preview.append(placeholder);
-  }
+  if (!folder.images.length) preview.append(Object.assign(document.createElement("span"), {className: "folder-placeholder"}));
+
+  const details = document.createElement("span");
+  details.className = "folder-details";
+  const text = document.createElement("span");
+  text.className = "folder-details-text";
   const name = document.createElement("strong");
   name.textContent = folder.name;
   const count = document.createElement("small");
   count.textContent = t(folder.count === 1 ? "folders.count_one" : "folders.count", {count: folder.count});
-  const details = document.createElement("span");
-  details.className = "folder-details";
-  details.append(name, count);
-  card.append(preview, details);
-  if (folder.kind === "tag") makeFolderMergeable(card, folder);
-  card.onclick = () => openFolder(folder);
-  card.oncontextmenu = event => openFolderContextMenu(event, folder);
-  return card;
-}
+  text.append(name, count);
+  const date = document.createElement("span");
+  date.className = "folder-date";
+  date.textContent = folder.lastAdded ? folderDate(folder.lastAdded) : "";
+  details.append(text, date);
+  open.append(preview, details);
+  open.onclick = () => openFolder(folder, card);
 
-// Collections can be dragged onto each other; the badge is the only prompt, so
-// the merge happens without a dialog or a name to type.
-function makeFolderMergeable(card, folder) {
-  const badge = document.createElement("span");
-  badge.className = "folder-merge-badge";
-  badge.textContent = t("folders.merge_hint");
-  card.append(badge);
-  card.draggable = true;
+  if (folder.favorite) {
+    const favorite = document.createElement("span");
+    favorite.className = "folder-favorite-mark";
+    favorite.textContent = "★";
+    favorite.setAttribute("aria-label", "Favorite");
+    card.append(favorite);
+  }
+
+  const actions = document.createElement("span");
+  actions.className = "folder-actions";
+  actions.append(
+    folderAction("Open", "↗", () => openFolder(folder, card)),
+    folderAction(folder.favorite ? "Unfavorite" : "Favorite", folder.favorite ? "★" : "☆", () => toggleFolderFavorite(folder)),
+    folderAction("Choose cover", "▣", () => openFolderCover(folder)),
+  );
+  if (folder.kind === "tag") actions.append(folderAction("Rename", "✎", () => openRenameFolder(folder)));
+  actions.append(folderAction("Export", "↓", () => exportFolder(folder)));
+  if (folder.kind === "tag") actions.append(folderAction("Delete", "×", () => openDeleteFolder(folder), "folder-delete-action"));
+  card.append(open, actions);
+
+  card.oncontextmenu = event => openFolderContextMenu(event, folder);
   card.ondragstart = event => {
+    if (event.target.closest(".folder-actions")) {
+      event.preventDefault();
+      return;
+    }
     draggedFolder = folder;
+    card.classList.add("is-dragging");
     event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/x-pictogrep-folder", folder.value);
+    event.dataTransfer.setData("application/x-pictogrep-folder-key", folder.key);
   };
   card.ondragend = () => {
     draggedFolder = null;
-    document.querySelectorAll(".is-merge-target").forEach(element => element.classList.remove("is-merge-target"));
+    document.querySelectorAll(".folder-card").forEach(element => element.classList.remove("is-dragging", "is-reorder-before", "is-reorder-after", "is-image-drop-target"));
   };
-  card.ondragover = event => {
-    if (!draggedFolder || draggedFolder.value === folder.value) return;
+  card.ondragover = event => handleFolderDragOver(event, card, folder);
+  card.ondragleave = event => {
+    if (!card.contains(event.relatedTarget)) card.classList.remove("is-reorder-before", "is-reorder-after", "is-image-drop-target");
+  };
+  card.ondrop = event => handleFolderDrop(event, card, folder);
+  return card;
+}
+
+function dragTypes(event) {
+  return new Set(Array.from(event.dataTransfer?.types || []));
+}
+
+function handleFolderDragOver(event, card, folder) {
+  const types = dragTypes(event);
+  const imageDrop = types.has("Files") || (folder.kind === "tag" && (types.has("application/x-pictogrep-image-id") || types.has("text/plain")) && !draggedFolder);
+  if (imageDrop) {
     event.preventDefault();
-    event.dataTransfer.dropEffect = "move";
-    card.classList.add("is-merge-target");
-  };
-  card.ondragleave = () => card.classList.remove("is-merge-target");
-  card.ondrop = event => {
-    event.preventDefault();
-    card.classList.remove("is-merge-target");
-    const from = draggedFolder;
-    draggedFolder = null;
-    if (from) mergeFolders(from, folder);
-  };
+    event.dataTransfer.dropEffect = "copy";
+    card.classList.add("is-image-drop-target");
+    card.classList.remove("is-reorder-before", "is-reorder-after");
+    return;
+  }
+  if (!draggedFolder || draggedFolder.key === folder.key) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = "move";
+  const after = event.clientX > card.getBoundingClientRect().left + card.offsetWidth / 2;
+  card.classList.toggle("is-reorder-before", !after);
+  card.classList.toggle("is-reorder-after", after);
+}
+
+async function handleFolderDrop(event, card, folder) {
+  event.preventDefault();
+  event.stopPropagation();
+  const types = dragTypes(event);
+  card.classList.remove("is-reorder-before", "is-reorder-after", "is-image-drop-target");
+  if (types.has("Files") && event.dataTransfer.files?.length) {
+    const files = Array.from(event.dataTransfer.files);
+    queueImport(async () => {
+      await uploadFiles(files, {destination: folderDestination(folder), openMenu: false, showLibrary: false});
+      await loadFolders();
+    });
+    return;
+  }
+  if (!draggedFolder && folder.kind === "tag") {
+    const imageId = event.dataTransfer.getData("application/x-pictogrep-image-id") || event.dataTransfer.getData("text/plain");
+    if (/^[a-f0-9]{64}$/.test(imageId)) await addImageToFolder(folder, imageId);
+    return;
+  }
+  if (!draggedFolder || draggedFolder.key === folder.key) return;
+  const after = event.clientX > card.getBoundingClientRect().left + card.offsetWidth / 2;
+  const moving = draggedFolder;
+  draggedFolder = null;
+  const byKey = new Map(folderRecords.map(item => [item.key, item]));
+  const visibleKeys = Array.from(document.querySelectorAll("#folderList .folder-card"), element => element.dataset.folderKey);
+  const hidden = folderRecords.filter(item => !visibleKeys.includes(item.key));
+  const ordered = visibleKeys.map(key => byKey.get(key)).filter(Boolean);
+  const fromIndex = ordered.findIndex(item => item.key === moving.key);
+  let targetIndex = ordered.findIndex(item => item.key === folder.key);
+  if (fromIndex < 0 || targetIndex < 0) return;
+  const [record] = ordered.splice(fromIndex, 1);
+  if (fromIndex < targetIndex) targetIndex--;
+  ordered.splice(targetIndex + (after ? 1 : 0), 0, record);
+  folderRecords = ordered.concat(hidden);
+  folderView.sort = "custom";
+  folderView.order = folderRecords.map(item => item.key);
+  $("#folderSort").value = "custom";
+  renderFolders();
+  await saveFolderView({order: folderView.order, sort: "custom"});
+}
+
+async function addImageToFolder(folder, imageId) {
+  try {
+    await request("/api/app/tags", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "add", tag: folder.value, imageId}),
+    });
+    await Promise.all([refreshState(), loadFolders()]);
+    showMessage(t("sidebar.added_to", {name: folder.name}));
+  } catch (error) { showMessage(error.message, true); }
 }
 
 function setFolderScope(folder) {
@@ -1857,11 +1968,26 @@ function setFolderScope(folder) {
   renderSearchScope();
 }
 
-function openFolder(folder) {
+function openFolder(folder, card = null) {
   reportMeaningfulActivity();
   closeCardMenus();
-  setFolderScope(folder);
-  loadImages();
+  const navigate = () => {
+    setFolderScope(folder);
+    switchTab("images");
+    if (!currentQuery && folder.images?.length) renderImages(folder.images, folder.count);
+  };
+  if (card && document.startViewTransition) {
+    card.style.viewTransitionName = "folder-open";
+    $("#imagesPanel").style.viewTransitionName = "folder-open";
+    const transition = document.startViewTransition(navigate);
+    transition.finished.finally(() => {
+      card.style.removeProperty("view-transition-name");
+      $("#imagesPanel").style.removeProperty("view-transition-name");
+    });
+  } else {
+    navigate();
+  }
+  queueMicrotask(() => loadImages());
 }
 
 function folderDestination(folder) {
@@ -1906,6 +2032,16 @@ function openFolderContextMenu(event, folder) {
     closeCardMenus();
     openCreateFolder(folder.value);
   };
+  const favorite = $("#folderContextFavorite");
+  favorite.textContent = folder.favorite ? "Unfavorite" : "Favorite";
+  favorite.onclick = () => { closeCardMenus(); toggleFolderFavorite(folder); };
+  const cover = $("#folderContextCover");
+  cover.hidden = !folder.count;
+  cover.onclick = () => { closeCardMenus(); openFolderCover(folder); };
+  const rename = $("#folderContextRename");
+  rename.hidden = folder.kind !== "tag";
+  rename.onclick = () => { closeCardMenus(); openRenameFolder(folder); };
+  $("#folderContextExport").onclick = () => { closeCardMenus(); exportFolder(folder); };
   const refresh = $("#folderContextRefresh");
   refresh.hidden = folder.kind !== "source";
   refresh.onclick = () => {
@@ -1938,6 +2074,91 @@ function openDeleteFolder(folder) {
   folderPendingDelete = folder;
   $("#deleteFolderText").textContent = t("folders.delete_confirm", {name: folder.name});
   $("#deleteFolderDialog").showModal();
+}
+
+function openRenameFolder(folder) {
+  folderPendingRename = folder;
+  $("#renameFolderName").value = folder.name;
+  $("#renameFolderDialog").showModal();
+  $("#renameFolderName").select();
+}
+
+async function renameFolder(folder, name) {
+  const parent = folder.value.includes("/") ? folder.value.slice(0, folder.value.lastIndexOf("/")) : "";
+  try {
+    const result = await request("/api/app/tags", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "rename", tag: folder.value, into: parent ? `${parent}/${name}` : name}),
+    });
+    if (currentTag === folder.value || currentTag.startsWith(`${folder.value}/`)) {
+      currentTag = result.tag + currentTag.slice(folder.value.length);
+      currentFolderName = name;
+      renderSearchScope();
+    }
+    await Promise.all([refreshState(), loadFolders()]);
+  } catch (error) { showMessage(error.message, true); }
+}
+
+async function saveFolderView(change) {
+  try {
+    await request("/api/app/folders/view", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify(change),
+    });
+  } catch (error) { showMessage(error.message, true); }
+}
+
+async function toggleFolderFavorite(folder) {
+  const favorite = !folder.favorite;
+  folder.favorite = favorite;
+  renderFolders();
+  await saveFolderView({kind: folder.kind, value: folder.value, favorite});
+}
+
+function exportFolder(folder) {
+  const link = document.createElement("a");
+  link.href = `/api/app/folders/export?kind=${encodeURIComponent(folder.kind)}&value=${encodeURIComponent(folder.value)}`;
+  link.download = "";
+  document.body.append(link);
+  link.click();
+  link.remove();
+}
+
+async function openFolderCover(folder) {
+  folderPendingCover = folder;
+  const dialog = $("#folderCoverDialog");
+  const grid = $("#folderCoverGrid");
+  $("#folderCoverHelp").textContent = folder.name;
+  grid.textContent = "Loading…";
+  dialog.showModal();
+  try {
+    const data = await request(`/api/app/images?mode=recent&count=200&tag=${encodeURIComponent(folder.kind === "tag" ? folder.value : "")}&source=${encodeURIComponent(folder.kind === "source" ? folder.value : "")}`);
+    if (folderPendingCover?.key !== folder.key) return;
+    grid.replaceChildren(...(data.images || []).map(item => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.classList.toggle("is-current", item.id === folder.coverId);
+      button.setAttribute("aria-label", `Use ${item.name} as cover`);
+      const image = document.createElement("img");
+      image.loading = "lazy";
+      image.decoding = "async";
+      loadImage(image, thumbnailURL(item, 480));
+      button.append(image);
+      button.onclick = () => setFolderCover(folder, item.id);
+      return button;
+    }));
+  } catch (error) {
+    grid.textContent = error.message;
+  }
+}
+
+async function setFolderCover(folder, coverId) {
+  $("#folderCoverDialog").close();
+  folderPendingCover = null;
+  await saveFolderView({kind: folder.kind, value: folder.value, coverId});
+  await loadFolders();
 }
 
 // A folder that was deleted or absorbed cannot go on scoping the library. The
@@ -1978,59 +2199,73 @@ async function deleteFolder(folder) {
   } catch (error) { showMessage(error.message, true); }
 }
 
-// Dropping one folder on another merges them, keeping the dragged folder's
-// name so nothing has to be typed.
-async function mergeFolders(from, into) {
-  if (from.value === into.value) return;
-  try {
-    await request("/api/app/tags", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({action: "merge", tag: from.value, into: into.value}),
-    });
-    // The dragged folder survives and swallows the one it was dropped on, so a
-    // view scoped to either side is now stale: one name no longer exists, and
-    // the other just gained a second folder's pictures.
-    if (currentTag === into.value || currentTag === from.value) {
-      currentTag = from.value;
-      currentFolderName = from.name;
-      releaseFolderScope();
-    }
-    await refreshState();
-    await loadFolders();
-    showMessage(t("folders.merged", {from: from.name, into: into.name}));
-  } catch (error) { showMessage(error.message, true); }
+function folderComparator(sortMode) {
+  const order = new Map((folderView.order || []).map((key, index) => [key, index]));
+  return (left, right) => {
+    if (sortMode === "name") return left.name.localeCompare(right.name, undefined, {sensitivity: "base"});
+    if (sortMode === "recent") return (right.lastAdded || 0) - (left.lastAdded || 0) || left.name.localeCompare(right.name);
+    if (sortMode === "size") return right.count - left.count || left.name.localeCompare(right.name);
+    return (order.get(left.key) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.key) ?? Number.MAX_SAFE_INTEGER);
+  };
 }
 
-function newFolderCard() {
-  const card = document.createElement("button");
-  card.className = "folder-card new-folder";
-  card.type = "button";
-  card.dataset.depth = "0";
-  const preview = document.createElement("span");
-  preview.className = "folder-preview";
-  const create = document.createElement("span");
-  create.className = "folder-create-button";
-  create.textContent = "+";
-  const details = document.createElement("span");
-  details.className = "folder-details";
-  const name = document.createElement("strong");
-  name.textContent = t("folders.create");
-  details.append(name);
-  preview.append(create);
-  card.append(preview, details);
-  card.onclick = () => openCreateFolder();
-  return card;
+function folderSection(title, folders) {
+  if (!folders.length) return null;
+  const section = document.createElement("section");
+  section.className = "folder-section";
+  const heading = document.createElement("h2");
+  heading.className = "folder-section-heading";
+  heading.append(document.createTextNode(title));
+  const count = document.createElement("span");
+  count.textContent = folders.length;
+  heading.append(count);
+  const grid = document.createElement("div");
+  grid.className = "folder-grid";
+  grid.replaceChildren(...folders.map(folderCard));
+  section.append(heading, grid);
+  return section;
+}
+
+function renderFolders() {
+  const list = $("#folderList");
+  const query = $("#folderSearch").value.trim().toLowerCase();
+  const matches = folderRecords.filter(folder => !query || folder.name.toLowerCase().includes(query) || folder.value.toLowerCase().includes(query));
+  list.dataset.size = folderView.cardSize;
+  if (query) {
+    const results = matches.sort(folderComparator(folderView.sort));
+    const section = folderSection("Results", results);
+    list.replaceChildren(...(section ? [section] : []));
+  } else {
+    const pinned = matches.filter(folder => folder.favorite).sort(folderComparator(folderView.sort));
+    const unpinned = matches.filter(folder => !folder.favorite);
+    const recent = [...unpinned].filter(folder => folder.lastAdded).sort(folderComparator("recent")).slice(0, 6);
+    const recentKeys = new Set(recent.map(folder => folder.key));
+    const everything = unpinned.filter(folder => !recentKeys.has(folder.key)).sort(folderComparator(folderView.sort));
+    list.replaceChildren(...[
+      folderSection("Pinned", pinned),
+      folderSection("Recent", recent),
+      folderSection("All folders", everything),
+    ].filter(Boolean));
+  }
+  $("#foldersEmpty").hidden = matches.length !== 0;
+}
+
+function updateFolderSizeLabel() {
+  const labels = {tiny: "Tiny cards", medium: "Medium cards", huge: "Huge cards"};
+  $("#folderSizeLabel").textContent = labels[folderView.cardSize] || labels.medium;
 }
 
 async function loadFolders() {
-  const list = $("#folderList");
   try {
     const data = await request("/api/app/folders");
+    folderRecords = data.folders || [];
+    folderView = {...folderView, ...(data.view || {})};
     const parent = $("#newFolderParent");
     parent.replaceChildren(new Option(t("folders.top_level"), ""), ...(appState?.tags || []).map(tag => new Option(tag.name, tag.name)));
-    list.replaceChildren(...data.folders.map(folderCard), newFolderCard());
-    $("#foldersEmpty").hidden = true;
+    $("#folderSort").value = folderView.sort;
+    $("#folderSize").value = {tiny: 0, medium: 1, huge: 2}[folderView.cardSize] ?? 1;
+    updateFolderSizeLabel();
+    renderFolders();
   } catch (error) {
     $("#foldersEmpty").hidden = false;
     showMessage(error.message, true);
@@ -2237,6 +2472,7 @@ function renderState() {
   $("#indexSummary").textContent = stats ? t("library.count", {count: stats.count}) : t("library.empty");
   $("#boardCount").textContent = appState.boards ? `(${appState.boards})` : "";
   $("#languageSetting").value = window.PictogrepI18n.locale();
+  $("#themeSetting").value = appState.theme || "dark";
   $("#thumbnailSizeSetting").value = appState.browser?.thumbnailSize || "medium";
   $("#showFilenamesSetting").checked = Boolean(appState.browser?.showFilenames);
   $("#homeOrderSetting").value = appState.browser?.homeOrder || "random";
@@ -3895,6 +4131,37 @@ async function saveLanguageSetting() {
   }
 }
 
+// Dark is the default, so it is the absence of the attribute rather than a
+// value of it: the stylesheets are already dark and only light needs saying.
+// The server stamps the same attribute on the page it serves, so this only has
+// to cover the change made in front of you, not the next load.
+function applyTheme(theme) {
+  if (theme === "light") {
+    document.documentElement.setAttribute("data-theme", "light");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+}
+
+async function saveThemeSetting() {
+  const theme = $("#themeSetting").value;
+  applyTheme(theme);
+  try {
+    await request("/api/app/settings/theme", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({theme}),
+    });
+    appState.theme = theme;
+  } catch (error) {
+    // Put the interface back where the saved setting still is, rather than
+    // leaving it showing a theme the next launch will not honour.
+    applyTheme(appState.theme || "dark");
+    $("#themeSetting").value = appState.theme || "dark";
+    showMessage(error.message, true);
+  }
+}
+
 async function saveBrowserSettings() {
   const browser = {
     thumbnailSize: $("#thumbnailSizeSetting").value,
@@ -4119,6 +4386,18 @@ $("#shuffleCommons").onclick = () => {
 $("#calendarTab").onclick = loadCalendar;
 $("#foldersTab").onclick = () => { switchTab("folders"); loadFolders(); };
 $("#newFolderButton").onclick = () => openCreateFolder();
+$("#folderSearch").oninput = renderFolders;
+$("#folderSort").onchange = () => {
+  folderView.sort = $("#folderSort").value;
+  renderFolders();
+  saveFolderView({sort: folderView.sort});
+};
+$("#folderSize").oninput = () => {
+  folderView.cardSize = ["tiny", "medium", "huge"][Number($("#folderSize").value)] || "medium";
+  updateFolderSizeLabel();
+  renderFolders();
+};
+$("#folderSize").onchange = () => saveFolderView({cardSize: folderView.cardSize});
 $("#showBoards").onclick = loadBoards;
 $("#showPinterest").onclick = showPinterestImport;
 $("#showSync").onclick = showSyncPairing;
@@ -4135,6 +4414,7 @@ $("#premiumUnlock").onclick = buyPremium;
 $("#premiumLock").onclick = () => setPremium(false);
 $("#showSettings").onclick = showSettings;
 $("#languageSetting").onchange = saveLanguageSetting;
+$("#themeSetting").onchange = saveThemeSetting;
 $("#thumbnailSizeSetting").onchange = saveBrowserSettings;
 $("#showFilenamesSetting").onchange = saveBrowserSettings;
 $("#homeOrderSetting").onchange = saveBrowserSettings;
@@ -4150,6 +4430,23 @@ $("#deleteFolderForm").onsubmit = event => {
   folderPendingDelete = null;
   $("#deleteFolderDialog").close();
   if (folder) deleteFolder(folder);
+};
+$("#cancelRenameFolder").onclick = () => $("#renameFolderDialog").close();
+$("#renameFolderForm").onsubmit = event => {
+  event.preventDefault();
+  const folder = folderPendingRename;
+  const name = $("#renameFolderName").value.trim();
+  folderPendingRename = null;
+  $("#renameFolderDialog").close();
+  if (folder && name) renameFolder(folder, name);
+};
+$("#cancelFolderCover").onclick = () => {
+  folderPendingCover = null;
+  $("#folderCoverDialog").close();
+};
+$("#automaticFolderCover").onclick = () => {
+  const folder = folderPendingCover;
+  if (folder) setFolderCover(folder, "");
 };
 $("#clearRecentSearches").onclick = clearRecentSearchHistory;
 $("#wikimediaPluginToggle").onchange = toggleWikimediaPlugin;

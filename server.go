@@ -127,6 +127,7 @@ func (s *server) routes() http.Handler {
 	}
 	mux.HandleFunc("POST /api/app/settings/storage", s.saveStorageSettings)
 	mux.HandleFunc("POST /api/app/settings/language", s.saveStorageSettings)
+	mux.HandleFunc("POST /api/app/settings/theme", s.saveThemeSettings)
 	mux.HandleFunc("POST /api/app/settings/browser", s.saveBrowserSettings)
 	mux.HandleFunc("POST /api/app/settings/indexing", s.saveIndexingSettings)
 	mux.HandleFunc("GET /api/app/update", s.appUpdate)
@@ -135,6 +136,8 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/app/images/{id}", s.appImage)
 	mux.HandleFunc("DELETE /api/app/images/{id}", s.deleteImage)
 	mux.HandleFunc("GET /api/app/folders", s.appFolders)
+	mux.HandleFunc("POST /api/app/folders/view", s.saveFolderView)
+	mux.HandleFunc("GET /api/app/folders/export", s.exportFolder)
 	mux.HandleFunc("GET /api/app/search", s.appSearch)
 	mux.HandleFunc("GET /api/app/related/{id}", s.appRelated)
 	mux.HandleFunc("GET /api/app/canvas", s.appCanvas)
@@ -352,6 +355,25 @@ var homePage = sync.OnceValues(func() ([]byte, error) {
 	return phoneShell(data), nil
 })
 
+// The same page with the light theme stamped on <html>, also built once. The
+// theme has to be in the markup the browser first parses: a page that arrives
+// dark and is corrected by script paints the wrong colour for a frame, and
+// avoiding that flash is the whole reason this is an attribute and not a class
+// app.js adds. Dark needs no variant because it is what the stylesheets are.
+var lightHomePage = sync.OnceValues(func() ([]byte, error) {
+	page, err := homePage()
+	if err != nil {
+		return nil, err
+	}
+	return stampLightTheme(page), nil
+})
+
+// Matches the opening tag by prefix, so it works on the desktop page and on
+// the phone one, where phoneShell has already added class="is-phone".
+func stampLightTheme(page []byte) []byte {
+	return bytes.Replace(page, []byte(`<html lang="en"`), []byte(`<html lang="en" data-theme="light"`), 1)
+}
+
 // phoneShell turns the shared page into the Android one.
 //
 // On a phone the interface is Material 3, which is a different stylesheet and
@@ -541,7 +563,11 @@ func (s *server) home(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	data, err := homePage()
+	build := homePage
+	if s.app.theme() == "light" {
+		build = lightHomePage
+	}
+	data, err := build()
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
@@ -550,7 +576,11 @@ func (s *server) home(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) practicePage(w http.ResponseWriter, r *http.Request) {
-	serveBytes(w, r, "practice.html", "text/html; charset=utf-8", s.practice)
+	page := s.practice
+	if s.app.theme() == "light" {
+		page = stampLightTheme(page)
+	}
+	serveBytes(w, r, "practice.html", "text/html; charset=utf-8", page)
 }
 
 func (s *server) licenses(w http.ResponseWriter, r *http.Request) {
@@ -741,6 +771,7 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 			"originalsKept": true,
 		},
 		"language": s.app.configuredLanguage(),
+		"theme":    s.app.theme(),
 		"browser":  s.app.browserSettings(),
 		"plugins": map[string]any{
 			"wikimedia": map[string]any{"enabled": s.app.pluginEnabled("wikimedia"), "name": "Wikimedia Commons", "description": "Browse random Commons images or search for something specific."},
@@ -908,6 +939,21 @@ func (s *server) saveStorageSettings(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "originalsKept": true, "language": s.app.language()})
+}
+
+func (s *server) saveThemeSettings(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		Theme string `json:"theme"`
+	}
+	if err := decodeJSON(r, &request, 1<<20); err != nil {
+		sendError(w, http.StatusBadRequest, err)
+		return
+	}
+	if err := s.app.saveTheme(request.Theme); err != nil {
+		sendError(w, http.StatusInternalServerError, err)
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "theme": s.app.theme()})
 }
 
 func (s *server) aiState(w http.ResponseWriter, _ *http.Request) {
@@ -1360,24 +1406,25 @@ func (s *server) saveAppCanvas(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) appFolders(w http.ResponseWriter, _ *http.Request) {
 	paths, sources, _ := s.app.snapshot()
+	preferences := s.app.loadFolderViewPreferences()
 	folders := []map[string]any{}
 	indexed := make(map[string]bool, len(paths))
 	for _, path := range paths {
 		indexed[path] = true
 	}
 	for _, source := range sources {
-		folders = append(folders, s.sourceFolderRecords(source, paths, indexed)...)
+		folders = append(folders, s.sourceFolderRecords(source, paths, indexed, preferences)...)
 	}
 	for _, name := range s.collectionNames() {
 		recordName := filepath.Base(filepath.FromSlash(name))
-		record := s.folderRecord("tag", recordName, name, s.collectionImages(name), indexed)
+		record := s.folderRecord("tag", recordName, name, s.collectionImages(name), indexed, preferences)
 		record["depth"] = strings.Count(filepath.ToSlash(name), "/")
 		folders = append(folders, record)
 	}
-	sendJSON(w, 200, map[string]any{"ok": true, "folders": folders})
+	sendJSON(w, 200, map[string]any{"ok": true, "folders": folders, "view": preferences})
 }
 
-func (s *server) sourceFolderRecords(source string, paths []string, indexed map[string]bool) []map[string]any {
+func (s *server) sourceFolderRecords(source string, paths []string, indexed map[string]bool, preferences folderViewPreferences) []map[string]any {
 	byDirectory := map[string][]string{source: {}}
 	for _, path := range paths {
 		if !pathInside(path, source) {
@@ -1420,7 +1467,7 @@ func (s *server) sourceFolderRecords(source string, paths []string, indexed map[
 			depth = len(strings.Split(filepath.Clean(relative), string(filepath.Separator)))
 			name = filepath.Base(directory)
 		}
-		record := s.folderRecord("source", name, directory, byDirectory[directory], indexed)
+		record := s.folderRecord("source", name, directory, byDirectory[directory], indexed, preferences)
 		record["depth"] = depth
 		record["relative"] = filepath.ToSlash(relative)
 		records = append(records, record)
@@ -1428,9 +1475,20 @@ func (s *server) sourceFolderRecords(source string, paths []string, indexed map[
 	return records
 }
 
-func (s *server) folderRecord(kind, name, value string, paths []string, indexed map[string]bool) map[string]any {
+func (s *server) folderRecord(kind, name, value string, paths []string, indexed map[string]bool, preferences folderViewPreferences) map[string]any {
+	paths = append([]string(nil), paths...)
 	sort.SliceStable(paths, func(i, j int) bool { return fileMtime(paths[i]) > fileMtime(paths[j]) })
 	previews := []imageRecord{}
+	key := folderPreferenceKey(kind, value)
+	coverID := preferences.Covers[key]
+	if coverID != "" {
+		for _, path := range paths {
+			if stableImageID(path) == coverID && indexed[path] {
+				previews = append(previews, imageRecord{ID: coverID, Name: filepath.Base(path), Path: path, Mtime: fileMtime(path), URL: "/image/" + coverID})
+				break
+			}
+		}
+	}
 	for _, path := range paths {
 		if len(previews) == 4 {
 			break
@@ -1438,9 +1496,20 @@ func (s *server) folderRecord(kind, name, value string, paths []string, indexed 
 		if !indexed[path] {
 			continue
 		}
-		previews = append(previews, imageRecord{ID: stableImageID(path), Name: filepath.Base(path), Path: path, Mtime: fileMtime(path), URL: "/image/" + stableImageID(path)})
+		id := stableImageID(path)
+		if id == coverID {
+			continue
+		}
+		previews = append(previews, imageRecord{ID: id, Name: filepath.Base(path), Path: path, Mtime: fileMtime(path), URL: "/image/" + id})
 	}
-	return map[string]any{"kind": kind, "name": name, "value": value, "count": len(paths), "images": previews}
+	lastAdded := int64(0)
+	if len(paths) > 0 {
+		lastAdded = fileMtime(paths[0])
+	}
+	return map[string]any{
+		"kind": kind, "name": name, "value": value, "key": key, "count": len(paths),
+		"images": previews, "lastAdded": lastAdded, "favorite": preferences.Favorites[key], "coverId": coverID,
+	}
 }
 
 func (s *server) appIndex(w http.ResponseWriter, r *http.Request) {
@@ -1805,6 +1874,44 @@ func (s *server) appTags(w http.ResponseWriter, r *http.Request) {
 			"ok": true, "tag": name, "prompt": prompt, "added": len(combined) - len(existing),
 			"matched": len(selected), "indexed": s.app.indexedEmbeddingCount(mtimes), "total": len(paths),
 		})
+	case "rename":
+		into, err := collectionName(request.Into)
+		if err != nil {
+			sendError(w, 400, err)
+			return
+		}
+		if into == name {
+			sendJSON(w, 200, map[string]any{"ok": true, "tag": name})
+			return
+		}
+		oldDirectory := filepath.Join(s.app.tagsDir, name)
+		newDirectory := filepath.Join(s.app.tagsDir, into)
+		if info, statErr := os.Stat(oldDirectory); statErr != nil || !info.IsDir() {
+			sendError(w, 404, fmt.Errorf("unknown folder"))
+			return
+		}
+		if _, statErr := os.Stat(newDirectory); !os.IsNotExist(statErr) {
+			sendError(w, 409, fmt.Errorf("a folder named %s already exists", into))
+			return
+		}
+		if pathInside(newDirectory, oldDirectory) {
+			sendError(w, 400, fmt.Errorf("a folder cannot be moved inside itself"))
+			return
+		}
+		oldNames := append([]string{name}, s.subCollections(name)...)
+		if err := os.MkdirAll(filepath.Dir(newDirectory), 0o755); err != nil {
+			sendError(w, 400, err)
+			return
+		}
+		if err := os.Rename(oldDirectory, newDirectory); err != nil {
+			sendError(w, 400, err)
+			return
+		}
+		for _, oldName := range oldNames {
+			newName := into + strings.TrimPrefix(oldName, name)
+			s.app.moveFolderPreferences("tag", oldName, newName)
+		}
+		sendJSON(w, 200, map[string]any{"ok": true, "tag": into, "renamed": name})
 	case "merge":
 		// The dragged folder keeps its name and swallows the one it was
 		// dropped on, so nothing has to be renamed by hand.

@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-var version = "0.10.2"
+var version = "0.11.0"
 
 const (
 	maxCachedQueries = 512
@@ -87,8 +87,9 @@ type application struct {
 	embeddingModel     embeddingModel
 	usage              *usageTracker
 
-	mu       sync.RWMutex
-	canvasMu sync.Mutex
+	mu                  sync.RWMutex
+	canvasMu            sync.Mutex
+	folderPreferencesMu sync.Mutex
 	// Assign through setPaths, never directly. See the comment there.
 	paths []string
 	// Bumped by every replacement of paths, so a cache built from the library
@@ -290,11 +291,43 @@ func (a *application) saveLanguage(language string) error {
 	if language != "pt-BR" {
 		language = "en"
 	}
+	return a.writeConfigValue("language", language)
+}
+
+// theme is the interface's colour scheme, and dark is both the default and the
+// empty value: a config file written before themes existed reads as dark,
+// which is also what a fresh install gets. Only "light" is stored, so an
+// unrecognised value degrades to the default rather than to a broken page.
+func (a *application) theme() string {
+	data, err := os.ReadFile(a.configPath)
+	if err != nil {
+		return "dark"
+	}
+	var document struct {
+		Theme string `json:"theme"`
+	}
+	if json.Unmarshal(data, &document) != nil || document.Theme != "light" {
+		return "dark"
+	}
+	return "light"
+}
+
+func (a *application) saveTheme(theme string) error {
+	if theme != "light" {
+		theme = "dark"
+	}
+	return a.writeConfigValue("theme", theme)
+}
+
+// Read the config, set one key, write it back through a temp file and a
+// rename, so a crash mid-write cannot leave a half-written config behind.
+// Keys this build knows nothing about survive the round trip.
+func (a *application) writeConfigValue(key string, value any) error {
 	document := map[string]any{}
 	if data, err := os.ReadFile(a.configPath); err == nil {
 		_ = json.Unmarshal(data, &document)
 	}
-	document["language"] = language
+	document[key] = value
 	data, err := json.MarshalIndent(document, "", "  ")
 	if err != nil {
 		return err

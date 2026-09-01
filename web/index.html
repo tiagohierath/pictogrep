@@ -71,7 +71,12 @@
     </section>
 
     <section id="foldersPanel" aria-labelledby="foldersTab" hidden>
-      <div class="folder-toolbar"><button type="button" id="newFolderButton" data-i18n="folders.new">+ New folder</button></div>
+      <div class="folder-toolbar">
+        <label class="folder-search"><span aria-hidden="true">⌕</span><input type="search" id="folderSearch" placeholder="Search folders" autocomplete="off"></label>
+        <button type="button" class="primary" id="newFolderButton" data-i18n="folders.new">+ New folder</button>
+        <label class="folder-sort"><span class="sr-only">Sort folders</span><select id="folderSort" aria-label="Sort folders"><option value="custom">My order</option><option value="recent">Last added</option><option value="name">Name</option><option value="size">Image count</option></select></label>
+        <label class="folder-size"><span id="folderSizeLabel">Medium cards</span><input type="range" id="folderSize" min="0" max="2" step="1" value="1" aria-label="Folder card size"></label>
+      </div>
       <div class="folder-list" id="folderList"></div>
       <div class="empty" id="foldersEmpty" hidden><p data-i18n="folders.none">No folders have been added.</p></div>
     </section>
@@ -219,6 +224,7 @@
     <section class="drawer-section settings" id="settingsSection" hidden>
       <div class="settings-list settings-basics">
         <label class="settings-row"><strong data-i18n="settings.language">Language</strong><select id="languageSetting"><option value="en" data-i18n="settings.english">English</option><option value="pt-BR">Português</option></select></label>
+        <label class="settings-row"><strong data-i18n="settings.theme">Theme</strong><select id="themeSetting"><option value="dark" data-i18n="settings.theme_dark">Dark</option><option value="light" data-i18n="settings.theme_light">Light</option></select></label>
         <details class="settings-folders">
           <summary class="settings-row"><span><strong data-i18n="settings.folders">Picture folders</strong><small id="sourceFolderSummary" data-i18n="settings.folders_help">No folders</small></span></summary>
           <div class="settings-folders-body">
@@ -344,13 +350,15 @@
       <h2 data-i18n="folder_dialog.title">Create folder</h2>
       <label class="field-label" for="newFolderName" data-i18n="folder_dialog.name">Name</label>
       <input id="newFolderName" placeholder="e.g. to-draw" data-i18n-placeholder="folder_dialog.name_example" autocomplete="off" required>
-      <label class="field-label" for="newFolderParent" data-i18n="folder_dialog.parent">Inside folder (optional)</label>
-      <select id="newFolderParent"><option value="" data-i18n="folders.top_level">Top level</option></select>
-      <label class="field-label" for="newFolderPrompt" data-i18n="folder_dialog.fill">Fill from search (optional)</label>
-      <input id="newFolderPrompt" placeholder="e.g. cats" data-i18n-placeholder="folder_dialog.search_example" autocomplete="off">
-      <p class="field-help" data-i18n="folder_dialog.fill_help">Adds the 50 closest pictures Pictogrep has already prepared.</p>
-      <label class="field-label" for="newFolderFiles" data-i18n="folder_dialog.pictures">Pictures (optional)</label>
-      <input id="newFolderFiles" type="file" accept="image/*" multiple>
+      <details class="folder-create-more">
+        <summary>More options</summary>
+        <label class="field-label" for="newFolderParent" data-i18n="folder_dialog.parent">Inside folder (optional)</label>
+        <select id="newFolderParent"><option value="" data-i18n="folders.top_level">Top level</option></select>
+        <label class="field-label" for="newFolderPrompt" data-i18n="folder_dialog.fill">Fill from search (optional)</label>
+        <input id="newFolderPrompt" placeholder="e.g. cats" data-i18n-placeholder="folder_dialog.search_example" autocomplete="off">
+        <label class="field-label" for="newFolderFiles" data-i18n="folder_dialog.pictures">Pictures (optional)</label>
+        <input id="newFolderFiles" type="file" accept="image/*" multiple>
+      </details>
       <div class="dialog-actions"><button type="button" id="cancelFolder" data-i18n="app.cancel">Cancel</button><button type="submit" class="primary" data-i18n="app.create">Create</button></div>
     </form>
   </dialog>
@@ -360,6 +368,24 @@
       <h2 data-i18n="folders.delete">Delete folder</h2>
       <p id="deleteFolderText"></p>
       <div class="dialog-actions"><button type="button" id="cancelDeleteFolder" data-i18n="folders.delete_cancel">Cancel</button><button type="submit" class="danger" data-i18n="folders.delete">Delete folder</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="renameFolderDialog">
+    <form id="renameFolderForm">
+      <h2>Rename folder</h2>
+      <label class="field-label" for="renameFolderName">Name</label>
+      <input id="renameFolderName" autocomplete="off" required>
+      <div class="dialog-actions"><button type="button" id="cancelRenameFolder">Cancel</button><button type="submit" class="primary">Rename</button></div>
+    </form>
+  </dialog>
+
+  <dialog class="folder-cover-dialog" id="folderCoverDialog">
+    <form id="folderCoverForm">
+      <h2>Choose cover</h2>
+      <p id="folderCoverHelp">Pick a picture from this folder.</p>
+      <div class="folder-cover-grid" id="folderCoverGrid"></div>
+      <div class="dialog-actions"><button type="button" id="automaticFolderCover">Automatic</button><button type="button" id="cancelFolderCover">Cancel</button></div>
     </form>
   </dialog>
 
@@ -457,6 +483,10 @@
     <button type="button" id="folderContextAdd" data-i18n="folder_menu.add">Add pictures here…</button>
     <button type="button" id="folderContextCanvas" data-i18n="folder_menu.canvas">Open canvas</button>
     <button type="button" id="folderContextNewSubfolder" data-i18n="folder_menu.new_subfolder">New subfolder…</button>
+    <button type="button" id="folderContextFavorite">Favorite</button>
+    <button type="button" id="folderContextCover">Choose cover…</button>
+    <button type="button" id="folderContextRename">Rename…</button>
+    <button type="button" id="folderContextExport">Export .zip</button>
     <button type="button" id="folderContextRefresh" data-i18n="folder_menu.refresh">Check for new pictures</button>
     <button type="button" id="folderContextCopyPath" data-i18n="folder_menu.copy_path">Copy folder path</button>
     <button type="button" class="menu-danger" id="folderContextDelete" data-i18n="folders.delete">Delete folder</button>

@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.11.0 - 2026-09-01
+
+- Folders are now visual boards with large 2×2 picture covers, pinned and recent sections, search, sorting, and tiny-to-huge card sizes. Drag pictures onto a folder, drag folders to reorder them, and use the hover actions to rename, favorite, choose a cover, export, or delete. Opening a folder starts from its visible cover pictures and transitions straight into the library.
+- Dark is now the default theme, with a simple Dark or Light choice in Settings.
 - Settings now opens as five short controls instead of five sections of explanations. Folder management expands only when needed, maintenance tools live under More, and the inaccurate blanket privacy claim has been removed.
 - Installed plugins that need a workspace now open across the available window instead of being hidden by the full-page drawer rules. The image-list capability also supports paging, so boards can browse more than the first 120 library pictures.
 - Pictures already visible in the main library and Similar pictures stay in their columns when scrolling loads another page. The browser used to rebalance the entire masonry grid after every append, making existing pictures appear to switch places.
