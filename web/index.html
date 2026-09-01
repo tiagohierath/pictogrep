@@ -459,10 +459,23 @@
 
   <div class="card-menu cursor-menu" id="imageContextMenu" hidden>
     <span class="card-menu-name" id="contextImageName"></span>
+    <span class="card-menu-detail" id="contextImageDetail"></span>
     <button type="button" id="contextOpenImage" data-i18n="context.open_image">Open picture</button>
-    <a id="contextDownloadImage" download data-i18n="image.save_as">Save picture as…</a>
-    <a id="contextDraw" data-i18n="image.draw">Draw</a>
+    <a id="contextOpenTab" target="_blank" rel="noopener" data-i18n="context.open_tab">Open in new tab</a>
+    <button type="button" id="contextSimilar" data-i18n="context.similar">Find similar pictures</button>
+    <hr>
     <button type="button" id="contextAddFolder" data-i18n="context.add_folder">Add to folder…</button>
+    <button type="button" id="contextRemoveFolder" data-i18n="context.remove_folder">Remove from this folder</button>
+    <button type="button" id="contextSetCover" data-i18n="context.set_cover">Use as folder cover</button>
+    <hr>
+    <button type="button" id="contextCopyImage" data-i18n="context.copy_image">Copy picture</button>
+    <button type="button" id="contextCopyLink" data-i18n="context.copy_link">Copy link</button>
+    <button type="button" id="contextCopyPath" data-i18n="context.copy_path">Copy file path</button>
+    <a id="contextDownloadImage" download data-i18n="image.save_as">Save picture as…</a>
+    <button type="button" id="contextReveal" data-i18n="context.reveal">Show in file manager</button>
+    <hr>
+    <a id="contextDraw" data-i18n="image.draw">Draw</a>
+    <hr>
     <button type="button" class="menu-danger" id="contextDeleteImage" data-i18n="image.delete">Delete picture…</button>
   </div>
 
@@ -533,6 +546,7 @@
   <script src="/i18n/i18n.js" defer></script>
   <script src="/assets/onboarding.js" defer></script>
   <script src="/assets/plugin-host.js" defer></script>
+  <script src="/assets/icons.js" defer></script>
   <script src="/assets/app.js" defer></script>
 </body>
 </html>

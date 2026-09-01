@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Right-clicking a picture now offers a real menu: open in a new tab, find similar pictures, remove it from the folder you are in, use it as that folder's cover, copy the picture itself, its link or its file path, and show it in your file manager. Every entry has an icon, the menu is grouped, and it tells you the picture's size and type under its name. Entries that cannot apply where you are simply are not there.
+- The ⋯ menu on a picture card now carries the same icons and the same order as the right-click menu.
+
 - The top bar now slides out of the way as you scroll down through your pictures and comes back as soon as you scroll up, so the grid gets the whole screen. It stays put near the top of a page, while a menu or panel is open, and if you have asked your system for reduced motion.
 - Opening a folder animates cleanly: the cover no longer stretches as it grows into the picture grid, the fade and the movement finish together, and opening a folder from far down the list no longer ends on a jump.
 

@@ -135,6 +135,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/app/images", s.appImages)
 	mux.HandleFunc("GET /api/app/images/{id}", s.appImage)
 	mux.HandleFunc("DELETE /api/app/images/{id}", s.deleteImage)
+	mux.HandleFunc("POST /api/app/images/reveal", s.revealImage)
 	mux.HandleFunc("GET /api/app/folders", s.appFolders)
 	mux.HandleFunc("POST /api/app/folders/view", s.saveFolderView)
 	mux.HandleFunc("GET /api/app/folders/export", s.exportFolder)
@@ -1202,6 +1203,29 @@ func (s *server) appImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "image": s.imageRecord(path, nil)})
+}
+
+// Open the picture's folder in the system file manager. The id is resolved
+// through the library index rather than taking a path from the browser, so this
+// can only ever point at a picture Pictogrep already knows about.
+func (s *server) revealImage(w http.ResponseWriter, r *http.Request) {
+	var request struct {
+		ImageID string `json:"imageId"`
+	}
+	if err := decodeJSON(r, &request, 1<<16); err != nil {
+		sendError(w, http.StatusBadRequest, err)
+		return
+	}
+	path, found := s.imagePathByID(request.ImageID)
+	if !found {
+		sendError(w, http.StatusBadRequest, fmt.Errorf("unknown image"))
+		return
+	}
+	if err := revealInFileManager(path); err != nil {
+		sendError(w, http.StatusBadRequest, err)
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "path": path})
 }
 
 func fileMtime(path string) int64 {

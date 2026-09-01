@@ -909,7 +909,14 @@ function pictureCard(item) {
   deleteButton.className = "menu-danger";
   deleteButton.textContent = t("image.delete");
   deleteButton.onclick = () => openDeleteImageDialog(item);
-  menu.append(menuName, download, draw, tagButton, deleteButton);
+  // Same actions, same icons, same order as the right-click menu. Two menus on
+  // the same card that disagree about what an action is called or where it sits
+  // is worse than either menu on its own.
+  window.PictogrepIcons?.decorate(draw, "storyboard");
+  window.PictogrepIcons?.decorate(tagButton, "folders");
+  window.PictogrepIcons?.decorate(download, "download");
+  window.PictogrepIcons?.decorate(deleteButton, "trash");
+  menu.append(menuName, tagButton, download, draw, deleteButton);
   menuButton.onclick = event => {
     event.stopPropagation();
     const willOpen = menu.hidden;
@@ -926,6 +933,31 @@ function bindImageContextMenu(element, item) {
   element.oncontextmenu = event => openImageContextMenu(event, item);
 }
 
+// Which glyph belongs to which entry. Icons are a scanning aid in a menu this
+// long: a menu where only some rows have one reads as a menu with things
+// missing from it, so every row gets one.
+const IMAGE_MENU_ICONS = {
+  "#contextOpenImage": "pictures",
+  "#contextOpenTab": "open_new",
+  "#contextSimilar": "search",
+  "#contextAddFolder": "folders",
+  "#contextRemoveFolder": "remove",
+  "#contextSetCover": "star",
+  "#contextCopyImage": "copy",
+  "#contextCopyLink": "link",
+  "#contextCopyPath": "copy",
+  "#contextDownloadImage": "download",
+  "#contextReveal": "reveal",
+  "#contextDraw": "storyboard",
+  "#contextDeleteImage": "trash",
+};
+
+function decorateImageMenu(menu) {
+  for (const [selector, name] of Object.entries(IMAGE_MENU_ICONS)) {
+    window.PictogrepIcons?.decorate(menu.querySelector(selector), name);
+  }
+}
+
 function openImageContextMenu(event, item) {
   event.preventDefault();
   event.stopPropagation();
@@ -934,22 +966,190 @@ function openImageContextMenu(event, item) {
   const dialog = event.currentTarget.closest("dialog[open]");
   (dialog || document.body).append(menu);
   menu.classList.add("cursor-menu");
+  decorateImageMenu(menu);
   $("#contextImageName").textContent = item.name;
   $("#contextImageName").title = item.path || item.name;
+  // The size is the one thing about a picture you cannot read off its
+  // thumbnail, and it is the reason people go looking for a properties dialog.
+  $("#contextImageDetail").textContent = imageDetailLine(item);
+
   $("#contextOpenImage").onclick = () => {
     closeCardMenus();
     openImageViewer(item);
   };
-  $("#contextDownloadImage").href = item.url;
-  $("#contextDownloadImage").download = item.name;
-  $("#contextDraw").href = `/practice?image=${encodeURIComponent(item.id)}`;
+  $("#contextOpenTab").href = item.url;
+  $("#contextSimilar").onclick = () => {
+    closeCardMenus();
+    showSimilarImages(item);
+  };
   $("#contextAddFolder").onclick = () => {
     closeCardMenus();
     openTagDialog(item.id);
   };
+  // Removing is unlinking from a collection, which only exists for tag
+  // folders. A source folder is a directory on disk, and the way out of one is
+  // to delete the file or to stop watching the whole folder.
+  const remove = $("#contextRemoveFolder");
+  remove.hidden = !currentTag;
+  remove.onclick = () => {
+    closeCardMenus();
+    removeImageFromFolder(item, currentTag);
+  };
+  const cover = $("#contextSetCover");
+  cover.hidden = !hasSearchScope();
+  cover.onclick = () => {
+    closeCardMenus();
+    useImageAsCover(item);
+  };
+  $("#contextCopyImage").onclick = () => {
+    closeCardMenus();
+    copyImageToClipboard(item);
+  };
+  $("#contextCopyLink").onclick = () => {
+    closeCardMenus();
+    copyToClipboard(new URL(item.url, window.location.href).href, t("context.link_copied"));
+  };
+  // A path is only useful where there is a filesystem to paste it into, and on
+  // the phone build there is no file manager to open either.
+  const path = $("#contextCopyPath");
+  path.hidden = !item.path || Boolean(appState?.mobile);
+  path.onclick = () => {
+    closeCardMenus();
+    copyToClipboard(item.path, t("context.path_copied"));
+  };
+  const reveal = $("#contextReveal");
+  reveal.hidden = !item.path || Boolean(appState?.mobile);
+  reveal.onclick = () => {
+    closeCardMenus();
+    revealImage(item);
+  };
+  $("#contextDownloadImage").href = item.url;
+  $("#contextDownloadImage").download = item.name;
+  $("#contextDraw").href = `/practice?image=${encodeURIComponent(item.id)}`;
   $("#contextDeleteImage").onclick = () => openDeleteImageDialog(item);
+  hideEmptyMenuGroups(menu);
   menu.hidden = false;
   positionContextMenu(menu, event);
+}
+
+function imageDetailLine(item) {
+  const parts = [];
+  item.width && item.height && parts.push(`${item.width} × ${item.height}`);
+  const extension = (item.name || "").split(".").pop();
+  extension && extension !== item.name && parts.push(extension.toUpperCase());
+  item.tags?.length && parts.push(item.tags.map(tag => `#${tag}`).join(" "));
+  return parts.join(" · ");
+}
+
+// Entries hide themselves depending on the picture and where you are, which can
+// leave a separator with nothing under it, or two in a row. A rule is only
+// worth drawing when there is something on both sides of it.
+function hideEmptyMenuGroups(menu) {
+  const rows = [...menu.children];
+  let seenAbove = false;
+  let lastRule = null;
+  for (const row of rows) {
+    if (row.tagName === "HR") {
+      row.hidden = !seenAbove;
+      if (!row.hidden) lastRule = row;
+      seenAbove = false;
+    } else if (row.tagName !== "SPAN" && !row.hidden) {
+      seenAbove = true;
+    }
+  }
+  // Nothing followed the final rule, so it is drawing the bottom of the menu.
+  if (!seenAbove && lastRule) lastRule.hidden = true;
+}
+
+async function copyToClipboard(text, message) {
+  try {
+    await navigator.clipboard.writeText(text);
+    showMessage(message);
+  } catch (_) {
+    window.prompt(message, text);
+  }
+}
+
+// Clipboards want PNG. Handing them the original bytes fails for the JPEGs most
+// of a reference library is made of, so the picture goes through a canvas
+// first and what lands on the clipboard is always a PNG of it.
+async function copyImageToClipboard(item) {
+  try {
+    if (!navigator.clipboard?.write) throw new Error(t("context.copy_unsupported"));
+    const source = await loadImageElement(item.url);
+    const canvas = document.createElement("canvas");
+    canvas.width = source.naturalWidth;
+    canvas.height = source.naturalHeight;
+    canvas.getContext("2d").drawImage(source, 0, 0);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error(t("context.copy_unsupported"));
+    await navigator.clipboard.write([new ClipboardItem({"image/png": blob})]);
+    showMessage(t("context.image_copied"));
+  } catch (error) {
+    showMessage(error.message, true);
+  }
+}
+
+function loadImageElement(url) {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error(t("context.copy_failed")));
+    image.src = url;
+  });
+}
+
+async function revealImage(item) {
+  try {
+    await request("/api/app/images/reveal", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({imageId: item.id}),
+    });
+  } catch (error) { showMessage(error.message, true); }
+}
+
+async function removeImageFromFolder(item, tag) {
+  try {
+    await request("/api/app/tags", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({action: "remove", tag, imageId: item.id}),
+    });
+    showMessage(t("context.removed_from", {name: currentFolderName || tag}));
+    await Promise.all([refreshState(), loadImages()]);
+  } catch (error) { showMessage(error.message, true); }
+}
+
+async function useImageAsCover(item) {
+  const kind = currentTag ? "tag" : "source";
+  await saveFolderView({kind, value: currentTag || currentSource, coverId: item.id});
+  showMessage(t("context.cover_set", {name: currentFolderName || currentTag || currentSource}));
+}
+
+// The library already knows which pictures look like this one; until now that
+// answer was only reachable from inside the viewer. Showing it in the grid
+// makes it a way to browse rather than a panel to scroll past.
+async function showSimilarImages(item) {
+  const grid = $("#imageGrid");
+  grid.classList.add("is-loading");
+  grid.setAttribute("aria-busy", "true");
+  switchTab("images");
+  try {
+    const data = await request(`/api/app/related/${encodeURIComponent(item.id)}?limit=${RELATED_PAGE_SIZE}`);
+    const images = (data.images || []).filter(other => other.id !== item.id);
+    renderImages(images, images.length);
+    showResultState(
+      t("context.similar_to", {name: item.name}),
+      images.length ? "" : t("context.similar_none"),
+      t("context.similar_back"),
+      () => { showResultState(); loadImages(); },
+    );
+  } catch (error) {
+    grid.classList.remove("is-loading");
+    grid.removeAttribute("aria-busy");
+    showMessage(error.message, true);
+  }
 }
 
 function positionContextMenu(menu, event) {

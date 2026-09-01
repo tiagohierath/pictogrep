@@ -370,10 +370,29 @@ body.show-filenames .image-filename { display: block; }
 .card-menu { position: absolute; z-index: 5; top: 30px; right: 0; width: 170px; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg); box-shadow: var(--shadow-menu); }
 .card-menu.cursor-menu { position: fixed; right: auto; }
 .card-menu-name { display: block; padding: var(--space-2) var(--space-3); overflow: hidden; border-bottom: 1px solid var(--line); color: var(--fg-subtle); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-2xs); }
-.card-menu a, .card-menu button { display: block; width: 100%; padding: var(--space-2) var(--space-3); color: var(--fg); text-align: left; text-decoration: none; font-size: var(--text-xs); }
+/* Rows are a 16px icon and a label, so every label starts on the same vertical
+   line whether or not its own glyph is a wide one. */
+.card-menu a, .card-menu button { display: flex; gap: var(--space-2); align-items: center; width: 100%; padding: var(--space-2) var(--space-3); color: var(--fg); text-align: left; text-decoration: none; font-size: var(--text-xs); }
+.card-menu a > svg, .card-menu button > svg { width: 16px; height: 16px; flex: none; color: var(--fg-subtle); }
+.card-menu a > span, .card-menu button > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card-menu a:hover, .card-menu button:hover { background: var(--bg-hover); }
+.card-menu a:hover > svg, .card-menu button:hover > svg { color: var(--fg); }
+.card-menu hr { height: 0; margin: var(--space-1) 0; border: 0; border-top: 1px solid var(--line); }
 .card-menu .menu-danger { border-top: 1px solid var(--line); color: var(--danger); }
+/* The rule above it already separates it, so it does not draw a second one. */
+.card-menu hr + .menu-danger { border-top: 0; }
+.card-menu .menu-danger > svg { color: var(--danger); }
 .card-menu .menu-danger:hover { background: var(--danger-bg); }
+/* The size and type of a picture, under its name. */
+.card-menu-detail { display: block; padding: 0 var(--space-3) var(--space-2); overflow: hidden; border-bottom: 1px solid var(--line); color: var(--fg-subtle); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-2xs); }
+.card-menu-detail:empty { display: none; }
+/* Name and detail are one block, so the rule goes under the pair rather than
+   between them. An empty detail is not there at all, and the name keeps its own. */
+.card-menu-name:has(+ .card-menu-detail:not(:empty)) { padding-bottom: 2px; border-bottom: 0; }
+
+/* The right-click menu carries the full set of actions, so it is sized by its
+   longest label rather than by the narrow ⋯ menu that shares its styling. */
+#imageContextMenu { width: max-content; min-width: 200px; max-width: min(280px, calc(100vw - var(--space-4))); }
 
 .loading-message { margin: var(--space-10) 0; color: var(--fg-muted); text-align: center; font-size: var(--text-sm); }
 .result-state { padding: var(--space-14) var(--space-5); color: var(--fg-muted); text-align: center; }
