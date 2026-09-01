@@ -1955,14 +1955,20 @@ function openFolder(folder, card = null) {
     card.style.viewTransitionName = "folder-open";
     $("#imagesPanel").style.viewTransitionName = "folder-open";
     const transition = document.startViewTransition(navigate);
+    // Swapping in the full, real image list is what the transition is
+    // supposed to lead into, not something happening underneath it: doing it
+    // while the transition is still animating its captured before/after
+    // snapshots rewrites the DOM mid-flight, which is the glitch (a flash or
+    // a mismatched frame) users saw opening a folder.
     transition.finished.finally(() => {
       card.style.removeProperty("view-transition-name");
       $("#imagesPanel").style.removeProperty("view-transition-name");
+      loadImages();
     });
   } else {
     navigate();
+    queueMicrotask(() => loadImages());
   }
-  queueMicrotask(() => loadImages());
 }
 
 function folderDestination(folder) {
