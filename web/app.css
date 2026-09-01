@@ -62,6 +62,9 @@
   --success: #7cc98a;       /* 9.4:1 on --bg */
   --success-line: #2f4a35;
   --success-bg: #161f18;
+  --info: #7fa1ff;          /* same blue as --focus, reused for info notices */
+  --info-line: #2d3a59;
+  --info-bg: #171b26;
   /* What goes on top of a --fg-coloured fill: the primary button inverts, so
      its label has to invert with it rather than being #fff on both themes. */
   --on-fg: #131312;
@@ -129,6 +132,9 @@
   --success: #28632f;
   --success-line: #bcd6c0;
   --success-bg: #f7fbf7;
+  --info: #3157dc;
+  --info-line: #b9c6f2;
+  --info-bg: #f5f7fe;
   --on-fg: #fff;
   --fg-hover: #333;
   --scrim: rgba(0, 0, 0, .25);
@@ -784,10 +790,14 @@ kbd { padding: 2px var(--space-2); border: 1px solid var(--line-strong); border-
 .import-progress.error .import-progress-status { color: var(--danger); }
 .import-progress:not([hidden]) + .message { bottom: 138px; }
 
-.message { position: fixed; z-index: 40; right: var(--space-5); bottom: var(--space-5); display: flex; max-width: 380px; gap: var(--space-3); align-items: start; padding: var(--space-3); border: 1px solid var(--line-strong); border-radius: var(--radius-md); background: var(--bg); box-shadow: var(--shadow-overlay); font-size: var(--text-sm); }
+.message { position: fixed; z-index: 40; right: var(--space-5); bottom: var(--space-5); display: flex; max-width: 380px; gap: var(--space-3); align-items: start; padding: var(--space-3); border: 1px solid var(--line-strong); border-left-width: 4px; border-radius: var(--radius-md); background: var(--bg); box-shadow: var(--shadow-overlay); font-size: var(--text-sm); }
 .message span { padding-top: var(--space-1); line-height: var(--leading-tight); }
 .message button { width: 28px; height: 28px; flex: none; font-size: var(--text-lg); }
-.message.error { color: var(--danger); border-color: var(--danger); }
+.message-icon { width: 22px; height: 22px; flex: none; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.message:not(.success):not(.error):not(.info) .message-icon,
+.message.info { color: var(--info); border-color: var(--info-line); border-left-color: var(--info); background: var(--info-bg); }
+.message.success { color: var(--success); border-color: var(--success-line); border-left-color: var(--success); background: var(--success-bg); }
+.message.error { color: var(--danger); border-color: var(--danger-line); border-left-color: var(--danger); background: var(--danger-bg); }
 
 /* A background check is quiet but never hidden: anything downloading has to be
    visible and has to be stoppable. */

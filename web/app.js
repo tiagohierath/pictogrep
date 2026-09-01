@@ -709,16 +709,25 @@ async function semanticSearch(query) {
   return requestSemanticResults(query);
 }
 
-function showMessage(text, error = false, persist = false, seconds = 3.5) {
+const MESSAGE_ICONS = {
+  success: '<path d="M20 6 9 17l-5-5"/>',
+  error: '<circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/>',
+  info: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/>',
+};
+
+function showMessage(text, error = false, persist = false, seconds = 3.5, type = null) {
   // Errors only. Every ordinary status line used to be posted back to the
   // server as well, which during a model download meant one HTTP round trip
   // and one log line per network chunk, on a phone, while that phone was busy
   // downloading 156 MB.
   if (error) logBackground("ui-status", text, "", "error");
+  const kind = type || (error ? "error" : "info");
   const box = $("#message");
   clearTimeout(messageTimer);
   $("#messageText").textContent = text;
-  box.classList.toggle("error", error);
+  box.classList.remove("success", "error", "info");
+  box.classList.add(kind);
+  $("#messageIcon").innerHTML = MESSAGE_ICONS[kind] || MESSAGE_ICONS.info;
   box.hidden = false;
   if (!persist) messageTimer = setTimeout(() => { box.hidden = true; }, seconds * 1000);
 }
@@ -2529,7 +2538,7 @@ async function refreshState() {
     } else if (previous === "running") {
       if (lastJobState === "complete") {
         lastLibraryRefreshAt = Date.now();
-        if (indexJobAnnounce) showMessage(appState.indexJob.message);
+        showMessage(appState.indexJob.message, false, false, 3.5, "success");
         await loadImages({keepOrder: true});
         await loadFolders();
         failedSemanticPaths.clear();
@@ -3451,6 +3460,7 @@ async function togglePinterestPlugin() {
 let syncExpiryTimer = null;
 let syncPollTimer = null;
 let syncPairingPeerIDs = null;
+let syncWasWaiting = false;
 
 // While the panel is open, and only then. Pairing and a first transfer both
 // finish in seconds and the user is watching both happen, so the screen has to
@@ -3539,8 +3549,12 @@ async function refreshSyncState() {
       const confirmation = t("sync.paired", {name: connected.name || ""});
       $("#syncQR").replaceChildren(document.createTextNode(confirmation));
       $("#syncExpiry").textContent = confirmation;
+      showMessage(confirmation, false, false, 4, "success");
     }
   }
+  const waiting = (state.outbox || {}).waiting || 0;
+  if (syncWasWaiting && waiting === 0 && !state.outbox?.sending) showMessage(t("sync.all_sent"), false, false, 4, "success");
+  syncWasWaiting = waiting > 0 || Boolean(state.outbox?.sending);
   return state;
 }
 
