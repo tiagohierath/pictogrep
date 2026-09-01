@@ -737,6 +737,7 @@ function showResultState(title = "", text = "", action = "", onclick = null) {
 
 function openMenu(pageTitle = "") {
   const drawer = $("#drawer");
+  drawer.classList.remove("plugin-page");
   drawer.classList.toggle("page", Boolean(pageTitle));
   $("#drawerTitle").textContent = pageTitle || t("app.menu");
   drawer.classList.add("open");
@@ -746,7 +747,7 @@ function openMenu(pageTitle = "") {
 }
 
 function closeMenu() {
-  $("#drawer").classList.remove("open", "page");
+  $("#drawer").classList.remove("open", "page", "plugin-page");
   $("#drawerTitle").textContent = t("app.menu");
   $("#drawer").setAttribute("aria-hidden", "true");
   $("#drawerScrim").hidden = true;
@@ -4812,6 +4813,7 @@ function openInstalledPlugin(plugin) {
   frame.src = `/plugin/${encodeURIComponent(plugin.id)}/${plugin.entry || ""}`;
   if (window.mountPlugin) window.mountPlugin(frame, plugin);
   openMenu(plugin.name || plugin.id);
+  $("#drawer").classList.add("plugin-page");
 }
 
 async function renderFollowedWebSources() {

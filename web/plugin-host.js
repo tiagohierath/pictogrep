@@ -9,8 +9,17 @@
 // See web/plugin-sdk.js for the plugin-side half of the same channel.
 
 (function () {
+  function imageListPath(args) {
+    const query = new URLSearchParams();
+    for (const name of ["mode", "count", "offset", "seed", "tag", "source"]) {
+      if (args[name] !== undefined && args[name] !== null && args[name] !== "") query.set(name, String(args[name]));
+    }
+    const suffix = query.toString();
+    return "/api/app/images" + (suffix ? "?" + suffix : "");
+  }
+
   const CAPABILITY_ROUTES = {
-    "images.list": { method: "GET", path: () => "/api/app/images" },
+    "images.list": { method: "GET", path: imageListPath },
     "images.search": { method: "GET", path: (args) => "/api/app/search?q=" + encodeURIComponent(args.query || "") },
     "images.read": { method: "GET", path: (args) => "/api/app/images/" + encodeURIComponent(args.id) },
     "images.tag": { method: "POST", path: () => "/api/app/tags", body: (args) => args },

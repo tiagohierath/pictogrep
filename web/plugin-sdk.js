@@ -29,7 +29,10 @@ window.pictogrep = (function () {
 
   return {
     images: {
-      list: () => call("images.list", {}),
+      // Options are deliberately the same small paging/scope vocabulary as
+      // /api/app/images. A spatial plugin may need the whole library rather
+      // than whichever first 120 records happen to fit the endpoint default.
+      list: (options = {}) => call("images.list", options),
       search: (query) => call("images.search", { query }),
       read: (id) => call("images.read", { id }),
       tag: (id, tags) => call("images.tag", { id, tags }),

@@ -365,7 +365,7 @@ body.show-filenames .image-filename { display: block; }
 .drawer-header strong { font-size: var(--text-lg); }
 .drawer.page { width: 100vw; max-width: none; border-left: 0; background: var(--bg-sunken); }
 .drawer.page .drawer-header { position: sticky; z-index: 2; top: 0; background: var(--bg); }
-.drawer.page .drawer-actions, .drawer.page > .drawer-section:not(#settingsSection):not(#pluginsSection):not(#pinterestSection):not(#webSection):not(#syncSection) { display: none; }
+.drawer.page .drawer-actions, .drawer.page > .drawer-section:not(#settingsSection):not(#pluginsSection):not(#pinterestSection):not(#webSection):not(#syncSection):not(#pluginHostSection) { display: none; }
 .drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #pinterestSection:not([hidden]), .drawer.page #webSection:not([hidden]), .drawer.page #syncSection:not([hidden]) { width: min(var(--panel-width), calc(100% - var(--space-8))); margin: var(--space-8) auto; padding: var(--space-8); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); }
 .drawer-actions { display: block; border-bottom: 1px solid var(--line); }
 .drawer-actions a, .drawer-actions button { display: flex; justify-content: space-between; width: 100%; padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--line); color: var(--fg); text-align: left; text-decoration: none; font-size: var(--text-md); }
@@ -459,6 +459,10 @@ body.show-filenames .image-filename { display: block; }
 .installed-plugin button { flex: none; }
 .plugin-host-section { display: flex; flex-direction: column; height: 100%; }
 .plugin-host-frame { flex: 1; width: 100%; min-height: 0; border: 0; border-radius: var(--radius-md); background: var(--bg-sunken); }
+.drawer.plugin-page { overflow: hidden; background: var(--bg); }
+.drawer.plugin-page #pluginHostSection:not([hidden]) { height: calc(100vh - var(--header-height)); padding: 0; border: 0; }
+.drawer.plugin-page #pluginHostSection > .section-title { display: none; }
+.drawer.plugin-page .plugin-host-frame { border-radius: 0; }
 .premium-list { margin: 0 0 var(--space-5); padding: 0 0 0 var(--space-5); color: var(--fg-muted); font-size: var(--text-sm); }
 .premium-list li { margin: 0 0 var(--space-1); }
 .premium-price { margin: 0 0 var(--space-4); font-size: var(--text-md); font-weight: 600; }
