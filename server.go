@@ -1415,6 +1415,19 @@ func (s *server) appFolders(w http.ResponseWriter, _ *http.Request) {
 	for _, source := range sources {
 		folders = append(folders, s.sourceFolderRecords(source, paths, indexed, preferences)...)
 	}
+	// The library is where imported pictures land, and it is not a source, so
+	// walking sources alone leaves the folder holding most of the collection
+	// with no card at all. It gets one here, and only when it has something in
+	// it, so a library nobody has imported into does not show an empty folder.
+	library := []string{}
+	for _, path := range paths {
+		if pathInside(path, s.app.libraryDir) {
+			library = append(library, path)
+		}
+	}
+	if len(library) > 0 {
+		folders = append(folders, s.folderRecord("source", "Library", s.app.libraryDir, library, indexed, preferences))
+	}
 	for _, name := range s.collectionNames() {
 		recordName := filepath.Base(filepath.FromSlash(name))
 		record := s.folderRecord("tag", recordName, name, s.collectionImages(name), indexed, preferences)
@@ -1502,9 +1515,14 @@ func (s *server) folderRecord(kind, name, value string, paths []string, indexed 
 		}
 		previews = append(previews, imageRecord{ID: id, Name: filepath.Base(path), Path: path, Mtime: fileMtime(path), URL: "/image/" + id})
 	}
+	// Unix seconds, not fileMtime's nanoseconds: the frontend's folderDate()
+	// does `new Date(lastAdded * 1000)`, which on a raw UnixNano value lands
+	// several centuries past what Date can represent, so Intl.DateTimeFormat
+	// throws formatting it and the whole folders render aborts before a
+	// single card is appended.
 	lastAdded := int64(0)
 	if len(paths) > 0 {
-		lastAdded = fileMtime(paths[0])
+		lastAdded = fileMtime(paths[0]) / int64(time.Second)
 	}
 	return map[string]any{
 		"kind": kind, "name": name, "value": value, "key": key, "count": len(paths),

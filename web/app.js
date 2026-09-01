@@ -384,7 +384,7 @@ function searchQueryValue() {
 
 function resizeSearchDraft() {
   const input = $("#searchQuery");
-  $("#searchDraftSizer").textContent = input.value || input.placeholder;
+  $("#clearSearchButton").hidden = !input.value;
 }
 
 function setSearchInput(value) {
@@ -1809,7 +1809,6 @@ function folderCard(folder) {
   card.dataset.folderKind = folder.kind;
   card.dataset.folderValue = folder.value;
   card.title = folder.kind === "source" ? folder.value : folder.name;
-  card.draggable = true;
 
   const open = document.createElement("button");
   open.className = "folder-open-target";
@@ -1843,41 +1842,9 @@ function folderCard(folder) {
   open.append(preview, details);
   open.onclick = () => openFolder(folder, card);
 
-  if (folder.favorite) {
-    const favorite = document.createElement("span");
-    favorite.className = "folder-favorite-mark";
-    favorite.textContent = "★";
-    favorite.setAttribute("aria-label", "Favorite");
-    card.append(favorite);
-  }
-
-  const actions = document.createElement("span");
-  actions.className = "folder-actions";
-  actions.append(
-    folderAction("Open", "↗", () => openFolder(folder, card)),
-    folderAction(folder.favorite ? "Unfavorite" : "Favorite", folder.favorite ? "★" : "☆", () => toggleFolderFavorite(folder)),
-    folderAction("Choose cover", "▣", () => openFolderCover(folder)),
-  );
-  if (folder.kind === "tag") actions.append(folderAction("Rename", "✎", () => openRenameFolder(folder)));
-  actions.append(folderAction("Export", "↓", () => exportFolder(folder)));
-  if (folder.kind === "tag") actions.append(folderAction("Delete", "×", () => openDeleteFolder(folder), "folder-delete-action"));
-  card.append(open, actions);
+  card.append(open);
 
   card.oncontextmenu = event => openFolderContextMenu(event, folder);
-  card.ondragstart = event => {
-    if (event.target.closest(".folder-actions")) {
-      event.preventDefault();
-      return;
-    }
-    draggedFolder = folder;
-    card.classList.add("is-dragging");
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("application/x-pictogrep-folder-key", folder.key);
-  };
-  card.ondragend = () => {
-    draggedFolder = null;
-    document.querySelectorAll(".folder-card").forEach(element => element.classList.remove("is-dragging", "is-reorder-before", "is-reorder-after", "is-image-drop-target"));
-  };
   card.ondragover = event => handleFolderDragOver(event, card, folder);
   card.ondragleave = event => {
     if (!card.contains(event.relatedTarget)) card.classList.remove("is-reorder-before", "is-reorder-after", "is-image-drop-target");
@@ -1943,7 +1910,6 @@ async function handleFolderDrop(event, card, folder) {
   folderRecords = ordered.concat(hidden);
   folderView.sort = "custom";
   folderView.order = folderRecords.map(item => item.key);
-  $("#folderSort").value = "custom";
   renderFolders();
   await saveFolderView({order: folderView.order, sort: "custom"});
 }
@@ -2227,32 +2193,15 @@ function folderSection(title, folders) {
 }
 
 function renderFolders() {
-  const list = $("#folderList");
   const query = $("#folderSearch").value.trim().toLowerCase();
   const matches = folderRecords.filter(folder => !query || folder.name.toLowerCase().includes(query) || folder.value.toLowerCase().includes(query));
-  list.dataset.size = folderView.cardSize;
-  if (query) {
-    const results = matches.sort(folderComparator(folderView.sort));
-    const section = folderSection("Results", results);
-    list.replaceChildren(...(section ? [section] : []));
-  } else {
-    const pinned = matches.filter(folder => folder.favorite).sort(folderComparator(folderView.sort));
-    const unpinned = matches.filter(folder => !folder.favorite);
-    const recent = [...unpinned].filter(folder => folder.lastAdded).sort(folderComparator("recent")).slice(0, 6);
-    const recentKeys = new Set(recent.map(folder => folder.key));
-    const everything = unpinned.filter(folder => !recentKeys.has(folder.key)).sort(folderComparator(folderView.sort));
-    list.replaceChildren(...[
-      folderSection("Pinned", pinned),
-      folderSection("Recent", recent),
-      folderSection("All folders", everything),
-    ].filter(Boolean));
-  }
+  // Biggest first, which puts the folder holding most of the library at the
+  // top where it is being looked for. Sections, pinning and a custom order
+  // were three ways to answer the same question and none of them showed a
+  // picture, so the grid is flat and the ranking is the one useful default.
+  matches.sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, undefined, {sensitivity: "base"}));
+  $("#folderList").replaceChildren(...matches.map(folderCard));
   $("#foldersEmpty").hidden = matches.length !== 0;
-}
-
-function updateFolderSizeLabel() {
-  const labels = {tiny: "Tiny cards", medium: "Medium cards", huge: "Huge cards"};
-  $("#folderSizeLabel").textContent = labels[folderView.cardSize] || labels.medium;
 }
 
 async function loadFolders() {
@@ -2262,9 +2211,6 @@ async function loadFolders() {
     folderView = {...folderView, ...(data.view || {})};
     const parent = $("#newFolderParent");
     parent.replaceChildren(new Option(t("folders.top_level"), ""), ...(appState?.tags || []).map(tag => new Option(tag.name, tag.name)));
-    $("#folderSort").value = folderView.sort;
-    $("#folderSize").value = {tiny: 0, medium: 1, huge: 2}[folderView.cardSize] ?? 1;
-    updateFolderSizeLabel();
     renderFolders();
   } catch (error) {
     $("#foldersEmpty").hidden = false;
@@ -4387,17 +4333,6 @@ $("#calendarTab").onclick = loadCalendar;
 $("#foldersTab").onclick = () => { switchTab("folders"); loadFolders(); };
 $("#newFolderButton").onclick = () => openCreateFolder();
 $("#folderSearch").oninput = renderFolders;
-$("#folderSort").onchange = () => {
-  folderView.sort = $("#folderSort").value;
-  renderFolders();
-  saveFolderView({sort: folderView.sort});
-};
-$("#folderSize").oninput = () => {
-  folderView.cardSize = ["tiny", "medium", "huge"][Number($("#folderSize").value)] || "medium";
-  updateFolderSizeLabel();
-  renderFolders();
-};
-$("#folderSize").onchange = () => saveFolderView({cardSize: folderView.cardSize});
 $("#showBoards").onclick = loadBoards;
 $("#showPinterest").onclick = showPinterestImport;
 $("#showSync").onclick = showSyncPairing;
@@ -4639,12 +4574,17 @@ $("#searchQuery").addEventListener("blur", event => {
   $("#recentSearches").hidden = true;
 });
 $("#searchInputShell").addEventListener("pointerdown", event => {
-  if (event.target === event.currentTarget) {
+  if (!event.target.closest("button, input")) {
     event.preventDefault();
     $("#searchQuery").focus();
   }
 });
 $("#searchScope").onclick = clearSearchScope;
+$("#clearSearchButton").onclick = () => {
+  clearSearchInput();
+  performSearch();
+  $("#searchQuery").focus();
+};
 document.querySelectorAll("[data-smart]").forEach(button => {
   button.onclick = () => showSidebarSmart(button.dataset.smart);
 });

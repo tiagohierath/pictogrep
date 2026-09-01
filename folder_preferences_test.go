@@ -49,7 +49,20 @@ func TestFolderDashboardPreferencesRenameAndExport(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &foldersResponse); err != nil {
 		t.Fatal(err)
 	}
-	if len(foldersResponse.Folders) != 1 || !foldersResponse.Folders[0].Favorite || foldersResponse.Folders[0].CoverID != coverID || foldersResponse.Folders[0].Images[0].ID != coverID {
+	// The library itself is a folder now, so the tag is no longer the only one
+	// in the response and cannot be read off the front of the list.
+	var tagFolder *struct {
+		Value    string        `json:"value"`
+		Favorite bool          `json:"favorite"`
+		CoverID  string        `json:"coverId"`
+		Images   []imageRecord `json:"images"`
+	}
+	for index := range foldersResponse.Folders {
+		if foldersResponse.Folders[index].Value == "ideas" {
+			tagFolder = &foldersResponse.Folders[index]
+		}
+	}
+	if tagFolder == nil || !tagFolder.Favorite || tagFolder.CoverID != coverID || tagFolder.Images[0].ID != coverID {
 		t.Fatalf("folder preferences missing from response: %#v", foldersResponse)
 	}
 	if foldersResponse.View.CardSize != "huge" || foldersResponse.View.Sort != "name" {

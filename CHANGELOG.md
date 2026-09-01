@@ -1,6 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.11.1 - 2026-09-01
+
+- Search is one clean field now. The separate Search button and instruction line are gone; a quiet search icon and clear button make the same-sized box easier to read, while typing and Enter keep working as before.
+- Folders are simpler again: the flat grid now ranks by picture count, biggest first, so the folder holding most of your library shows up where you'd look for it. Sorting, pinning, card-size, and drag-to-reorder are gone; drag pictures onto a folder still works. Your library itself now shows up as a folder alongside tags.
+- Fixed a bug where a folder's "last added" date could be so far in the future the whole folder grid failed to render.
 
 ## 0.11.0 - 2026-09-01
 

@@ -282,25 +282,23 @@ input[type="file"] { padding: var(--space-1) var(--space-2); }
 
 .search {
   position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0;
   width: min(620px, 100%);
   margin: 0 auto var(--space-8);
 }
 
-.search-input-shell { display: flex; min-width: 0; height: var(--control-height-lg); flex-wrap: nowrap; gap: var(--space-1); align-items: center; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; padding: var(--space-1); border: 2px solid var(--line); border-radius: var(--radius-lg) 0 0 var(--radius-lg); background: var(--bg-sunken); box-shadow: inset 0 1px 2px rgba(28,25,23,.07); cursor: text; scrollbar-width: none; }
+.search-input-shell { display: flex; min-width: 0; height: var(--control-height-lg); flex-wrap: nowrap; gap: var(--space-2); align-items: center; overflow-x: auto; overflow-y: hidden; overscroll-behavior: contain; padding: 0 var(--space-3); border: 1px solid var(--line-strong); border-radius: 999px; background: var(--bg-sunken); box-shadow: 0 1px 0 rgba(255,255,255,.03), 0 6px 24px rgba(0,0,0,.08); cursor: text; scrollbar-width: none; transition: border-color .16s ease, background-color .16s ease, box-shadow .16s ease; }
 .search-input-shell::-webkit-scrollbar { display: none; }
-.search-input-shell:focus-within { border-color: var(--focus); background: var(--bg); box-shadow: none; }
-.search-scope { position: relative; display: block; flex: none; max-width: 130px; height: 28px; min-height: 0; padding: 0 var(--space-5) 0 var(--space-2); overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg-hover); color: var(--fg-muted); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-2xs); line-height: 26px; }
+.search-input-shell:focus-within { border-color: var(--focus); background: var(--bg); box-shadow: 0 0 0 3px var(--focus-ring), 0 8px 28px rgba(0,0,0,.1); }
+.search-icon { width: 20px; height: 20px; flex: none; fill: none; stroke: var(--fg-subtle); stroke-width: 1.8; stroke-linecap: round; transition: stroke .16s ease; }
+.search-input-shell:focus-within .search-icon { stroke: var(--focus); }
+.search-scope { position: relative; display: block; flex: none; max-width: 150px; height: 30px; min-height: 0; padding: 0 var(--space-6) 0 var(--space-3); overflow: hidden; border: 0; border-radius: 999px; background: var(--bg-hover); color: var(--fg-muted); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-2xs); line-height: 30px; }
 .search-scope::after { position: absolute; top: 50%; right: var(--space-2); transform: translateY(-50%); color: var(--fg-subtle); font-size: var(--text-md); line-height: 1; content: "×"; }
-.search-draft { position: relative; display: flex; min-width: 90px; height: 28px; flex: 1; }
-.search-draft > span { max-width: 360px; padding: 0 var(--space-1); overflow: hidden; visibility: hidden; white-space: pre; font-size: var(--text-sm); }
-.search-draft input { position: absolute; inset: 0; width: 100%; min-width: 0; height: 100%; min-height: 0; padding: 0 var(--space-1); border: 0; border-radius: 0; outline: 0; background: transparent; font-size: var(--text-sm); }
-.search > button[type="submit"] { min-width: 84px; border-left: 0; border-radius: 0 var(--radius-lg) var(--radius-lg) 0; background: var(--bg-sunken); }
-.search > button[type="submit"]:hover { background: var(--bg-hover); }
-.search-input-help { display: flex; grid-column: 1 / -1; justify-content: space-between; min-height: var(--space-4); padding: var(--space-1) var(--space-1) 0; color: var(--fg-subtle); font-size: var(--text-2xs); }
-.recent-searches { position: absolute; z-index: 12; top: calc(var(--control-height-lg) + var(--space-1)); left: 0; right: 0; grid-column: 1 / -1; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg); box-shadow: var(--shadow-menu); }
+.search-draft { position: relative; display: flex; min-width: 90px; height: 100%; flex: 1; }
+.search-draft input { width: 100%; min-width: 0; height: 100%; min-height: 0; padding: 0; border: 0; border-radius: 0; outline: 0; background: transparent; color: var(--fg); font-size: var(--text-md); }
+.search-draft input::placeholder { color: var(--fg-subtle); opacity: 1; }
+.search-clear { display: grid; width: 30px; height: 30px; min-height: 0; flex: none; padding: 0; place-items: center; border: 0; border-radius: 50%; background: transparent; color: var(--fg-subtle); font-size: var(--text-lg); line-height: 1; }
+.search-clear:hover { background: var(--bg-hover); color: var(--fg); }
+.recent-searches { position: absolute; z-index: 12; top: calc(var(--control-height-lg) + var(--space-2)); left: 0; right: 0; overflow: hidden; border: 1px solid var(--line-strong); border-radius: var(--radius-lg); background: var(--bg); box-shadow: var(--shadow-menu); }
 .recent-searches button { display: block; width: 100%; padding: var(--space-3); border-bottom: 1px solid var(--line); color: var(--fg-muted); text-align: left; }
 .recent-searches button:last-child { border-bottom: 0; }
 .recent-searches button:hover { background: var(--bg-hover); }
@@ -386,28 +384,19 @@ body.show-filenames .image-filename { display: block; }
 .empty .link-button:hover { background: none; }
 .empty-alternative-help { display: block; margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--text-xs); }
 
-.folder-toolbar { position: sticky; z-index: 4; top: 0; display: grid; grid-template-columns: minmax(190px, 1fr) auto auto minmax(150px, auto); gap: var(--space-2); align-items: center; margin: 0 0 var(--space-7); padding: var(--space-2) 0; background: var(--bg); }
+.folder-toolbar { position: sticky; z-index: 4; top: 0; display: grid; grid-template-columns: minmax(190px, 1fr) auto; gap: var(--space-2); align-items: center; margin: 0 0 var(--space-5); padding: var(--space-2) 0; background: var(--bg); }
 .folder-search { display: flex; align-items: center; min-width: 0; height: var(--control-height); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg); }
 .folder-search:focus-within { border-color: var(--fg-muted); box-shadow: 0 0 0 2px var(--bg-hover); }
 .folder-search > span { padding-left: var(--space-3); color: var(--fg-subtle); }
 .folder-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; box-shadow: none; }
-.folder-sort select { min-width: 126px; }
-.folder-size { display: grid; grid-template-columns: auto minmax(76px, 112px); gap: var(--space-2); align-items: center; color: var(--fg-muted); font-size: var(--text-xs); white-space: nowrap; }
-.folder-size input { width: 100%; accent-color: var(--fg); }
-.folder-list { display: block; width: 100%; }
-.folder-section { margin: 0 0 var(--space-9); }
-.folder-section-heading { display: flex; gap: var(--space-2); align-items: baseline; margin: 0 0 var(--space-3); font-size: var(--text-sm); font-weight: 600; }
-.folder-section-heading span { color: var(--fg-subtle); font-size: var(--text-2xs); font-weight: 400; }
-.folder-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: var(--space-5); }
-.folder-list[data-size="tiny"] .folder-grid { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: var(--space-3); }
-.folder-list[data-size="huge"] .folder-grid { grid-template-columns: repeat(auto-fill, minmax(min(360px, 100%), 1fr)); gap: var(--space-7); }
+/* One grid, no sections: the folders are a wall of covers, which is the
+   whole point of looking at them as pictures rather than as a list. */
+.folder-list { display: grid; width: 100%; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: var(--space-5); }
 .folder-card { position: relative; min-width: 0; border-radius: var(--radius-md); background: var(--bg); box-shadow: 0 0 0 1px var(--line); transition: box-shadow .16s ease, transform .16s ease; }
-.folder-card:hover, .folder-card:focus-within { z-index: 1; box-shadow: 0 8px 26px rgba(0, 0, 0, .12), 0 0 0 1px var(--line-strong); transform: translateY(-2px); }
+.folder-card:hover, .folder-card:focus-within { z-index: 1; box-shadow: 0 6px 20px rgba(0, 0, 0, .22), 0 0 0 1px var(--line-strong); }
 .folder-open-target { display: block; width: 100%; min-width: 0; padding: 0; border-radius: inherit; text-align: left; }
 .folder-open-target:hover { background: transparent; }
 .folder-preview { position: relative; display: grid; width: 100%; overflow: hidden; aspect-ratio: 4 / 3; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px; border-radius: var(--radius-md) var(--radius-md) 0 0; background: var(--bg-hover); }
-.folder-list[data-size="huge"] .folder-preview { aspect-ratio: 16 / 11; }
-.folder-list[data-size="tiny"] .folder-preview { aspect-ratio: 5 / 4; }
 .folder-preview img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .folder-preview.images-1 { display: block; }
 .folder-preview.images-2 { grid-template-rows: 1fr; }
@@ -419,23 +408,6 @@ body.show-filenames .image-filename { display: block; }
 .folder-card strong { display: block; overflow: hidden; color: var(--fg); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-md); font-weight: 600; }
 .folder-card small { display: block; margin-top: 2px; overflow: hidden; color: var(--fg-muted); text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-2xs); }
 .folder-date { color: var(--fg-subtle); font-size: var(--text-2xs); white-space: nowrap; }
-.folder-favorite-mark { position: absolute; z-index: 2; top: var(--space-2); left: var(--space-2); display: grid; width: 26px; height: 26px; place-items: center; border-radius: 50%; background: color-mix(in srgb, var(--bg) 86%, transparent); box-shadow: var(--shadow-menu); }
-.folder-actions { position: absolute; z-index: 3; top: var(--space-2); right: var(--space-2); display: flex; max-width: calc(100% - var(--space-4)); gap: 2px; padding: 3px; border-radius: var(--radius); opacity: 0; background: color-mix(in srgb, var(--bg) 92%, transparent); box-shadow: var(--shadow-menu); transform: translateY(-3px); transition: opacity .14s ease, transform .14s ease; }
-.folder-card:hover .folder-actions, .folder-card:focus-within .folder-actions { opacity: 1; transform: none; }
-.folder-actions button { display: grid; width: 29px; height: 29px; padding: 0; place-items: center; border-radius: calc(var(--radius) - 2px); color: var(--fg-muted); font-size: var(--text-xs); }
-.folder-actions button:hover { color: var(--fg); background: var(--bg-hover); }
-.folder-actions .folder-delete-action:hover { color: var(--danger); background: var(--danger-bg); }
-.folder-list[data-size="tiny"] .folder-details { display: block; padding: var(--space-2); }
-.folder-list[data-size="tiny"] .folder-card strong { font-size: var(--text-sm); }
-.folder-list[data-size="tiny"] .folder-date { display: none; }
-.folder-list[data-size="tiny"] .folder-actions { inset: auto var(--space-1) var(--space-1) auto; }
-.folder-list[data-size="tiny"] .folder-actions button { width: 26px; height: 26px; }
-.folder-list[data-size="tiny"] .folder-actions button:nth-child(n+4) { display: none; }
-.folder-card.is-image-drop-target { box-shadow: 0 0 0 3px var(--fg), 0 12px 30px rgba(0, 0, 0, .16); transform: scale(1.025); }
-.folder-card.is-reorder-before::before, .folder-card.is-reorder-after::after { position: absolute; z-index: 5; top: 0; bottom: 0; width: 3px; border-radius: 3px; background: var(--fg); content: ""; }
-.folder-card.is-reorder-before::before { left: calc(var(--space-3) * -1); }
-.folder-card.is-reorder-after::after { right: calc(var(--space-3) * -1); }
-.folder-card.is-dragging { opacity: .45; }
 .folder-cover-dialog { width: min(760px, calc(100% - var(--space-6))); }
 .folder-cover-grid { display: grid; max-height: min(62vh, 620px); overflow: auto; grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: var(--space-2); margin: var(--space-4) 0; }
 .folder-cover-grid button { overflow: hidden; aspect-ratio: 1; padding: 0; border-radius: var(--radius); background: var(--bg-hover); }
@@ -453,13 +425,6 @@ body.show-filenames .image-filename { display: block; }
 
 @media (max-width: 760px) {
   .folder-toolbar { position: static; grid-template-columns: minmax(0, 1fr) auto; }
-  .folder-sort { grid-column: 1; }
-  .folder-sort select { width: 100%; }
-  .folder-size { grid-column: 2; }
-  .folder-size span { display: none; }
-  .folder-grid, .folder-list[data-size="huge"] .folder-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
-  .folder-list[data-size="tiny"] .folder-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
-  .folder-actions button:nth-child(n+4) { display: none; }
 }
 
 /* The menu drawer, and the full-page panels it grows into. */

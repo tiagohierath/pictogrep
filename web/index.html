@@ -17,15 +17,14 @@
   <main class="main-content">
     <form class="search" id="searchForm">
       <div class="search-input-shell" id="searchInputShell">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"></circle><path d="m16 16 4 4"></path></svg>
         <button type="button" class="search-scope" id="searchScope" hidden aria-label="Clear search folder" data-i18n-aria-label="search.clear_folder"></button>
         <span class="search-draft">
-          <span id="searchDraftSizer" aria-hidden></span>
-          <input id="searchQuery" type="text" placeholder="Search" data-i18n-placeholder="search.placeholder" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Search pictures" data-i18n-aria-label="search.placeholder" aria-describedby="searchInputHint">
+          <input id="searchQuery" type="text" placeholder="Search" data-i18n-placeholder="search.placeholder" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" enterkeyhint="search" aria-label="Search pictures" data-i18n-aria-label="search.placeholder">
         </span>
+        <button type="button" class="search-clear" id="clearSearchButton" aria-label="Clear search" data-i18n-aria-label="search.clear" hidden>×</button>
       </div>
-      <button type="submit" data-i18n="search.action">Search</button>
       <div class="recent-searches" id="recentSearches" hidden></div>
-      <div class="search-input-help desktop-only"><span id="searchInputHint" data-i18n="search.input_help">Type normally · Enter searches</span></div>
     </form>
 
     <div class="tabs" role="tablist" aria-label="Library view" data-i18n-aria-label="tabs.library_view">
@@ -72,10 +71,8 @@
 
     <section id="foldersPanel" aria-labelledby="foldersTab" hidden>
       <div class="folder-toolbar">
-        <label class="folder-search"><span aria-hidden="true">⌕</span><input type="search" id="folderSearch" placeholder="Search folders" autocomplete="off"></label>
+        <label class="folder-search"><span aria-hidden="true">⌕</span><input type="search" id="folderSearch" placeholder="Search folders" data-i18n-placeholder="folders.search" autocomplete="off"></label>
         <button type="button" class="primary" id="newFolderButton" data-i18n="folders.new">+ New folder</button>
-        <label class="folder-sort"><span class="sr-only">Sort folders</span><select id="folderSort" aria-label="Sort folders"><option value="custom">My order</option><option value="recent">Last added</option><option value="name">Name</option><option value="size">Image count</option></select></label>
-        <label class="folder-size"><span id="folderSizeLabel">Medium cards</span><input type="range" id="folderSize" min="0" max="2" step="1" value="1" aria-label="Folder card size"></label>
       </div>
       <div class="folder-list" id="folderList"></div>
       <div class="empty" id="foldersEmpty" hidden><p data-i18n="folders.none">No folders have been added.</p></div>

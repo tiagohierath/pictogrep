@@ -126,6 +126,7 @@
   "folder_menu.refresh": "Check for new pictures",
   "folder_menu.copy_path": "Copy folder path",
   "folders.new": "+ New folder",
+  "folders.search": "Search folders",
   "folders.new_aria": "New folder",
   "folders.none": "No folders have been added.",
   "folders.create": "Create folder",
