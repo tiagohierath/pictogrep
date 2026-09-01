@@ -424,10 +424,30 @@ body.show-filenames .image-filename { display: block; }
 .folder-create-more[open] summary { margin-bottom: var(--space-3); }
 .folder-create-more > label, .folder-create-more > input, .folder-create-more > select { width: 100%; }
 
-::view-transition-old(folder-open) { animation: folder-open-old .2s ease-out both; }
-::view-transition-new(folder-open) { animation: folder-open-new .26s ease-out both; }
-@keyframes folder-open-old { to { opacity: 0; transform: scale(1.025); } }
-@keyframes folder-open-new { from { opacity: 0; transform: scale(.985); } }
+/* Opening a folder morphs the card's rectangle into the image panel. The two
+   snapshots have wildly different aspect ratios, so the default object-fit
+   (fill) squashes them while the box travels, which is what made this look
+   dirty. Cropping from the centre instead keeps both frames undistorted, and
+   giving the group, the old frame and the new frame one duration and one
+   easing keeps the box, the fade-out and the fade-in on the same clock. */
+::view-transition-group(folder-open) { animation-duration: .26s; animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
+::view-transition-image-pair(folder-open) { isolation: none; }
+::view-transition-old(folder-open),
+::view-transition-new(folder-open) {
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+  mix-blend-mode: normal;
+  animation-duration: .26s;
+  animation-timing-function: cubic-bezier(.2, 0, 0, 1);
+}
+::view-transition-old(folder-open) { animation-name: folder-open-old; }
+::view-transition-new(folder-open) { animation-name: folder-open-new; }
+/* The card leaves early so the two never muddle into each other halfway. */
+@keyframes folder-open-old { 0% { opacity: 1; } 55%, 100% { opacity: 0; } }
+@keyframes folder-open-new { 0%, 15% { opacity: 0; } 100% { opacity: 1; } }
+/* The chrome around the morph shouldn't outlast it. */
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .26s; }
 
 @media (max-width: 760px) {
   .folder-toolbar { position: static; grid-template-columns: minmax(0, 1fr) auto; }
@@ -1015,6 +1035,8 @@ body.onboarding-open { overflow: hidden; }
   .loading-image.is-slow-loading, img.is-revealing, .image-card-skeleton span,
   .viewer-picture.is-image-loading.is-slow-loading::before { animation: none; }
   .onboarding-choice { transition: none; }
+  .folder-card { transition: none; }
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
 
 /* Inside the Android app. The class is set from the server's answer, not from a

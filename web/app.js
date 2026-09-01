@@ -1950,8 +1950,14 @@ function openFolder(folder, card = null) {
     setFolderScope(folder);
     switchTab("images");
     if (!currentQuery && folder.images?.length) renderImages(folder.images, folder.count);
+    // The folder wall can be scrolled a long way down. Landing at the top is
+    // where the image list starts anyway, and doing it inside the transition
+    // means the morph animates to the resting position instead of ending on a
+    // jump.
+    window.scrollTo({top: 0, behavior: "instant"});
   };
-  if (card && document.startViewTransition) {
+  const stillMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  if (card && !stillMotion && document.startViewTransition) {
     card.style.viewTransitionName = "folder-open";
     $("#imagesPanel").style.viewTransitionName = "folder-open";
     const transition = document.startViewTransition(navigate);
