@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.2 - 2026-09-01
+
+- Notifications now carry a colored icon (check, warning, info) instead of plain text.
+- AI search indexing now always shows a notification when it finishes, not just when you were waiting on it.
+- Connecting a phone or finishing a sync now shows a notification too, not just an update in the Connect phone panel.
+- Fixed a visual glitch when opening a folder: the real picture grid could flash in mid-animation instead of after it.
+
 ## 0.11.1 - 2026-09-01
 
 - Search is one clean field now. The separate Search button and instruction line are gone; a quiet search icon and clear button make the same-sized box easier to read, while typing and Enter keep working as before.
