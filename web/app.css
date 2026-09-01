@@ -269,7 +269,14 @@ input[type="file"] { padding: var(--space-1) var(--space-2); }
   padding: 0 var(--space-6);
   border-bottom: 1px solid var(--line);
   background: var(--bg);
+  transition: transform .22s cubic-bezier(.2, 0, 0, 1);
 }
+
+/* Scrolling down through the grid takes the bar with it, scrolling up brings
+   it straight back. The pictures are the content; a permanent 72px strip of
+   chrome across the top of them is not. `.main-content` keeps its padding
+   either way, so nothing below reflows when the bar leaves. */
+body.header-hidden .app-header { transform: translateY(-100%); }
 
 .wordmark {
   position: absolute;
@@ -1036,6 +1043,10 @@ body.onboarding-open { overflow: hidden; }
   .viewer-picture.is-image-loading.is-slow-loading::before { animation: none; }
   .onboarding-choice { transition: none; }
   .folder-card { transition: none; }
+  /* A bar sliding in and out of the screen is exactly the motion this asks to
+     be spared, so it simply stays put. */
+  .app-header { transition: none; }
+  body.header-hidden .app-header { transform: none; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
 

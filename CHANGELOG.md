@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- The top bar now slides out of the way as you scroll down through your pictures and comes back as soon as you scroll up, so the grid gets the whole screen. It stays put near the top of a page, while a menu or panel is open, and if you have asked your system for reduced motion.
+- Opening a folder animates cleanly: the cover no longer stretches as it grows into the picture grid, the fade and the movement finish together, and opening a folder from far down the list no longer ends on a jump.
+
 ## 0.11.2 - 2026-09-01
 
 - Notifications now carry a colored icon (check, warning, info) instead of plain text.

@@ -754,6 +754,9 @@ function openMenu(pageTitle = "") {
   drawer.classList.toggle("page", Boolean(pageTitle));
   $("#drawerTitle").textContent = pageTitle || t("app.menu");
   drawer.classList.add("open");
+  // Closing the drawer hands focus back to the menu button, which has to still
+  // be somewhere on the screen when it gets it.
+  document.body.classList.remove("header-hidden");
   $("#drawer").setAttribute("aria-hidden", "false");
   $("#drawerScrim").hidden = false;
   $("#menuButton").setAttribute("aria-expanded", "true");
@@ -1592,6 +1595,8 @@ function openSidebar() {
   $("#pluginSidebar").hidden = false;
   $("#pluginSidebar").setAttribute("aria-hidden", "false");
   document.body.classList.add("sidebar-open");
+  // The sidebar is pinned under the bar, so the bar has to be on screen.
+  document.body.classList.remove("header-hidden");
   $("#sidebarButton").setAttribute("aria-expanded", "true");
 }
 
@@ -4355,6 +4360,59 @@ $("#shuffleCommons").onclick = () => {
   clearSearchInput();
   loadCommons();
 };
+// The top bar gets out of the way going down the grid and comes back the
+// instant you scroll up, so reaching the menu is one flick rather than a trip
+// to the top of the library.
+function watchHeaderOnScroll() {
+  const header = $(".app-header");
+  if (!header) return;
+  const stillMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+  // Small scrolls are noise: a trackpad, a rubber band, the grid growing a row
+  // as more pictures load. Only a deliberate drag in one direction moves it.
+  const NUDGE = 8;
+  let lastY = window.scrollY;
+  let queued = false;
+
+  const pinned = () => stillMotion?.matches
+    || document.body.classList.contains("sidebar-open")
+    || document.querySelector("dialog[open]")
+    || document.querySelector(".drawer.open")
+    || document.querySelector(".card-menu")
+    || header.contains(document.activeElement);
+
+  const settle = () => {
+    queued = false;
+    const y = Math.max(0, window.scrollY);
+    const moved = y - lastY;
+    // Near the top the bar belongs on screen no matter which way you came, and
+    // a page too short to scroll past it must never be able to lose it.
+    const atTop = y <= header.offsetHeight;
+    const noRoom = document.documentElement.scrollHeight - window.innerHeight < header.offsetHeight * 2;
+    if (Math.abs(moved) >= NUDGE || atTop) {
+      const hide = !atTop && !noRoom && !pinned() && moved > 0;
+      document.body.classList.toggle("header-hidden", hide);
+      lastY = y;
+    }
+  };
+
+  const onScroll = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(settle);
+  };
+
+  document.addEventListener("scroll", onScroll, {passive: true});
+  // Tabbing into the bar has to bring it back, or keyboard focus lands on a
+  // control that is sitting off the top of the screen. A resize can change the
+  // maths too: a window that just got tall may no longer have room to scroll.
+  document.addEventListener("focusin", (event) => {
+    header.contains(event.target) && document.body.classList.remove("header-hidden");
+  });
+  window.addEventListener("resize", onScroll, {passive: true});
+  settle();
+}
+watchHeaderOnScroll();
+
 $("#calendarTab").onclick = loadCalendar;
 $("#foldersTab").onclick = () => { switchTab("folders"); loadFolders(); };
 $("#newFolderButton").onclick = () => openCreateFolder();
