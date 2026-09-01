@@ -249,18 +249,18 @@ input[type="file"] { padding: var(--space-1) var(--space-2); }
 .tabs button.active { border-color: var(--fg); color: var(--fg); }
 .tabs span { color: var(--fg-subtle); font-size: var(--text-xs); }
 
-/* column-fill: auto, not the balance default, matters here specifically:
-   infinite scroll appends new cards to this grid as you scroll, and with
-   balance (the default for a multi-column box with no fixed height) Chrome
-   rebalances column heights on every append, which can move already-visible
-   cards into a different column. The picture never changed, only which
-   column it landed in, but scrolling made it look like pictures were
-   switching under you. auto fills columns in document order and never moves
-   what's already placed. */
-.image-grid { columns: 220px; column-gap: var(--space-4); column-fill: auto; }
+/* Calendar groups are finite and can use balanced CSS columns. The endless
+   main grid opts into stable-masonry-grid below: CSS columns always rebalance
+   an auto-height box after an append, including with column-fill: auto. */
+.image-grid { columns: 220px; column-gap: var(--space-4); }
 body[data-thumbnail-size="small"] .image-grid { columns: 160px; }
 body[data-thumbnail-size="large"] .image-grid { columns: 300px; }
 .image-grid.is-loading { columns: auto; }
+.stable-masonry-grid { position: relative; columns: auto; --masonry-gap: var(--space-4); --masonry-column-width: 220px; }
+body[data-thumbnail-size="small"] #imageGrid { --masonry-column-width: 160px; }
+body[data-thumbnail-size="large"] #imageGrid { --masonry-column-width: 300px; }
+.stable-masonry-grid > .image-card,
+.stable-masonry-grid > .related-card { position: absolute; margin: 0; }
 .grid-more { padding: var(--space-5) 0; color: var(--fg-muted); font-size: var(--text-sm); text-align: center; }
 .grid-retry { font-size: var(--text-sm); }
 .grid-sentinel { height: 1px; }
@@ -646,7 +646,8 @@ kbd { padding: 2px var(--space-2); border: 1px solid var(--line-strong); border-
 .viewer-tag { padding: var(--space-1) var(--space-2); border-radius: var(--radius); background: var(--bg-hover); color: var(--fg-muted); font-size: var(--text-xs); }
 .viewer-add-tag { min-height: 28px; padding: 0 var(--space-2); font-size: var(--text-xs); }
 .viewer-tags-empty, #relatedStatus { color: var(--fg-subtle); font-size: var(--text-sm); }
-.related-grid { columns: 180px; column-gap: var(--space-3); column-fill: auto; }
+.related-grid { columns: 180px; column-gap: var(--space-3); }
+#relatedGrid.stable-masonry-grid { columns: auto; --masonry-gap: var(--space-3); --masonry-column-width: 180px; }
 .related-card { display: block; width: 100%; margin: 0 0 var(--space-3); padding: 0; overflow: hidden; break-inside: avoid; border-radius: var(--radius); background: var(--bg-hover); }
 .related-card img { display: block; width: 100%; height: auto; }
 .related-card:hover, .related-card:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
@@ -832,6 +833,9 @@ body.onboarding-open { overflow: hidden; }
   .image-grid { columns: 150px; column-gap: var(--space-3); }
   body[data-thumbnail-size="small"] .image-grid { columns: 120px; }
   body[data-thumbnail-size="large"] .image-grid { columns: 210px; }
+  #imageGrid.stable-masonry-grid { --masonry-gap: var(--space-3); --masonry-column-width: 150px; }
+  body[data-thumbnail-size="small"] #imageGrid { --masonry-column-width: 120px; }
+  body[data-thumbnail-size="large"] #imageGrid { --masonry-column-width: 210px; }
 
   /* The strip under each picture exists to hold the ⋯ button, and filenames
      are off by default, so on a phone it is thirty pixels of nothing repeated
@@ -878,6 +882,7 @@ body.onboarding-open { overflow: hidden; }
   .viewer-next { right: var(--space-2); }
   .viewer-details { width: calc(100% - var(--space-6)); padding-top: var(--space-6); }
   .related-grid { columns: 2; column-gap: var(--space-2); }
+  #relatedGrid.stable-masonry-grid { --masonry-column-count: 2; --masonry-gap: var(--space-2); }
   .related-card { margin-bottom: var(--space-2); }
   .canvas-hint { right: 62px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .canvas-image { width: 94px; height: 78px; }

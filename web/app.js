@@ -85,6 +85,7 @@ const semanticVectors = new Map();
 const semanticResults = new Map();
 const viewerPreviewPromises = new Map();
 const loadedImageURLs = new Set();
+const masonryLayouts = new WeakMap();
 const recentSearchesKey = "pictogrep.recentSearches";
 
 function rememberLoadedImage(url) {
@@ -156,6 +157,88 @@ function loadImage(image, url, {fallback = "", label = "", onload = null} = {}) 
   };
 
   assign(url);
+}
+
+/**
+ * CSS multi-column layout balances all of its columns whenever more children
+ * are appended. Both endless picture lists therefore moved cards that were
+ * already on screen every time the next page arrived. Keep a card's chosen
+ * column in a WeakMap instead: a changing image height may move later cards
+ * vertically, but browsing can never move an existing card sideways or put a
+ * different picture in its place.
+ */
+function layoutMasonry(grid) {
+  if (!grid?.classList.contains("stable-masonry-grid")) return;
+  let state = masonryLayouts.get(grid);
+  if (!state) {
+    state = {columns: new WeakMap(), columnCount: 0, width: 0, frame: 0, observed: new Set()};
+    state.observer = new ResizeObserver(entries => {
+      const gridEntry = entries.find(entry => entry.target === grid);
+      const width = gridEntry?.contentRect.width || grid.getBoundingClientRect().width;
+      if (Math.abs(width - state.width) > 0.5 || entries.some(entry => entry.target !== grid)) {
+        scheduleMasonry(grid);
+      }
+    });
+    state.observer.observe(grid);
+    masonryLayouts.set(grid, state);
+  }
+
+  const cards = [...grid.children].filter(child =>
+    child.classList.contains("image-card") || child.classList.contains("related-card"));
+  const present = new Set(cards);
+  state.observed.forEach(card => {
+    if (!present.has(card)) {
+      state.observer.unobserve(card);
+      state.observed.delete(card);
+    }
+  });
+  cards.forEach(card => {
+    if (!state.observed.has(card)) {
+      state.observer.observe(card);
+      state.observed.add(card);
+    }
+  });
+
+  const styles = getComputedStyle(grid);
+  const width = grid.getBoundingClientRect().width;
+  if (!width) return;
+  const gap = parseFloat(styles.getPropertyValue("--masonry-gap")) || 0;
+  const fixedColumns = parseInt(styles.getPropertyValue("--masonry-column-count"), 10) || 0;
+  const preferredWidth = parseFloat(styles.getPropertyValue("--masonry-column-width")) || width;
+  const columnCount = fixedColumns || Math.max(1, Math.floor((width + gap) / (preferredWidth + gap)));
+  const columnWidth = (width - gap * (columnCount - 1)) / columnCount;
+  const resized = state.columnCount !== columnCount;
+  if (resized) state.columns = new WeakMap();
+  state.columnCount = columnCount;
+  state.width = width;
+
+  const heights = Array(columnCount).fill(0);
+  cards.forEach(card => {
+    card.style.width = `${columnWidth}px`;
+    let column = state.columns.get(card);
+    if (column === undefined || column >= columnCount) {
+      column = heights.indexOf(Math.min(...heights));
+      state.columns.set(card, column);
+    }
+    card.style.left = `${column * (columnWidth + gap)}px`;
+    card.style.top = `${heights[column]}px`;
+    heights[column] += card.getBoundingClientRect().height + gap;
+  });
+  grid.style.height = cards.length ? `${Math.max(...heights) - gap}px` : "0px";
+}
+
+function scheduleMasonry(grid) {
+  if (!grid?.classList.contains("stable-masonry-grid")) return;
+  let state = masonryLayouts.get(grid);
+  if (!state) {
+    layoutMasonry(grid);
+    state = masonryLayouts.get(grid);
+  }
+  if (!state || state.frame) return;
+  state.frame = requestAnimationFrame(() => {
+    state.frame = 0;
+    layoutMasonry(grid);
+  });
 }
 
 async function request(url, options = {}) {
@@ -722,6 +805,7 @@ function renderImageSkeletons(grid, count = 12) {
     card.append(block);
     return card;
   }));
+  scheduleMasonry(grid);
 }
 
 function setLoading() {
@@ -1082,6 +1166,7 @@ function renderViewerTags(tags) {
 function renderRelatedImages(data) {
   const grid = $("#relatedGrid");
   grid.replaceChildren(...data.images.map(relatedCard));
+  scheduleMasonry(grid);
   const status = $("#relatedStatus");
   if (!data.ready) status.textContent = t("viewer.preparing_similar");
   else if (!data.images.length && data.indexed < data.total) status.textContent = t("viewer.similar_later");
@@ -1112,6 +1197,7 @@ async function loadMoreRelated() {
     const images = data.images || [];
     paging.offset += images.length;
     $("#relatedGrid").append(...images.map(relatedCard));
+    scheduleMasonry($("#relatedGrid"));
     if (images.length < paging.limit) paging.done = true;
   } catch (error) {
     // Unlike the library grid, nothing here previously showed this: the
@@ -1207,6 +1293,7 @@ async function loadRelatedImages(item) {
   $("#relatedMore").hidden = true;
   watchRelatedScroll();
   $("#relatedGrid").replaceChildren();
+  scheduleMasonry($("#relatedGrid"));
   $("#relatedStatus").hidden = false;
   $("#relatedStatus").textContent = t("viewer.finding_similar");
   try {
@@ -1250,6 +1337,7 @@ function renderImages(images, total = images.length, {keepExisting = false} = {}
     browserImages = images;
     grid.replaceChildren(...images.map(pictureCard));
   }
+  scheduleMasonry(grid);
   const visibleTotal = keepExisting ? Math.max(total, browserImages.length) : total;
   $("#imageCount").textContent = visibleTotal ? `(${visibleTotal})` : "";
   // The welcome tutorial answers "how do I start a whole library", which is
@@ -1340,6 +1428,7 @@ function forgetImage(id) {
   $("#imageGrid").querySelectorAll(".image-card").forEach(card => {
     if (card.dataset.id === id) card.remove();
   });
+  scheduleMasonry($("#imageGrid"));
   // A picture deleted from somewhere other than the grid, a viewer opened
   // straight from a link for instance, never took up a slot in the loaded
   // pages, so the paging window stays where it is.
@@ -1364,6 +1453,7 @@ function appendImages(images) {
   const added = images.filter(item => !shown.has(item.id));
   browserImages = browserImages.concat(added);
   $("#imageGrid").append(...added.map(pictureCard));
+  scheduleMasonry($("#imageGrid"));
   $("#imageCount").textContent = imagePaging?.total ? `(${imagePaging.total})` : "";
 }
 
@@ -1475,6 +1565,7 @@ async function loadImages({keepOrder = false} = {}) {
     if (!preserveResults) {
       browserImages = [];
       $("#imageGrid").replaceChildren();
+      scheduleMasonry($("#imageGrid"));
     }
     showResultState(t("state.load_failed"), error.message, t("state.try_again"), loadImages);
     showMessage(error.message, true, true);

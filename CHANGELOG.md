@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Pictures already visible in the main library and Similar pictures stay in their columns when scrolling loads another page. The browser used to rebalance the entire masonry grid after every append, making existing pictures appear to switch places.
+
 ## 0.10.2 - 2026-08-28
 
 - Some pictures in the main library grid were stretched instead of cropped: any picture with no recorded width and height fell back to a fixed box shape, and the picture inside it was squashed to fit rather than cropped around. Fixed.

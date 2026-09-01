@@ -600,6 +600,9 @@
 .is-phone .image-grid { columns: 2; column-gap: var(--m3-grid-gap); }
 .is-phone body[data-thumbnail-size="small"] .image-grid { columns: 3; }
 .is-phone body[data-thumbnail-size="large"] .image-grid { columns: 1; }
+.is-phone #imageGrid.stable-masonry-grid { --masonry-column-count: 2; --masonry-gap: var(--m3-grid-gap); }
+.is-phone body[data-thumbnail-size="small"] #imageGrid { --masonry-column-count: 3; }
+.is-phone body[data-thumbnail-size="large"] #imageGrid { --masonry-column-count: 1; }
 
 .is-phone .image-card { margin-bottom: var(--m3-grid-gap); background: transparent; }
 
