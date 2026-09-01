@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Settings now opens as five short controls instead of five sections of explanations. Folder management expands only when needed, maintenance tools live under More, and the inaccurate blanket privacy claim has been removed.
 - Installed plugins that need a workspace now open across the available window instead of being hidden by the full-page drawer rules. The image-list capability also supports paging, so boards can browse more than the first 120 library pictures.
 - Pictures already visible in the main library and Similar pictures stay in their columns when scrolling loads another page. The browser used to rebalance the entire masonry grid after every append, making existing pictures appear to switch places.
 

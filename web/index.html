@@ -217,40 +217,38 @@
     </section>
 
     <section class="drawer-section settings" id="settingsSection" hidden>
-      <div class="settings-group">
-        <h2 data-i18n="settings.general">General</h2>
-        <label class="settings-row"><span><strong data-i18n="settings.language">Language</strong><small data-i18n="settings.language_help">Choose the interface language.</small></span><select id="languageSetting"><option value="en" data-i18n="settings.english">English</option><option value="pt-BR">Português</option></select></label>
-        <div class="settings-action desktop-only"><span><strong data-i18n="onboarding.menu">Setup guide</strong><small data-i18n="onboarding.menu_help">Open the first-run screen again to add another folder.</small></span><button type="button" id="showOnboarding" data-i18n="onboarding.menu_action">Open</button></div>
-        <label class="settings-row" id="autoUpdateRow"><span><strong data-i18n="update.auto">Keep Pictogrep up to date</strong><small id="autoUpdateHelp" data-i18n="update.auto_help">Checks for a new version a few times a day and installs it. The new version starts the next time you open Pictogrep.</small></span><input type="checkbox" id="autoUpdateToggle"></label>
+      <div class="settings-list settings-basics">
+        <label class="settings-row"><strong data-i18n="settings.language">Language</strong><select id="languageSetting"><option value="en" data-i18n="settings.english">English</option><option value="pt-BR">Português</option></select></label>
+        <details class="settings-folders">
+          <summary class="settings-row"><span><strong data-i18n="settings.folders">Picture folders</strong><small id="sourceFolderSummary" data-i18n="settings.folders_help">No folders</small></span></summary>
+          <div class="settings-folders-body">
+            <div class="followed-boards" id="sourceFolderList" hidden></div>
+            <button type="button" id="addSourceFolder" data-i18n="settings.add_folder">Add folder</button>
+          </div>
+        </details>
+        <label class="settings-row"><strong data-i18n="settings.thumbnail_size">Picture size</strong><select id="thumbnailSizeSetting"><option value="small" data-i18n="settings.small">Small</option><option value="medium" data-i18n="settings.medium">Medium</option><option value="large" data-i18n="settings.large">Large</option></select></label>
+        <label class="settings-row"><strong data-i18n="settings.home_order">Start screen</strong><select id="homeOrderSetting"><option value="random" data-i18n="settings.home_random">Random mix</option><option value="recent" data-i18n="settings.home_recent">Newest first</option></select></label>
+        <label class="settings-row"><strong data-i18n="settings.show_filenames">Filenames</strong><input type="checkbox" id="showFilenamesSetting"></label>
       </div>
-      <div class="settings-group">
-        <h2 data-i18n="settings.pictures">Your pictures</h2>
-        <div class="settings-action"><span><strong data-i18n="settings.folders">Folders Pictogrep reads</strong><small id="sourceFolderSummary" data-i18n="settings.folders_help">Pictures are read where they are. Nothing is moved or copied.</small></span><button type="button" id="addSourceFolder" data-i18n="settings.add_folder">Add a folder</button></div>
-        <div class="followed-boards" id="sourceFolderList" hidden></div>
-        <div class="settings-path"><strong data-i18n="settings.library_location">Where imported pictures are saved</strong><code id="libraryLocation"></code></div>
-      </div>
-      <div class="settings-group">
-        <h2 data-i18n="settings.browser">Library view</h2>
-        <label class="settings-row"><span><strong data-i18n="settings.thumbnail_size">Picture size</strong><small data-i18n="settings.thumbnail_help">Bigger pictures mean fewer of them in each row.</small></span><select id="thumbnailSizeSetting"><option value="small" data-i18n="settings.small">Small</option><option value="medium" data-i18n="settings.medium">Medium</option><option value="large" data-i18n="settings.large">Large</option></select></label>
-        <label class="settings-row"><span><strong data-i18n="settings.show_filenames">Show filenames</strong><small data-i18n="settings.show_filenames_help">Puts each picture's file name under it.</small></span><input type="checkbox" id="showFilenamesSetting"></label>
-        <label class="settings-row"><span><strong data-i18n="settings.home_order">When you open Pictogrep</strong><small data-i18n="settings.home_order_help">What you see before searching for anything.</small></span><select id="homeOrderSetting"><option value="random" data-i18n="settings.home_random">A different mix every time</option><option value="recent" data-i18n="settings.home_recent">Newest pictures first</option></select></label>
-      </div>
-      <div class="settings-group">
-        <h2 data-i18n="settings.search_index">Search</h2>
-        <p class="field-help" data-i18n="settings.search_intro">Pictogrep looks at each picture once, so you can find it later just by describing what you remember. This happens on your computer.</p>
-        <div class="index-settings-status" id="searchIndexStatus" aria-live="polite">
-          <div><strong id="searchIndexStatusTitle" data-i18n="index.checking">Checking your pictures…</strong><small id="searchIndexStatusText"></small></div>
-          <progress id="searchIndexProgress" value="0" max="1"></progress>
+
+      <details class="settings-advanced">
+        <summary data-i18n="settings.more">More</summary>
+        <div class="settings-advanced-body">
+          <div class="settings-action desktop-only"><strong data-i18n="onboarding.menu">Setup guide</strong><button type="button" id="showOnboarding" data-i18n="onboarding.menu_action">Open</button></div>
+          <label class="settings-row" id="autoUpdateRow"><span><strong data-i18n="update.auto">Automatic updates</strong><small id="autoUpdateHelp" data-i18n="update.auto_help"></small></span><input type="checkbox" id="autoUpdateToggle"></label>
+          <div class="settings-path"><strong data-i18n="settings.library_location">Imported pictures</strong><code id="libraryLocation"></code></div>
+
+          <h2 data-i18n="settings.search_index">Search</h2>
+          <div class="index-settings-status" id="searchIndexStatus" aria-live="polite">
+            <div><strong id="searchIndexStatusTitle" data-i18n="index.checking">Checking…</strong><small id="searchIndexStatusText"></small></div>
+            <progress id="searchIndexProgress" value="0" max="1"></progress>
+          </div>
+          <label class="settings-row"><strong data-i18n="settings.auto_index">Automatic preparation</strong><input type="checkbox" id="automaticIndexingSetting"></label>
+          <div class="settings-action"><strong data-i18n="settings.check_index">Scan folders</strong><button type="button" id="checkIndexNow" data-i18n="settings.check_now">Scan</button></div>
+          <div class="settings-action"><strong data-i18n="settings.rebuild_index">Rebuild search</strong><button type="button" id="rebuildSearchIndex" data-i18n="settings.rebuild">Rebuild…</button></div>
+          <div class="settings-action"><strong data-i18n="settings.recent_searches">Search suggestions</strong><button type="button" id="clearRecentSearches" data-i18n="settings.clear">Clear</button></div>
         </div>
-        <label class="settings-row"><span><strong data-i18n="settings.auto_index">Prepare new pictures automatically</strong><small data-i18n="settings.auto_index_help">Happens quietly in the background, and only for pictures Pictogrep has not seen yet.</small></span><input type="checkbox" id="automaticIndexingSetting"></label>
-        <div class="settings-action"><span><strong data-i18n="settings.check_index">Look for new pictures now</strong><small data-i18n="settings.check_index_help">Checks your folders for anything added or removed since last time.</small></span><button type="button" id="checkIndexNow" data-i18n="settings.check_now">Check now</button></div>
-        <div class="settings-action"><span><strong data-i18n="settings.rebuild_index">Prepare every picture again</strong><small data-i18n="settings.rebuild_index_help">Goes through the whole library from scratch. It takes a while, and you should not normally need it.</small></span><button type="button" id="rebuildSearchIndex" data-i18n="settings.rebuild">Prepare again…</button></div>
-      </div>
-      <div class="settings-group">
-        <h2 data-i18n="settings.data">Privacy</h2>
-        <div class="settings-fact"><span><strong data-i18n="settings.local_processing">Everything stays on this computer</strong><small data-i18n="settings.local_processing_help">Your pictures are never uploaded, and the originals are never changed.</small></span><em data-i18n="settings.on">On</em></div>
-        <div class="settings-action"><span><strong data-i18n="settings.recent_searches">Recent searches</strong><small data-i18n="settings.recent_searches_help">Forget the searches this browser suggests back to you.</small></span><button type="button" id="clearRecentSearches" data-i18n="settings.clear">Clear</button></div>
-      </div>
+      </details>
     </section>
 
     <section class="drawer-section settings" id="pluginsSection" hidden>
