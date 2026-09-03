@@ -1966,6 +1966,48 @@ function calendarMonthQuery(value) {
   return `${match[2]}-${String(months.indexOf(match[1].toLowerCase()) + 1).padStart(2, "0")}`;
 }
 
+/** Set while the theme phrases are being encoded, so two visits do not both do it. */
+let calendarThemePromise = null;
+/** Tried once per session: a failure must not turn every visit into another attempt. */
+let calendarThemesPrimed = false;
+
+/**
+ * The theme line under each month is worked out on the server from the picture
+ * vectors AI search already stores, but the phrases it compares them against
+ * have to be turned into vectors by the model in this tab first. That happens
+ * once, quietly, and the answers are cached with the search queries, so every
+ * later visit reads them straight off disk.
+ *
+ * It only runs when pictures have already been indexed for search: a month
+ * heading is not worth starting a model download for.
+ */
+function prepareCalendarThemes(prompts) {
+  if (calendarThemePromise || calendarThemesPrimed || !Array.isArray(prompts) || !prompts.length) return;
+  if (!appState?.searchIndex?.indexed) return;
+  calendarThemesPrimed = true;
+  calendarThemePromise = (async () => {
+    // Deliberately not semanticVector: that one is written for a search
+    // somebody is waiting on and turns the model's progress into toasts.
+    // Nobody asked for this, so it stays silent.
+    quietTextWarmup = true;
+    for (const prompt of prompts) {
+      const vector = await runAI("search", {query: prompt});
+      await request("/api/app/ai/query", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({model: appState.embeddingModel.key, query: prompt, vector}),
+      });
+    }
+  })().then(() => {
+    if (!$("#calendarPanel").hidden) loadCalendar();
+  }).catch(error => {
+    logBackground("calendar-theme", error.message);
+  }).finally(() => {
+    quietTextWarmup = false;
+    calendarThemePromise = null;
+  });
+}
+
 async function loadCalendar() {
   switchTab("calendar");
   const month = calendarMonthQuery(searchQueryValue());
@@ -1994,10 +2036,18 @@ async function loadCalendar() {
       const grid = document.createElement("div");
       grid.className = "image-grid";
       grid.replaceChildren(...group.images.map(pictureCard));
-      section.append(heading, grid);
+      section.append(heading);
+      if (group.theme) {
+        const theme = document.createElement("p");
+        theme.className = "calendar-theme";
+        theme.textContent = group.theme;
+        section.append(theme);
+      }
+      section.append(grid);
       return section;
     }));
     $("#calendarEmpty").hidden = Boolean((data.groups || []).length);
+    prepareCalendarThemes(data.themePrompts);
   } catch (error) {
     $("#calendarGroups").replaceChildren();
     $("#calendarGroups").removeAttribute("aria-busy");

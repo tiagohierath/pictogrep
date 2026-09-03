@@ -704,6 +704,10 @@ body.show-filenames .image-filename { display: block; }
 .calendar-group { margin: 0 0 var(--space-10); }
 .calendar-group h2 { margin: 0 0 var(--space-4); font-size: var(--text-xl); font-weight: 600; }
 .calendar-group h2 span { color: var(--fg-subtle); font-size: var(--text-xs); font-weight: 400; }
+/* Sits under the month, tied to the heading rather than to the grid: the
+   heading's bottom margin moves here so the two read as one block. */
+.calendar-group h2:has(+ .calendar-theme) { margin-bottom: var(--space-1); }
+.calendar-theme { margin: 0 0 var(--space-4); color: var(--fg-muted); font-size: var(--text-sm); }
 
 .plugin-sidebar { position: fixed; z-index: 5; top: var(--header-height); bottom: 0; left: 0; width: var(--sidebar-width); overflow-y: auto; border-top: 1px solid var(--line); border-right: 1px solid var(--line); background: var(--bg-sunken); }
 .plugin-sidebar-header { display: flex; align-items: center; justify-content: space-between; height: 54px; padding: 0 var(--space-4) 0 var(--space-5); border-bottom: 1px solid var(--line); }

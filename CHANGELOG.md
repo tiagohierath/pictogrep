@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- The calendar now says what each month was about. Under "August 2026" a short line names the month's theme, such as "Soft concept art, war and armour", read from the pictures themselves using the vectors AI search already keeps on your machine. It appears once a month holds at least four indexed pictures, and it describes what that month leans towards compared to the rest of your library, so two months of the same kind of drawing do not get the same sentence.
+
 ## 0.11.4 - 2026-09-03
 
 - Long, narrow pictures no longer look pixelated in the library and in search results. Their previews were scaled by the longest side, so a tall picture ended up only a couple of hundred pixels wide and the grid column stretched it back up. Previews are now sized by width, which is what the grid actually shows.

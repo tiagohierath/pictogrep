@@ -891,7 +891,9 @@ func (s *server) wikimediaSearch(w http.ResponseWriter, r *http.Request) {
 type calendarGroup struct {
 	Label  string        `json:"label"`
 	Count  int           `json:"count"`
+	Theme  string        `json:"theme,omitempty"`
 	Images []imageRecord `json:"images"`
+	paths  []string
 }
 
 func (s *server) calendarView(w http.ResponseWriter, r *http.Request) {
@@ -935,7 +937,14 @@ func (s *server) calendarView(w http.ResponseWriter, r *http.Request) {
 			groups = append(groups, calendarGroup{Label: label})
 		}
 		groups[index].Images = append(groups[index].Images, s.imageRecord(path, nil))
+		groups[index].paths = append(groups[index].paths, path)
 		groups[index].Count++
+	}
+	// One library centroid for every group: the theme of a month is said
+	// against the rest of the collection, not in the abstract.
+	library, _ := s.app.themeCentroid(paths)
+	for index := range groups {
+		groups[index].Theme = s.app.describeTheme(groups[index].paths, library)
 	}
 	// Keep Today and Yesterday first, then month sections newest-first.
 	sort.SliceStable(groups, func(i, j int) bool {
@@ -953,7 +962,7 @@ func (s *server) calendarView(w http.ResponseWriter, r *http.Request) {
 		}
 		return groups[i].Label > groups[j].Label
 	})
-	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "groups": groups, "month": month})
+	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "groups": groups, "month": month, "themePrompts": s.app.missingThemePrompts()})
 }
 
 func (s *server) saveStorageSettings(w http.ResponseWriter, r *http.Request) {
