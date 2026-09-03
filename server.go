@@ -2223,7 +2223,7 @@ func (s *server) thumbnail(w http.ResponseWriter, r *http.Request) {
 	maximum := boundedInt(r.URL.Query().Get("size"), 960, 320, 2048)
 	// Include the preview format version so quality changes never reuse an old,
 	// visibly undersized thumbnail from a previous Pictogrep release.
-	key := sha256.Sum256([]byte("preview-v3\x00" + path + "\x00" + strconv.FormatInt(embeddingMtime(path), 10) + "\x00" + strconv.Itoa(maximum)))
+	key := sha256.Sum256([]byte("preview-v4\x00" + path + "\x00" + strconv.FormatInt(embeddingMtime(path), 10) + "\x00" + strconv.Itoa(maximum)))
 	target := filepath.Join(s.app.thumbnailDir, hashHex(key[:])+".jpg")
 	if file, err := os.Open(target); err == nil {
 		defer file.Close()
@@ -2360,10 +2360,22 @@ func renderPreview(file io.Reader, config image.Config, maximum int) (*image.RGB
 	}
 	bounds := source.Bounds()
 	width, height := bounds.Dx(), bounds.Dy()
-	if width > maximum || height > maximum {
-		scale := math.Min(float64(maximum)/float64(width), float64(maximum)/float64(height))
-		width = max(1, int(float64(width)*scale))
+	// A grid tile is as wide as its column and as tall as the picture needs,
+	// so what has to be sharp is the width. Scaling the longest side down to
+	// the limit gave a very tall picture a preview only a couple of hundred
+	// pixels wide, which the column then stretched back up: the "long pictures
+	// look pixelated" case. Bound the width instead, and bound the height only
+	// at a much looser multiple so a strip does not decode into an enormous
+	// preview.
+	if width > maximum {
+		scale := float64(maximum) / float64(width)
+		width = maximum
 		height = max(1, int(float64(height)*scale))
+	}
+	if tallest := maximum * 4; height > tallest {
+		scale := float64(tallest) / float64(height)
+		height = tallest
+		width = max(1, int(float64(width)*scale))
 	}
 	return resizePreview(source, width, height), nil
 }

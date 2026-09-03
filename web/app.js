@@ -4937,8 +4937,17 @@ document.addEventListener("keydown", event => {
     return;
   }
   const typing = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName);
+  const vimEnabled = Boolean(appState?.plugins?.vim?.enabled);
   if ($("#imageViewer").open && event.key === "ArrowLeft") { event.preventDefault(); moveViewer(-1); return; }
   if ($("#imageViewer").open && event.key === "ArrowRight") { event.preventDefault(); moveViewer(1); return; }
+  // The open picture used to ignore every Vim key, so j/k/q did nothing at the
+  // one place a reader spends the most time. Same keys, same meaning: move
+  // through the pictures, q closes.
+  if (vimEnabled && !typing && $("#imageViewer").open) {
+    if (event.key === "h" || event.key === "k") { event.preventDefault(); moveViewer(-1); return; }
+    if (event.key === "l" || event.key === "j") { event.preventDefault(); moveViewer(1); return; }
+    if (event.key === "q") { event.preventDefault(); closeImageViewer(); return; }
+  }
   if (event.key === "Escape") {
     if ($("#imageViewer").open) { event.preventDefault(); closeImageViewer(); return; }
     closeMenu(); closeSidebar(); closeCardMenus();
@@ -4952,9 +4961,13 @@ document.addEventListener("keydown", event => {
     return;
   }
   if (typing || $("#imageViewer").open || $("#shortcutsDialog").open) return;
-  const vim = Boolean(appState?.plugins?.vim?.enabled);
+  // A held Ctrl, Alt or Cmd means the key belongs to the browser or to a
+  // shortcut of its own, not to Vim mode. Swallowing those was most of what
+  // made the mode feel unpredictable.
+  const vim = vimEnabled && !event.ctrlKey && !event.metaKey && !event.altKey;
   if (vim) {
     if (event.key === "g") {
+      event.preventDefault();
       if (vimPendingG) { window.scrollTo({top: 0, behavior: "smooth"}); vimPendingG = false; }
       else vimPendingG = true;
       setTimeout(() => { vimPendingG = false; }, 700);

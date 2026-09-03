@@ -390,7 +390,7 @@
   "shortcuts.close_ui": "Fechar menus e janelas",
   "shortcuts.show": "Mostrar estes atalhos",
   "shortcuts.vim_title": "Modo Vim:",
-  "shortcuts.vim_help": "j/k movem, o abre, q fecha, gg vai para o início, G vai para o fim.",
+  "shortcuts.vim_help": "j/k movem, o abre, q fecha, gg vai para o início, G vai para o fim. Com uma imagem aberta, h/l ou j/k mudam de imagem e q fecha.",
   "delete.title": "Excluir esta imagem?",
   "delete.warning": "Isso exclui permanentemente o arquivo original do disco. Não é possível desfazer.",
   "delete.confirm": "Excluir permanentemente",

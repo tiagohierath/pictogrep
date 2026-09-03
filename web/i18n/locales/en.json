@@ -390,7 +390,7 @@
   "shortcuts.close_ui": "Close menus and dialogs",
   "shortcuts.show": "Show these shortcuts",
   "shortcuts.vim_title": "Vim Mode:",
-  "shortcuts.vim_help": "j/k move, o opens, q closes, gg goes to the top, G goes to the bottom.",
+  "shortcuts.vim_help": "j/k move, o opens, q closes, gg goes to the top, G goes to the bottom. In an open picture, h/l or j/k move between pictures and q closes it.",
   "delete.title": "Delete this picture?",
   "delete.warning": "This permanently deletes the original file from disk. It cannot be undone.",
   "delete.confirm": "Delete permanently",
