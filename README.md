@@ -187,6 +187,24 @@ nix run github:tiagohierath/pictogrep
 Useful development commands are `pictogrep doctor`, `pictogrep paths`, and
 `pictogrep web --no-open`. Run `pictogrep --help` for the complete list.
 
+### The license signing key
+
+Installed plugins that declare `"paid": true` in their manifest are unlocked by
+an Ed25519-signed license file, verified once when it is imported and then
+never checked again. `license.go` holds the public half of that key in
+`shippedLicensePublicKey`.
+
+The value committed here is a placeholder whose private half was generated and
+thrown away, so no license verifies against a stock build. Anyone shipping paid
+plugins has to generate a keypair, paste the public half into that constant,
+and keep the private half wherever licenses are issued. It never belongs in
+this repository or in a release. The format of a license and the few lines that
+sign one are documented at the top of `license.go`.
+
+Rotating the key is safe for people who already imported a license: their
+unlock is a stored boolean under `installedPlugins` in the config file, and
+nothing re-reads the license that produced it.
+
 ## Roadmap
 
 - [x] Subfolders and folder structure visualizer

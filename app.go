@@ -428,8 +428,8 @@ func (a *application) pluginEnabled(name string) bool {
 		return false
 	}
 	// Locked is locked: not merely hidden in the panel, but off for the routes
-	// it serves and the background work it schedules too. See premium.go.
-	if a.premiumLocks(name) {
+	// it serves and the background work it schedules too. See license.go.
+	if a.lockedOnPhone(name) {
 		return false
 	}
 	// The two importers ship with release installations and are ready on first

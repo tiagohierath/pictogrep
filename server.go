@@ -123,7 +123,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /api/app/activity", s.appActivity)
 	mux.HandleFunc("POST /api/app/log", s.appLog)
 	mux.HandleFunc("POST /api/app/plugins", s.savePlugin)
-	mux.HandleFunc("POST /api/app/premium", s.setPremium)
+	mux.HandleFunc("POST /api/app/license", s.importLicense)
 	mux.HandleFunc("GET /api/app/plugins/wikimedia/search", s.wikimediaSearch)
 	mux.HandleFunc("GET /api/app/plugins/calendar", s.calendarView)
 	// Not registered where the build has no board importer, so the app answers
@@ -771,16 +771,30 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 	if galleryDLError == nil {
 		downloader = "gallery-dl"
 	}
+	// One entitlement, reported once. "sold" says whether this build has a way
+	// to buy the unlock in front of the person, which is a phone question: a
+	// desktop keeps every feature it already shipped with, and its license is
+	// bought at navylily.tv rather than in here.
+	entitlement := s.app.installedPluginSettings()
+	license := map[string]any{"unlocked": entitlement.Unlocked, "sold": runsOnPhone, "tier": "", "issued": "", "buyer": ""}
+	if entitlement.License != nil {
+		license["tier"], license["issued"], license["buyer"] = entitlement.License.Tier, entitlement.License.Issued, entitlement.License.Buyer
+	}
 	sendJSON(w, 200, map[string]any{
 		"ok": true, "version": version, "model": s.app.embeddingModel.ModelID, "pretrained": s.app.embeddingModel.Revision,
 		"semanticModel": s.app.embeddingModel.Key, "embeddingModel": s.app.embeddingModel,
 		"updateMethod": updateMethod(),
 		"update":       s.updateStatePayload(),
 		"onboarding":   s.app.onboardingSettings(),
-		"premium":      map[string]any{"unlocked": s.app.premiumUnlocked(), "sold": runsOnPhone},
-		"pinterest":    s.app.pinterestSettings(),
-		"web":          s.app.webSettings(),
-		"index":        index, "indexJob": job, "sources": sources, "tags": tags,
+		"license":      license,
+		// The old name for the same fact, kept only until the phone's Premium
+		// screen is rebuilt as a license import screen. Nothing new should read
+		// it: there is no premium boolean behind it any more, just the unlock
+		// above. See docs/plugins.md, "What this replaces".
+		"premium":   map[string]any{"unlocked": entitlement.Unlocked, "sold": runsOnPhone},
+		"pinterest": s.app.pinterestSettings(),
+		"web":       s.app.webSettings(),
+		"index":     index, "indexJob": job, "sources": sources, "tags": tags,
 		"searchIndex": map[string]any{
 			"automatic": indexing.Automatic, "indexed": len(paths) - len(missing),
 			"pending": len(missing), "total": len(paths),

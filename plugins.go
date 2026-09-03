@@ -29,7 +29,14 @@ type pluginManifest struct {
 	APIVersion  string   `json:"apiVersion"`
 	Entry       string   `json:"entry"`
 	Permissions []string `json:"permissions"`
-	Panel       struct {
+	// Paid is how a plugin says it is behind the unlock, and it is the only
+	// thing that decides: there is no list of paid plugin ids in this program.
+	// A plugin a stranger wrote and sold declares this exactly the way ours
+	// does, and is gated by exactly the same line (see pluginLocked in
+	// license.go). Absent means free, which is the right default for the far
+	// larger set.
+	Paid  bool `json:"paid"`
+	Panel struct {
 		Title string `json:"title"`
 		Icon  string `json:"icon"`
 	} `json:"panel"`
@@ -43,12 +50,14 @@ type pluginManifest struct {
 // anything else in its manifest is ignored rather than rejected, so an older
 // Pictogrep can still load a plugin manifest written for a newer one.
 var pluginCapabilities = map[string]bool{
-	"images.list":   true,
-	"images.search": true,
-	"images.read":   true,
-	"images.tag":    true,
-	"storage.kv":    true,
-	"ui.panel":      true,
+	"images.list":     true,
+	"images.search":   true,
+	"images.read":     true,
+	"images.tag":      true,
+	"images.reveal":   true,
+	"storage.kv":      true,
+	"ui.panel":        true,
+	"ui.openExternal": true,
 }
 
 // loadPlugins scans pluginsDir for one level of subdirectories, each expected
@@ -141,6 +150,14 @@ func (s *server) servePlugin(w http.ResponseWriter, r *http.Request) {
 		sendError(w, http.StatusNotFound, fmt.Errorf("no plugin named %s is installed", id))
 		return
 	}
+	// A paid plugin with no license behind it serves nothing at all, not even
+	// its own CSS: the panel it would draw is the product. 402 rather than 404
+	// because the difference between "not installed" and "installed, not paid
+	// for" is exactly what the person on the other end needs to be told.
+	if s.app.pluginLocked(manifest) {
+		sendError(w, http.StatusPaymentRequired, fmt.Errorf("%s needs a NavyLilyWorks unlock", id))
+		return
+	}
 	if rest == "" {
 		rest = manifest.Entry
 	}
@@ -200,9 +217,14 @@ func (s *server) pluginsInstalled(w http.ResponseWriter, _ *http.Request) {
 	list := s.app.pluginList()
 	response := make([]map[string]any, 0, len(list))
 	for _, manifest := range list {
+		// A locked plugin stays in the list rather than vanishing from it. It is
+		// installed, it is on disk, and hiding it would leave a person who paid
+		// on one machine and not another with no explanation for where their
+		// plugin went.
 		response = append(response, map[string]any{
 			"id": manifest.ID, "name": manifest.Name, "version": manifest.Version,
 			"entry": manifest.Entry, "permissions": manifest.Permissions, "panel": manifest.Panel,
+			"paid": manifest.Paid, "locked": s.app.pluginLocked(manifest),
 			"mediaToken": s.pluginMediaToken,
 		})
 	}

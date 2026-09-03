@@ -29,6 +29,11 @@
       path: () => "/api/app/tags",
       body: (args) => ({action: "add", imageId: args.id, tag: args.tag}),
     },
+    "images.reveal": {
+      method: "POST",
+      path: () => "/api/app/images/reveal",
+      body: (args) => ({imageId: args.id}),
+    },
     "storage.kv.get": { method: "GET", path: (_args, id) => "/api/plugins/" + id + "/storage" },
     "storage.kv.set": { method: "POST", path: (_args, id) => "/api/plugins/" + id + "/storage", body: (args) => args },
   };
@@ -38,7 +43,23 @@
     return method;
   }
 
+  // ui.openExternal isn't an API call: it opens a real browser tab from this
+  // page, which the plugin's sandboxed iframe (allow-scripts, no
+  // allow-popups) cannot do itself. Restricted to https:// so a plugin can't
+  // hand back a javascript:/file:/data: URL and have the host page open it
+  // with page-level privileges.
+  function openExternal(id, permissions, args) {
+    if (!permissions.includes("ui.openExternal")) {
+      throw new Error("plugin " + id + " did not declare ui.openExternal");
+    }
+    const url = String(args?.url || "");
+    if (!/^https:\/\//i.test(url)) throw new Error("ui.openExternal: only https:// URLs are allowed");
+    window.open(url, "_blank", "noopener,noreferrer");
+    return { ok: true };
+  }
+
   async function handle(id, permissions, method, args) {
+    if (method === "ui.openExternal") return openExternal(id, permissions, args);
     const capability = CAPABILITY_ROUTES[method];
     if (!capability) throw new Error("unknown capability: " + method);
     if (!permissions.includes(permissionFor(method))) {

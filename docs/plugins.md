@@ -233,13 +233,27 @@ Deliberately small. Adding is cheap, removing is not.
     images.search     GET /api/app/search
     images.read       GET /api/app/images/{id}, thumbnails, related
     images.tag        POST /api/app/tags
+    images.reveal     POST /api/app/images/reveal (OS file manager)
     storage.kv        plugin-scoped JSON file, core owns the atomic write
     ui.panel          implied by having a panel at all
+    ui.openExternal   window.open(url) from the host page, https:// only
+
+`images.reveal` and `ui.openExternal` were added for the Find-me plugin
+(`pictogrep-plugins-paid/find-me`), the first real case of the "extract the
+API from real plugins" process this doc describes above. `ui.openExternal`
+exists because the panel iframe's `sandbox="allow-scripts"` deliberately has
+no `allow-popups`; the host page opens the tab instead, restricted to
+`https://` so a plugin can't hand back a `javascript:`/`file:`/`data:` URL.
 
 Image records returned through the SDK carry `url` and `thumbnailUrl` values
 that are authorized for the sandboxed frame. Plugins must use those values
 rather than constructing `/image/` or `/thumbnail/` paths themselves; the
 ordinary paths deliberately remain same-origin-only.
+
+This section says why the capability set is what it is.
+[`plugin-api.md`](plugin-api.md) is the reference for writing against it:
+manifest fields, every SDK method with its arguments and return shape, and the
+sandbox rules a plugin has to live inside.
 
 Not in v1, on purpose: folder creation, image deletion, storyboard writes,
 canvas writes, settings, sync, AI queries, network access. Each one gets added

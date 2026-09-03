@@ -48,8 +48,16 @@ func (a *application) pluginStorageSet(id, key string, value any) error {
 // route, because both run only inside this app's own process.
 func (s *server) handlePluginStorage(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
-	if _, found := s.app.plugins()[id]; !found {
+	manifest, found := s.app.plugins()[id]
+	if !found {
 		sendError(w, http.StatusNotFound, fmt.Errorf("no plugin named %s is installed", id))
+		return
+	}
+	// A locked paid plugin has no UI to run, so nothing should be calling this
+	// on its behalf. Refusing here anyway keeps the unlock a property of the
+	// plugin rather than of the one route that happens to serve its files.
+	if s.app.pluginLocked(manifest) {
+		sendError(w, http.StatusPaymentRequired, fmt.Errorf("%s needs a NavyLilyWorks unlock", id))
 		return
 	}
 	switch r.Method {

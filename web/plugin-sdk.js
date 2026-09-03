@@ -39,10 +39,14 @@ window.pictogrep = (function () {
       tag: (id, tags) => Promise.all(
         (Array.isArray(tags) ? tags : [tags]).map(tag => call("images.tag", { id, tag })),
       ),
+      reveal: (id) => call("images.reveal", { id }),
     },
     storage: {
       get: async (key) => (await call("storage.kv.get", {})).value?.[key],
       set: (key, value) => call("storage.kv.set", { key, value }),
+    },
+    ui: {
+      openExternal: (url) => call("ui.openExternal", { url }),
     },
   };
 })();
