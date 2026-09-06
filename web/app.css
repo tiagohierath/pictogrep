@@ -316,11 +316,16 @@ body.header-hidden .app-header { transform: translateY(-100%); }
 .recent-searches button:last-child { border-bottom: 0; }
 .recent-searches button:hover { background: var(--bg-hover); }
 
-.tabs { display: flex; gap: var(--space-6); margin-bottom: var(--space-6); border-bottom: 1px solid var(--line); }
+.tabs { position: relative; display: flex; gap: var(--space-6); margin-bottom: var(--space-6); border-bottom: 1px solid var(--line); }
 .tabs button { padding: 0 0 var(--space-3); border-bottom: 2px solid transparent; color: var(--fg-muted); font-size: var(--text-md); }
 .tabs button:hover { background: transparent; color: var(--fg); }
-.tabs button.active { border-color: var(--fg); color: var(--fg); }
+.tabs button.active { color: var(--fg); }
 .tabs span { color: var(--fg-subtle); font-size: var(--text-xs); }
+/* One indicator slides and resizes to the active tab instead of each button
+   drawing its own underline, so switching tabs reads as one thing moving
+   rather than one line disappearing and another appearing in its place. */
+.tabs-indicator { position: absolute; bottom: -1px; left: 0; height: 2px; background: var(--fg); transform: translateX(var(--tabs-indicator-x, 0)); width: var(--tabs-indicator-width, 0); transition: transform .22s cubic-bezier(.2, 0, 0, 1), width .22s cubic-bezier(.2, 0, 0, 1); }
+.tabs-indicator.is-still { transition: none; }
 
 /* Calendar groups are finite and can use balanced CSS columns. The endless
    main grid opts into stable-masonry-grid below: CSS columns always rebalance
@@ -426,7 +431,7 @@ body.show-filenames .image-filename { display: block; }
 .folder-list { display: grid; width: 100%; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: var(--space-5); }
 .folder-card { position: relative; min-width: 0; border-radius: var(--radius-md); background: var(--bg); box-shadow: 0 0 0 1px var(--line); transition: box-shadow .16s ease, transform .16s ease; }
 .folder-card:hover, .folder-card:focus-within { z-index: 1; box-shadow: 0 6px 20px rgba(0, 0, 0, .22), 0 0 0 1px var(--line-strong); }
-.folder-open-target { display: block; width: 100%; min-width: 0; padding: 0; border-radius: inherit; text-align: left; }
+.folder-open-target { display: block; width: 100%; min-width: 0; padding: 0; border: 1px solid var(--line-strong); border-radius: inherit; background: var(--bg); color: var(--fg); font-size: var(--text-sm); text-align: left; cursor: pointer; }
 .folder-open-target:hover { background: transparent; }
 .folder-preview { position: relative; display: grid; width: 100%; overflow: hidden; aspect-ratio: 4 / 3; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 2px; border-radius: var(--radius-md) var(--radius-md) 0 0; background: var(--bg-hover); }
 .folder-preview img { display: block; width: 100%; height: 100%; object-fit: cover; }
@@ -1071,6 +1076,7 @@ body.onboarding-open { overflow: hidden; }
      be spared, so it simply stays put. */
   .app-header { transition: none; }
   body.header-hidden .app-header { transform: none; }
+  .tabs-indicator { transition: none; }
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
 }
 

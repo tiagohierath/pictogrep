@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.11.5 - 2026-09-06
+
+- Pictogrep opens in a fraction of a second instead of one to two seconds. Startup used to hash every picture in the library to check for accidental duplicates before showing anything; it now only hashes files that already share an exact size with another file, and runs off to the side instead of blocking the window from appearing. Loading past searches for instant reuse was moved off the startup path the same way.
+- Folders can be dragged into a new order on the Folders tab. The drop side of this already worked; folder cards just were not draggable yet.
+- The Images tab no longer shows a running picture count next to its label.
+- Switching between Images and Folders now slides the underline to the new tab instead of the old one vanishing and a new one appearing in its place.
 - The calendar now says what each month was about. Under "August 2026" a short line names the month's theme, such as "Soft concept art, war and armour", read from the pictures themselves using the vectors AI search already keeps on your machine. It appears once a month holds at least four indexed pictures, and it describes what that month leans towards compared to the rest of your library, so two months of the same kind of drawing do not get the same sentence.
 
 ## 0.11.4 - 2026-09-03

@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-var version = "0.11.3"
+var version = "0.11.5"
 
 const (
 	maxCachedQueries = 512
@@ -518,32 +518,71 @@ func fileDigest(path string) ([32]byte, error) {
 	return digest, nil
 }
 
+// Two files can only be byte-identical if they are the same length, so a
+// stat is enough to clear almost every picture in the library without ever
+// opening it. Only sizes that appear more than once are worth hashing, which
+// on a library of unique pictures is close to none of them: this used to read
+// and SHA-256 every imported file on the way to the first frame.
 func (a *application) removeDuplicateImportedFiles() int {
-	seen := map[[32]byte]string{}
-	kept := make([]string, 0, len(a.paths))
-	removed := 0
-	for _, path := range a.paths {
+	a.mu.RLock()
+	paths := append([]string(nil), a.paths...)
+	a.mu.RUnlock()
+
+	imported := make([]string, 0, len(paths))
+	for _, path := range paths {
 		relative, err := filepath.Rel(a.libraryDir, path)
 		if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-			kept = append(kept, path)
 			continue
 		}
-		digest, err := fileDigest(path)
-		if err != nil {
-			kept = append(kept, path)
+		imported = append(imported, path)
+	}
+	sizes := map[int64][]string{}
+	for _, path := range imported {
+		info, err := os.Stat(path)
+		if err != nil || !info.Mode().IsRegular() {
 			continue
 		}
-		if original, exists := seen[digest]; exists {
-			if os.Remove(path) == nil {
-				removed++
+		sizes[info.Size()] = append(sizes[info.Size()], path)
+	}
+
+	seen := map[[32]byte]string{}
+	discard := map[string]bool{}
+	removed := 0
+	for _, candidates := range sizes {
+		if len(candidates) < 2 {
+			continue
+		}
+		for _, path := range candidates {
+			digest, err := fileDigest(path)
+			if err != nil {
 				continue
 			}
-			_ = original
+			if original, exists := seen[digest]; exists {
+				if os.Remove(path) == nil {
+					discard[path] = true
+					removed++
+					continue
+				}
+				_ = original
+			}
+			seen[digest] = path
 		}
-		seen[digest] = path
-		kept = append(kept, path)
+	}
+	if removed == 0 {
+		return 0
+	}
+	// The library may have grown while this ran, so the surviving list is
+	// rebuilt from whatever a.paths holds now rather than from the snapshot
+	// this sweep started with.
+	a.mu.Lock()
+	kept := make([]string, 0, len(a.paths))
+	for _, path := range a.paths {
+		if !discard[path] {
+			kept = append(kept, path)
+		}
 	}
 	a.setPaths(kept)
+	a.mu.Unlock()
 	return removed
 }
 
@@ -811,11 +850,19 @@ func (a *application) queryCachePath(query string) string {
 	return filepath.Join(a.queryCacheDir, fmt.Sprintf("%x.json", digest[:16]))
 }
 
+// This is a cache of vectors for searches already typed, so nothing on the
+// first screen reads it: it is built off to one side and published when it is
+// ready. Every file here is one previous search, and reading several hundred
+// of them was the second thing standing between the process starting and the
+// window appearing. A search that arrives before this finishes simply misses
+// the cache and embeds its query, which is what it did before the query was
+// ever cached.
 func (a *application) loadQueryEmbeddings() error {
 	entries, err := os.ReadDir(a.queryCacheDir)
 	if err != nil {
 		return err
 	}
+	loaded := map[string]queryEmbeddingRecord{}
 	for _, entry := range entries {
 		if entry.IsDir() || filepath.Ext(entry.Name()) != ".json" {
 			continue
@@ -830,6 +877,15 @@ func (a *application) loadQueryEmbeddings() error {
 		}
 		query := normalizeSemanticQuery(record.Query)
 		if query != "" && query == record.Query && record.Model == a.embeddingModel.Key && len(record.Vector) == a.embeddingModel.Dimensions {
+			loaded[query] = record
+		}
+	}
+	// Anything cached while this was reading is newer than what is on disk, so
+	// it wins rather than being overwritten by the older copy.
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	for query, record := range loaded {
+		if _, exists := a.queries[query]; !exists {
 			a.queries[query] = record
 		}
 	}

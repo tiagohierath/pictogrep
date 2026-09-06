@@ -822,7 +822,20 @@ function switchTab(tab) {
   $("#commonsPanel").hidden = !commons;
   $("#calendarPanel").hidden = !calendar;
   $("#foldersPanel").hidden = images || commons || calendar;
+  moveTabsIndicator();
 }
+
+// The active tab's underline slides to its new position instead of each tab
+// owning a static one, so switching tabs reads as one continuous move.
+function moveTabsIndicator(still = false) {
+  const active = $(".tabs button.active");
+  const indicator = $("#tabsIndicator");
+  if (!active || !indicator) return;
+  indicator.classList.toggle("is-still", still);
+  indicator.style.setProperty("--tabs-indicator-x", `${active.offsetLeft}px`);
+  indicator.style.setProperty("--tabs-indicator-width", `${active.offsetWidth}px`);
+}
+window.addEventListener("resize", () => moveTabsIndicator(true), {passive: true});
 
 function renderImageSkeletons(grid, count = 12) {
   grid.replaceChildren(...Array.from({length: count}, (_, index) => {
@@ -2079,10 +2092,20 @@ function folderCard(folder) {
   card.dataset.folderValue = folder.value;
   card.title = folder.kind === "source" ? folder.value : folder.name;
 
-  const open = document.createElement("button");
+  // A <button> here would swallow the drag gesture that starts the folder
+  // reorder: Chromium never fires dragstart on a draggable ancestor when the
+  // pointer goes down on a nested form control. A div with button semantics
+  // keeps the same click and keyboard behavior without that side effect.
+  const open = document.createElement("div");
   open.className = "folder-open-target";
-  open.type = "button";
+  open.setAttribute("role", "button");
+  open.setAttribute("tabindex", "0");
   open.setAttribute("aria-label", `Open ${folder.name}`);
+  open.onkeydown = event => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    openFolder(folder, card);
+  };
   const preview = document.createElement("span");
   preview.className = `folder-preview images-${Math.min(4, folder.images.length)}`;
   folder.images.forEach(item => {
@@ -2117,6 +2140,10 @@ function folderCard(folder) {
   card.ondragstart = event => {
     draggedFolder = folder;
     event.dataTransfer.effectAllowed = "move";
+    // Firefox drops a drag the instant dragstart returns if nothing was ever
+    // handed to dataTransfer, even though the reorder logic here only reads
+    // the draggedFolder variable and ignores this payload.
+    event.dataTransfer.setData("application/x-pictogrep-folder", folder.key);
   };
   card.ondragend = () => {
     draggedFolder = null;
@@ -2730,6 +2757,7 @@ function renderState() {
   const calendarEnabled = Boolean(appState.plugins?.calendar?.enabled);
   $("#calendarTab").hidden = !calendarEnabled;
   $("#calendarPluginToggle").checked = calendarEnabled;
+  moveTabsIndicator(true);
   const sidebarEnabled = Boolean(appState.plugins?.sidebar?.enabled);
   $("#sidebarButton").hidden = !sidebarEnabled;
   $("#sidebarPluginToggle").checked = sidebarEnabled;
@@ -5683,4 +5711,5 @@ document.addEventListener("visibilitychange", refreshLibraryWhenDue);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && appState?.index?.count) scheduleSemanticIndex(1200);
 });
+moveTabsIndicator(true);
 start();
