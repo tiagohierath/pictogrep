@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.11.6 - 2026-09-06
+
 - Opening a folder now has a clearer sense of depth: its cover moves forward into the picture grid, which settles into place instead of simply cross-fading.
 
 ## 0.11.5 - 2026-09-06
