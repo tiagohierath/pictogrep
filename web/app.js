@@ -1566,8 +1566,6 @@ function renderImages(images, total = images.length, {keepExisting = false} = {}
     grid.replaceChildren(...images.map(pictureCard));
   }
   scheduleMasonry(grid);
-  const visibleTotal = keepExisting ? Math.max(total, browserImages.length) : total;
-  $("#imageCount").textContent = visibleTotal ? `(${visibleTotal})` : "";
   // The welcome tutorial answers "how do I start a whole library", which is
   // the wrong answer inside a folder: an empty folder in an otherwise-empty
   // library used to show it anyway, because emptiness was read off the whole
@@ -1665,9 +1663,6 @@ function forgetImage(id) {
     imagePaging.total = Math.max(0, imagePaging.total - 1);
     imagePaging.offset = Math.max(0, imagePaging.offset - 1);
     imagePaging.done = imagePaging.offset >= imagePaging.total;
-    $("#imageCount").textContent = imagePaging.total ? `(${imagePaging.total})` : "";
-  } else {
-    $("#imageCount").textContent = browserImages.length ? `(${browserImages.length})` : "";
   }
   fillImageViewport();
 }
@@ -1682,7 +1677,6 @@ function appendImages(images) {
   browserImages = browserImages.concat(added);
   $("#imageGrid").append(...added.map(pictureCard));
   scheduleMasonry($("#imageGrid"));
-  $("#imageCount").textContent = imagePaging?.total ? `(${imagePaging.total})` : "";
 }
 
 // The grid grows a page at a time as the sentinel below it comes into view, so
@@ -2119,6 +2113,14 @@ function folderCard(folder) {
 
   card.append(open);
 
+  card.draggable = true;
+  card.ondragstart = event => {
+    draggedFolder = folder;
+    event.dataTransfer.effectAllowed = "move";
+  };
+  card.ondragend = () => {
+    draggedFolder = null;
+  };
   card.oncontextmenu = event => openFolderContextMenu(event, folder);
   card.ondragover = event => handleFolderDragOver(event, card, folder);
   card.ondragleave = event => {
