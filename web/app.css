@@ -468,15 +468,19 @@ body.show-filenames .image-filename { display: block; }
   height: 100%;
   object-fit: cover;
   object-position: top center;
+  transform-origin: top center;
   mix-blend-mode: normal;
   animation-duration: .26s;
   animation-timing-function: cubic-bezier(.2, 0, 0, 1);
 }
 ::view-transition-old(folder-open) { animation-name: folder-open-old; }
 ::view-transition-new(folder-open) { animation-name: folder-open-new; }
-/* The card leaves early so the two never muddle into each other halfway. */
-@keyframes folder-open-old { 0% { opacity: 1; } 55%, 100% { opacity: 0; } }
-@keyframes folder-open-new { 0%, 15% { opacity: 0; } 100% { opacity: 1; } }
+/* The card leaves early so the two never muddle into each other halfway. A
+   small scale on top of the fade gives the swap a direction: the cover
+   recedes as if the view were passing through it, the grid arrives already
+   in motion and settles rather than simply materializing in place. */
+@keyframes folder-open-old { 0% { opacity: 1; transform: scale(1); } 55%, 100% { opacity: 0; transform: scale(1.06); } }
+@keyframes folder-open-new { 0% { opacity: 0; transform: scale(.97); } 15% { opacity: 0; } 100% { opacity: 1; transform: scale(1); } }
 /* The chrome around the morph shouldn't outlast it. */
 ::view-transition-old(root), ::view-transition-new(root) { animation-duration: .26s; }
 

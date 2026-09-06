@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Opening a folder now has a clearer sense of depth: its cover moves forward into the picture grid, which settles into place instead of simply cross-fading.
+
 ## 0.11.5 - 2026-09-06
 
 - Pictogrep opens in a fraction of a second instead of one to two seconds. Startup used to hash every picture in the library to check for accidental duplicates before showing anything; it now only hashes files that already share an exact size with another file, and runs off to the side instead of blocking the window from appearing. Loading past searches for instant reuse was moved off the startup path the same way.
