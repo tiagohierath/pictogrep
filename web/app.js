@@ -5782,10 +5782,9 @@ function watchDragToScroll() {
   // against the tablet. So this is wide on purpose: small movements are a
   // click with an unsteady hand, and only a big deliberate drag is a scroll.
   const SLOP = 24;
-  // Near enough one to one that the content still reads as following the pen,
-  // the way a touchpad moves the page, with a little extra so a drag covers
-  // slightly more ground than the hand did.
-  const PAN_GAIN = 1.15;
+  // The page moves half again as far as the hand, so a drag covers ground
+  // without losing the sense that the content is following the pen.
+  const PAN_GAIN = 1.5;
   // And even once it has become a pan, a gesture that came back and ended this
   // close to where it started still opens whatever was pressed. Past it the
   // page was meant to move, and the click is swallowed.
@@ -5797,8 +5796,6 @@ function watchDragToScroll() {
   // Below this the hand was placing, not throwing, and a glide would feel like
   // the page failing to stop where it was put.
   const FLING_FLOOR = 300;
-  // Speed is capped so a jerk cannot fire the page across the whole library.
-  const FLING_CEILING = 20000;
   // Friction, as the fraction of speed surviving each second. A throw covers
   // roughly its release speed divided by ln(1 / this), so the higher it is the
   // further one flick carries.
@@ -5931,14 +5928,9 @@ function watchDragToScroll() {
     const last = recent[recent.length - 1];
     const seconds = (last.at - first.at) / 1000;
     if (!seconds) return;
-    let vx = -(last.x - first.x) / seconds * PAN_GAIN;
-    let vy = -(last.y - first.y) / seconds * PAN_GAIN;
-    const speed = Math.hypot(vx, vy);
-    if (speed < FLING_FLOOR) return;
-    if (speed > FLING_CEILING) {
-      vx *= FLING_CEILING / speed;
-      vy *= FLING_CEILING / speed;
-    }
+    const vx = -(last.x - first.x) / seconds * PAN_GAIN;
+    const vy = -(last.y - first.y) / seconds * PAN_GAIN;
+    if (Math.hypot(vx, vy) < FLING_FLOOR) return;
     glide = {vx, vy, at: performance.now()};
     glide.frame = requestAnimationFrame(step);
   };
@@ -5970,6 +5962,12 @@ function watchDragToScroll() {
     // alone. This is for the mouse and the pen.
     if (event.button !== 0 || event.pointerType === "touch") return;
     if (event.target?.closest?.(ignore)) return;
+    // The menu drawer is dense with small controls (radio cards, checkboxes,
+    // labels wrapping their input) packed close enough that a drag starting a
+    // few pixels off one of them still reads as meant for it. It already
+    // scrolls fine on its own, so panning inside it is not worth the risk of
+    // eating a click on an import form.
+    if (event.target?.closest?.("#drawer, #pluginSidebar")) return;
     const found = scroller(event.target);
     // Inside a dialog with nothing to scroll there is nothing to pan either.
     // Moving the library around behind an open modal would only be confusing.
