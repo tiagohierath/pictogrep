@@ -114,6 +114,11 @@ function loadImage(image, url, {fallback = "", label = "", onload = null} = {}) 
   let slowTimer = null;
 
   image.alt = "";
+  // A picture the browser can drag by itself is a picture you cannot scroll
+  // from: the native image drag takes the gesture and the pan never happens.
+  // Every picture in the app is loaded through here, so this is the one place
+  // that has to say so.
+  image.draggable = false;
   image.classList.add("loading-image");
   image.classList.remove("is-slow-loading", "is-revealing");
 
@@ -356,14 +361,30 @@ function hasSearchScope() {
 
 function renderSearchScope() {
   const scope = $("#searchScope");
-  if (!hasSearchScope()) {
-    scope.hidden = true;
-    scope.textContent = "";
-    return;
-  }
-  scope.hidden = false;
+  scope.hidden = !hasSearchScope();
+  scope.textContent = hasSearchScope() ? t("search.scope", {name: scopeName()}) : "";
+  renderFolderTitle();
+}
+
+// A source folder is stored as its path, and the last segment is the part
+// somebody recognises as the folder's name.
+function scopeName() {
   const value = currentFolderName || currentTag || currentSource;
-  scope.textContent = t("search.scope", {name: value.split(/[\\/]/).filter(Boolean).pop() || value});
+  return value.split(/[\\/]/).filter(Boolean).pop() || value;
+}
+
+// Opening a folder replaces the whole grid, so without a title on the page the
+// only thing saying which folder you are in is a chip beside the search box.
+// The name goes above the pictures, at page-title size, with the way out of it
+// sitting next to the name rather than somewhere else on the screen.
+function renderFolderTitle(count) {
+  const title = $("#folderTitle");
+  if (!title) return;
+  title.hidden = !hasSearchScope();
+  if (title.hidden) return;
+  $("#folderTitleName").textContent = scopeName();
+  const total = Number.isFinite(count) ? count : null;
+  $("#folderTitleCount").textContent = total === null ? "" : t(total === 1 ? "calendar.count_one" : "calendar.count", {count: total});
 }
 
 function clearSearchScope() {
@@ -764,9 +785,6 @@ function openMenu(pageTitle = "", pluginPage = false) {
   drawer.classList.toggle("page", Boolean(pageTitle));
   $("#drawerTitle").textContent = pageTitle || t("app.menu");
   drawer.classList.add("open");
-  // Closing the drawer hands focus back to the menu button, which has to still
-  // be somewhere on the screen when it gets it.
-  document.body.classList.remove("header-hidden");
   $("#drawer").setAttribute("aria-hidden", "false");
   $("#drawerScrim").hidden = false;
   $("#menuButton").setAttribute("aria-expanded", "true");
@@ -863,12 +881,10 @@ function pictureCard(item) {
   card.dataset.id = item.id;
   card.tabIndex = 0;
   card.setAttribute("aria-label", item.name);
-  card.draggable = true;
-  card.ondragstart = event => {
-    event.dataTransfer.effectAllowed = "copy";
-    event.dataTransfer.setData("application/x-pictogrep-image-id", String(item.id));
-    event.dataTransfer.setData("text/plain", String(item.id));
-  };
+  // Pictures are deliberately not draggable. Dragging across the library is how
+  // you scroll it, and a wall of pictures leaves almost nothing else to grab, so
+  // the drag has to mean the same thing everywhere. Filing a picture into a
+  // folder is done from its menu instead.
 
   const image = document.createElement("img");
   image.loading = "lazy";
@@ -1579,6 +1595,7 @@ function renderImages(images, total = images.length, {keepExisting = false} = {}
     grid.replaceChildren(...images.map(pictureCard));
   }
   scheduleMasonry(grid);
+  renderFolderTitle(total);
   // The welcome tutorial answers "how do I start a whole library", which is
   // the wrong answer inside a folder: an empty folder in an otherwise-empty
   // library used to show it anyway, because emptiness was read off the whole
@@ -1813,8 +1830,6 @@ function openSidebar() {
   $("#pluginSidebar").hidden = false;
   $("#pluginSidebar").setAttribute("aria-hidden", "false");
   document.body.classList.add("sidebar-open");
-  // The sidebar is pinned under the bar, so the bar has to be on screen.
-  document.body.classList.remove("header-hidden");
   $("#sidebarButton").setAttribute("aria-expanded", "true");
 }
 
@@ -2015,6 +2030,107 @@ function prepareCalendarThemes(prompts) {
   });
 }
 
+/**
+ * Builds one month section. The server only sends pictures for the newest few
+ * groups, so a section may arrive knowing its label and how many pictures it
+ * holds but nothing else. Those render at their true height as skeletons and
+ * fill themselves in when the reader scrolls near them, which is what keeps
+ * opening the tab from decoding every picture in the library.
+ */
+function calendarSection(group) {
+  const section = document.createElement("section");
+  section.className = "calendar-group";
+  const heading = document.createElement("div");
+  heading.className = "calendar-heading";
+  const title = document.createElement("h2");
+  title.textContent = group.label;
+  const count = document.createElement("span");
+  count.className = "calendar-count";
+  count.textContent = t(group.count === 1 ? "calendar.count_one" : "calendar.count", {count: group.count});
+  heading.append(title, count);
+  section.grid = document.createElement("div");
+  section.grid.className = "image-grid";
+  section.append(heading, section.grid);
+  if (group.theme) setCalendarSectionTheme(section, group.theme);
+  setCalendarSectionImages(section, group.images || []);
+  if (!section.images.length && group.count) {
+    section.dataset.month = group.month || "";
+    renderImageSkeletons(section.grid, Math.min(group.count, 12));
+  }
+  return section;
+}
+
+/** The theme sits between the sticky heading and the grid, so it scrolls away. */
+function setCalendarSectionTheme(section, theme) {
+  if (!theme || section.querySelector(".calendar-theme")) return;
+  const line = document.createElement("p");
+  line.className = "calendar-theme";
+  line.textContent = theme;
+  section.grid.before(line);
+}
+
+function setCalendarSectionImages(section, images) {
+  section.images = images;
+  delete section.dataset.month;
+  if (images.length) {
+    section.grid.replaceChildren(...images.map(pictureCard));
+    scheduleMasonry(section.grid);
+  }
+}
+
+/** Viewer order has to match reading order, whatever order the sections filled in. */
+function syncCalendarImages() {
+  browserImages = [...document.querySelectorAll("#calendarGroups .calendar-group")].flatMap(section => section.images || []);
+}
+
+let calendarObserver = null;
+
+function observeDeferredCalendarSections() {
+  calendarObserver?.disconnect();
+  const pending = [...document.querySelectorAll("#calendarGroups .calendar-group[data-month]")];
+  if (!pending.length) return;
+  calendarObserver = new IntersectionObserver(entries => {
+    for (const entry of entries) {
+      if (!entry.isIntersecting) continue;
+      calendarObserver.unobserve(entry.target);
+      fillCalendarSection(entry.target);
+    }
+    // Start a screen early so a section is usually ready by the time it arrives.
+  }, {rootMargin: "600px 0px"});
+  pending.forEach(section => calendarObserver.observe(section));
+}
+
+async function fillCalendarSection(section) {
+  const month = section.dataset.month;
+  if (!month) return;
+  try {
+    const data = await request(`/api/app/plugins/calendar?month=${encodeURIComponent(month)}`);
+    const images = (data.groups || []).flatMap(group => group.images || []);
+    setCalendarSectionImages(section, images);
+    setCalendarSectionTheme(section, (data.groups || []).map(group => group.theme).find(Boolean));
+    syncCalendarImages();
+  } catch (error) {
+    showCalendarSectionRetry(section, error.message);
+  }
+}
+
+function showCalendarSectionRetry(section, message) {
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.className = "grid-retry";
+  retry.textContent = t("state.try_again");
+  retry.onclick = () => {
+    failed.remove();
+    renderImageSkeletons(section.grid, 4);
+    fillCalendarSection(section);
+  };
+  const failed = document.createElement("div");
+  failed.className = "grid-more";
+  failed.append(message + " ", retry);
+  section.grid.replaceChildren();
+  section.append(failed);
+}
+
 async function loadCalendar() {
   switchTab("calendar");
   const month = calendarMonthQuery(searchQueryValue());
@@ -2029,31 +2145,12 @@ async function loadCalendar() {
   $("#calendarEmpty").hidden = true;
   try {
     const data = await request(`/api/app/plugins/calendar${month ? `?month=${month}` : ""}`);
-    browserImages = (data.groups || []).flatMap(group => group.images || []);
     const groups = $("#calendarGroups");
     groups.removeAttribute("aria-busy");
-    groups.replaceChildren(...(data.groups || []).map(group => {
-      const section = document.createElement("section");
-      section.className = "calendar-group";
-      const heading = document.createElement("h2");
-      heading.textContent = group.label + " ";
-      const count = document.createElement("span");
-      count.textContent = `(${t(group.count === 1 ? "calendar.count_one" : "calendar.count", {count: group.count})})`;
-      heading.append(count);
-      const grid = document.createElement("div");
-      grid.className = "image-grid";
-      grid.replaceChildren(...group.images.map(pictureCard));
-      section.append(heading);
-      if (group.theme) {
-        const theme = document.createElement("p");
-        theme.className = "calendar-theme";
-        theme.textContent = group.theme;
-        section.append(theme);
-      }
-      section.append(grid);
-      return section;
-    }));
+    groups.replaceChildren(...(data.groups || []).map(calendarSection));
+    syncCalendarImages();
     $("#calendarEmpty").hidden = Boolean((data.groups || []).length);
+    observeDeferredCalendarSections();
     prepareCalendarThemes(data.themePrompts);
   } catch (error) {
     $("#calendarGroups").replaceChildren();
@@ -2736,6 +2833,7 @@ function renderState() {
   $("#languageSetting").value = window.PictogrepI18n.locale();
   $("#themeSetting").value = appState.theme || "dark";
   $("#thumbnailSizeSetting").value = appState.browser?.thumbnailSize || "medium";
+  $("#fullWidthSetting").checked = Boolean(appState.browser?.fullWidth);
   $("#showFilenamesSetting").checked = Boolean(appState.browser?.showFilenames);
   $("#homeOrderSetting").value = appState.browser?.homeOrder || "random";
   $("#libraryLocation").textContent = appState.paths?.library || "";
@@ -2746,6 +2844,7 @@ function renderState() {
     : sourceCount ? t("settings.folders_count", {count: sourceCount}) : t("settings.folders_help");
   document.body.dataset.thumbnailSize = appState.browser?.thumbnailSize || "medium";
   document.body.classList.toggle("show-filenames", Boolean(appState.browser?.showFilenames));
+  document.body.classList.toggle("full-width", Boolean(appState.browser?.fullWidth));
   // Inside the Android app there is no folder to point at and no gallery-dl to
   // run, so the parts of the interface that offer them are not disabled, they
   // are absent. The server is what knows; the class is how the stylesheet and
@@ -4433,6 +4532,7 @@ async function saveThemeSetting() {
 async function saveBrowserSettings() {
   const browser = {
     thumbnailSize: $("#thumbnailSizeSetting").value,
+    fullWidth: $("#fullWidthSetting").checked,
     showFilenames: $("#showFilenamesSetting").checked,
     homeOrder: $("#homeOrderSetting").value,
   };
@@ -4651,58 +4751,6 @@ $("#shuffleCommons").onclick = () => {
   clearSearchInput();
   loadCommons();
 };
-// The top bar gets out of the way going down the grid and comes back the
-// instant you scroll up, so reaching the menu is one flick rather than a trip
-// to the top of the library.
-function watchHeaderOnScroll() {
-  const header = $(".app-header");
-  if (!header) return;
-  const stillMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
-  // Small scrolls are noise: a trackpad, a rubber band, the grid growing a row
-  // as more pictures load. Only a deliberate drag in one direction moves it.
-  const NUDGE = 8;
-  let lastY = window.scrollY;
-  let queued = false;
-
-  const pinned = () => stillMotion?.matches
-    || document.body.classList.contains("sidebar-open")
-    || document.querySelector("dialog[open]")
-    || document.querySelector(".drawer.open")
-    || document.querySelector(".card-menu")
-    || header.contains(document.activeElement);
-
-  const settle = () => {
-    queued = false;
-    const y = Math.max(0, window.scrollY);
-    const moved = y - lastY;
-    // Near the top the bar belongs on screen no matter which way you came, and
-    // a page too short to scroll past it must never be able to lose it.
-    const atTop = y <= header.offsetHeight;
-    const noRoom = document.documentElement.scrollHeight - window.innerHeight < header.offsetHeight * 2;
-    if (Math.abs(moved) >= NUDGE || atTop) {
-      const hide = !atTop && !noRoom && !pinned() && moved > 0;
-      document.body.classList.toggle("header-hidden", hide);
-      lastY = y;
-    }
-  };
-
-  const onScroll = () => {
-    if (queued) return;
-    queued = true;
-    requestAnimationFrame(settle);
-  };
-
-  document.addEventListener("scroll", onScroll, {passive: true});
-  // Tabbing into the bar has to bring it back, or keyboard focus lands on a
-  // control that is sitting off the top of the screen. A resize can change the
-  // maths too: a window that just got tall may no longer have room to scroll.
-  document.addEventListener("focusin", (event) => {
-    header.contains(event.target) && document.body.classList.remove("header-hidden");
-  });
-  window.addEventListener("resize", onScroll, {passive: true});
-  settle();
-}
-watchHeaderOnScroll();
 
 $("#calendarTab").onclick = loadCalendar;
 $("#foldersTab").onclick = () => { switchTab("folders"); loadFolders(); };
@@ -4726,6 +4774,7 @@ $("#showSettings").onclick = showSettings;
 $("#languageSetting").onchange = saveLanguageSetting;
 $("#themeSetting").onchange = saveThemeSetting;
 $("#thumbnailSizeSetting").onchange = saveBrowserSettings;
+$("#fullWidthSetting").onchange = saveBrowserSettings;
 $("#showFilenamesSetting").onchange = saveBrowserSettings;
 $("#homeOrderSetting").onchange = saveBrowserSettings;
 $("#automaticIndexingSetting").onchange = saveAutomaticIndexing;
@@ -4955,6 +5004,7 @@ $("#searchInputShell").addEventListener("pointerdown", event => {
   }
 });
 $("#searchScope").onclick = clearSearchScope;
+$("#folderTitleClear").onclick = clearSearchScope;
 $("#clearSearchButton").onclick = () => {
   clearSearchInput();
   performSearch();
@@ -5711,5 +5761,250 @@ document.addEventListener("visibilitychange", refreshLibraryWhenDue);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible" && appState?.index?.count) scheduleSemanticIndex(1200);
 });
+// A pen has no scroll wheel, and a wall of pictures leaves almost nothing to
+// grab. So dragging anywhere that is not a control scrolls, pictures included,
+// and a fast drag throws the page the way a flicked sheet of paper carries on.
+//
+// The throw is the whole point of the gesture: without it, crossing a large
+// library means dragging the same short distance over and over. With it, one
+// flick covers screens, and pressing down again stops it dead so you never
+// have to fight the motion you started.
+function watchDragToScroll() {
+  // Only things that already mean something when you press them are refused.
+  // Pictures are not on the list: dragging one scrolls, it does not move it.
+  const ignore = [
+    'a, button, input, textarea, select, label, [draggable="true"], [contenteditable]',
+    ".folder-card, .canvas-image, .folder-canvas, .card-menu",
+  ].join(", ");
+  // A hand that is not perfectly still while clicking is still clicking, so a
+  // few pixels have to pass before a press turns into a pan. A pen has no
+  // resting point the way a mouse does: it wobbles the whole time it is held
+  // against the tablet. So this is wide on purpose: small movements are a
+  // click with an unsteady hand, and only a big deliberate drag is a scroll.
+  const SLOP = 24;
+  // Near enough one to one that the content still reads as following the pen,
+  // the way a touchpad moves the page, with a little extra so a drag covers
+  // slightly more ground than the hand did.
+  const PAN_GAIN = 1.15;
+  // And even once it has become a pan, a gesture that came back and ended this
+  // close to where it started still opens whatever was pressed. Past it the
+  // page was meant to move, and the click is swallowed.
+  const FORGIVE = 40;
+  // Velocity is read from the last stretch of the drag rather than the final
+  // event, because the last event alone is mostly jitter and reads as a flick
+  // when the hand had actually stopped.
+  const SAMPLE_MS = 100;
+  // Below this the hand was placing, not throwing, and a glide would feel like
+  // the page failing to stop where it was put.
+  const FLING_FLOOR = 300;
+  // Speed is capped so a jerk cannot fire the page across the whole library.
+  const FLING_CEILING = 20000;
+  // Friction, as the fraction of speed surviving each second. A throw covers
+  // roughly its release speed divided by ln(1 / this), so the higher it is the
+  // further one flick carries.
+  const GLIDE_DECAY = 0.15;
+  // Under a pixel every few frames the glide is no longer visible motion.
+  const GLIDE_FLOOR = 40;
+  const stillMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+
+  let pan = null;
+  let glide = null;
+  let swallowClick = false;
+
+  // The thing to move is the nearest ancestor with somewhere to go, which is
+  // what makes this behave the same inside a scrolling panel as on the page.
+  const scroller = target => {
+    for (let node = target; node && node !== document.body; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      const down = node.scrollHeight > node.clientHeight && /auto|scroll/.test(style.overflowY);
+      const across = node.scrollWidth > node.clientWidth && /auto|scroll/.test(style.overflowX);
+      if (down || across) return node;
+    }
+    return null;
+  };
+
+  // Every input ends here. The drag, the glide it throws and anything else
+  // that wants to move the library all hand their pixels to this one function,
+  // so they cannot drift apart in feel or in rounding.
+  //
+  //   drag ─┐
+  //         ├─→ scroll(dx, dy) ─→ the nearest thing that scrolls
+  //  glide ─┘
+  //
+  // Scroll positions land on whole pixels, so the fraction left over is carried
+  // into the next call. Dropped instead, it reads as a faint stutter through
+  // the whole glide, worst exactly where it is slowest. Returns whether the
+  // page actually went anywhere, which is how the glide knows it has run out of
+  // page and there is nothing left to do with its speed.
+  let box = null;
+  let carryX = 0;
+  let carryY = 0;
+
+  const scroll = (dx, dy) => {
+    carryX += dx;
+    carryY += dy;
+    const stepX = Math.trunc(carryX);
+    const stepY = Math.trunc(carryY);
+    carryX -= stepX;
+    carryY -= stepY;
+    if (!stepX && !stepY) return true;
+    // The same call the wheel and the touchpad end up making, on the same
+    // container, so a dragged scroll and a wheeled one cannot behave differently.
+    const target = box || window;
+    const at = () => (box ? box.scrollTop + box.scrollLeft : window.scrollY + window.scrollX);
+    const before = at();
+    target.scrollBy({left: stepX, top: stepY, behavior: "auto"});
+    const after = at();
+    return before !== after;
+  };
+
+  const aimAt = element => {
+    box = element;
+    carryX = 0;
+    carryY = 0;
+  };
+
+  const stopGlide = () => {
+    if (glide) cancelAnimationFrame(glide.frame);
+    glide = null;
+  };
+
+  // Decay is applied per elapsed second, not per frame, so the throw covers the
+  // same distance on a 60Hz laptop and a 144Hz monitor.
+  const step = now => {
+    if (!glide) return;
+    const seconds = Math.min((now - glide.at) / 1000, 0.05);
+    glide.at = now;
+    const moved = scroll(glide.vx * seconds, glide.vy * seconds);
+    const survived = Math.pow(GLIDE_DECAY, seconds);
+    glide.vx *= survived;
+    glide.vy *= survived;
+    // Having hit the top or the bottom there is nowhere left to travel, and the
+    // remaining speed would only be spent standing still.
+    if (!moved || Math.hypot(glide.vx, glide.vy) < GLIDE_FLOOR) return stopGlide();
+    glide.frame = requestAnimationFrame(step);
+  };
+
+  const move = event => {
+    if (!pan || event.pointerId !== pan.id) return;
+    if (!pan.active) {
+      if (Math.hypot(event.clientX - pan.fromX, event.clientY - pan.fromY) < SLOP) return;
+      pan.active = true;
+      // Whatever the press began to select is dropped rather than left
+      // highlighted in the wake of the drag.
+      window.getSelection?.()?.removeAllRanges?.();
+      // The pan begins here, not back where the press landed, so crossing the
+      // threshold does not jump the page by the whole slop at once.
+      pan.x = event.clientX;
+      pan.y = event.clientY;
+      document.body.classList.add("page-panning");
+      // No setPointerCapture here on purpose: Firefox announces a captured
+      // pointer as "site has control of your pointer", which reads alarmingly
+      // for something as ordinary as a scroll. The document-level listeners
+      // already carry the drag, and leaving the window ends it, which is what
+      // letting go of it means anyway.
+      return;
+    }
+    const dx = event.clientX - pan.x;
+    const dy = event.clientY - pan.y;
+    // The content follows the pointer, so the scroll goes the other way.
+    scroll(-dx * PAN_GAIN, -dy * PAN_GAIN);
+    pan.x = event.clientX;
+    pan.y = event.clientY;
+    pan.trail.push({at: performance.now(), x: event.clientX, y: event.clientY});
+    if (pan.trail.length > 24) pan.trail.shift();
+  };
+
+  // A touchpad or a wheel keeps going for a moment after the hand leaves and
+  // eases down like a car braking, and this is the same thing: the speed of the
+  // last stretch of the drag, decaying smoothly to a stop.
+  //
+  // The window is measured back from the release, not from the last move, so a
+  // hand that paused before letting go has an empty window and the page simply
+  // stays where it was put. A motionless pointer sends no events, so nothing
+  // else would tell the two apart.
+  const throwPage = () => {
+    const cutoff = performance.now() - SAMPLE_MS;
+    const recent = pan.trail.filter(point => point.at >= cutoff);
+    if (recent.length < 2) return;
+    const first = recent[0];
+    const last = recent[recent.length - 1];
+    const seconds = (last.at - first.at) / 1000;
+    if (!seconds) return;
+    let vx = -(last.x - first.x) / seconds * PAN_GAIN;
+    let vy = -(last.y - first.y) / seconds * PAN_GAIN;
+    const speed = Math.hypot(vx, vy);
+    if (speed < FLING_FLOOR) return;
+    if (speed > FLING_CEILING) {
+      vx *= FLING_CEILING / speed;
+      vy *= FLING_CEILING / speed;
+    }
+    glide = {vx, vy, at: performance.now()};
+    glide.frame = requestAnimationFrame(step);
+  };
+
+  const finish = () => {
+    if (!pan) return;
+    if (pan.active) {
+      document.body.classList.remove("page-panning");
+      const wander = Math.hypot(pan.x - pan.fromX, pan.y - pan.fromY);
+      // A drag that ends over something clickable must not also open it, unless
+      // it never really went anywhere.
+      swallowClick = wander > FORGIVE;
+      if (swallowClick && !stillMotion?.matches) throwPage();
+    }
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", finish);
+    document.removeEventListener("pointercancel", finish);
+    pan = null;
+  };
+
+  document.addEventListener("pointerdown", event => {
+    // Catching a moving page is how you stop it, so the press lands on the
+    // brake before it means anything else.
+    stopGlide();
+    // A pan that ended without a click, off the window say, must not leave the
+    // swallow armed for whatever is clicked next.
+    swallowClick = false;
+    // Touch already scrolls natively and does it better, so fingers are left
+    // alone. This is for the mouse and the pen.
+    if (event.button !== 0 || event.pointerType === "touch") return;
+    if (event.target?.closest?.(ignore)) return;
+    const found = scroller(event.target);
+    // Inside a dialog with nothing to scroll there is nothing to pan either.
+    // Moving the library around behind an open modal would only be confusing.
+    if (!found && event.target.closest?.("dialog")) return;
+    aimAt(found);
+    pan = {
+      id: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      fromX: event.clientX,
+      fromY: event.clientY,
+      active: false,
+      trail: [],
+    };
+    document.addEventListener("pointermove", move);
+    document.addEventListener("pointerup", finish);
+    document.addEventListener("pointercancel", finish);
+  });
+
+  document.addEventListener("click", event => {
+    if (!swallowClick) return;
+    swallowClick = false;
+    event.stopPropagation();
+    event.preventDefault();
+  }, true);
+
+  // A wheel or a key means the reader has taken over, and the page should not
+  // keep coasting underneath them.
+  document.addEventListener("wheel", stopGlide, {passive: true});
+  document.addEventListener("keydown", stopGlide);
+  // Losing the window mid-drag never sends a pointerup, and a page left in the
+  // grabbing cursor with its text unselectable would look broken.
+  window.addEventListener("blur", () => { finish(); stopGlide(); });
+}
+watchDragToScroll();
+
 moveTabsIndicator(true);
 start();

@@ -21,7 +21,7 @@ import (
 	"time"
 )
 
-var version = "0.11.6"
+var version = "0.11.7"
 
 const (
 	maxCachedQueries = 512
@@ -46,6 +46,10 @@ type storageSettings struct {
 
 type browserSettings struct {
 	ThumbnailSize string `json:"thumbnailSize"`
+	// Lets the grid run the full width of the window instead of stopping at the
+	// page's reading width. A wall of pictures is not prose and does not need a
+	// measure, so on a wide screen this is several more columns of pictures.
+	FullWidth     bool   `json:"fullWidth"`
 	ShowFilenames bool   `json:"showFilenames"`
 	HomeOrder     string `json:"homeOrder"`
 }

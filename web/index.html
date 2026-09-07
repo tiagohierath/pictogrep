@@ -36,6 +36,11 @@
     </div>
 
     <section id="imagesPanel" aria-labelledby="imagesTab">
+      <div class="folder-title" id="folderTitle" hidden>
+        <h1 id="folderTitleName"></h1>
+        <span id="folderTitleCount"></span>
+        <button type="button" class="link-button" id="folderTitleClear" data-i18n="folder.leave">All pictures</button>
+      </div>
       <div class="result-state" id="resultState" hidden>
         <h2 id="resultStateTitle"></h2>
         <p id="resultStateText"></p>
@@ -231,6 +236,7 @@
           </div>
         </details>
         <label class="settings-row"><strong data-i18n="settings.thumbnail_size">Picture size</strong><select id="thumbnailSizeSetting"><option value="small" data-i18n="settings.small">Small</option><option value="medium" data-i18n="settings.medium">Medium</option><option value="large" data-i18n="settings.large">Large</option></select></label>
+        <label class="settings-row"><span><strong data-i18n="settings.full_width">Full width</strong><small data-i18n="settings.full_width_help">Let the pictures run edge to edge instead of stopping at the page width.</small></span><input type="checkbox" id="fullWidthSetting"></label>
         <label class="settings-row"><strong data-i18n="settings.home_order">Start screen</strong><select id="homeOrderSetting"><option value="random" data-i18n="settings.home_random">Random mix</option><option value="recent" data-i18n="settings.home_recent">Newest first</option></select></label>
         <label class="settings-row"><strong data-i18n="settings.show_filenames">Filenames</strong><input type="checkbox" id="showFilenamesSetting"></label>
       </div>

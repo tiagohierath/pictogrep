@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 0.11.7 - 2026-09-06
+
+- The calendar view no longer takes several seconds to open. Every picture was being filed under a single nonsense month, so the whole library was drawn as one section; dates are now read correctly, months are grouped and sorted properly, and only the newest few months load up front while older ones fill in as you scroll to them.
+- Calendar months now sort by date instead of alphabetically, so October comes after September rather than before April.
+- Each calendar month keeps its heading pinned while you scroll through its pictures, so you can always see which month you are looking at.
+- The top bar no longer follows you down the page. It sits at the top of the page and scrolls away with everything else, leaving the full screen for pictures.
+- Opening a folder now shows the folder's name and picture count above the grid, with a way straight back to all pictures.
+- A new "Full width" setting lets the picture grid run edge to edge instead of stopping at the page width.
+- You can scroll by holding the left mouse button and dragging, so a stylus or Wacom pen can scroll without a wheel. It works like a touchpad: the page follows your hand exactly, and letting go while moving keeps it gliding for a moment before it eases to a stop. Letting go while still leaves the page exactly where you put it. Dragging on top of a picture scrolls like anywhere else, and a small wobble while clicking still opens the picture, so an unsteady pen does not cost you the click. It works inside panels that scroll on their own too, like the settings drawer and the sidebar, and Firefox no longer warns that the site has control of your pointer.
+- Switching between Pictures and Folders now feels immediate because the tab underline catches up with the already-instant panel change nearly twice as fast.
+
 ## 0.11.6 - 2026-09-06
 
 - Opening a folder now has a clearer sense of depth: its cover moves forward into the picture grid, which settles into place instead of simply cross-fading.

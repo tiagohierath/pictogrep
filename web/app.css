@@ -256,12 +256,10 @@ input[type="file"] { padding: var(--space-1) var(--space-2); }
   font-size: var(--text-sm);
 }
 
+/* The bar is the first thing on the page and nothing more: it scrolls off with
+   everything else and comes back when you return to the top. The pictures are
+   the content, and a strip of chrome that follows them down the page is not. */
 .app-header {
-  position: fixed;
-  z-index: 6;
-  top: 0;
-  left: 0;
-  right: 0;
   display: grid;
   grid-template-columns: var(--icon-size) 1fr var(--icon-size);
   align-items: center;
@@ -269,14 +267,7 @@ input[type="file"] { padding: var(--space-1) var(--space-2); }
   padding: 0 var(--space-6);
   border-bottom: 1px solid var(--line);
   background: var(--bg);
-  transition: transform .22s cubic-bezier(.2, 0, 0, 1);
 }
-
-/* Scrolling down through the grid takes the bar with it, scrolling up brings
-   it straight back. The pictures are the content; a permanent 72px strip of
-   chrome across the top of them is not. `.main-content` keeps its padding
-   either way, so nothing below reflows when the bar leaves. */
-body.header-hidden .app-header { transform: translateY(-100%); }
 
 .wordmark {
   position: absolute;
@@ -291,7 +282,11 @@ body.header-hidden .app-header { transform: translateY(-100%); }
 
 .menu-button { grid-column: 3; grid-row: 1; justify-self: end; }
 .sidebar-button { grid-column: 1; grid-row: 1; }
-.main-content { width: min(var(--page-width), calc(100% - var(--space-10))); margin: 0 auto; padding: calc(var(--header-height) + var(--space-14)) 0 var(--space-14); }
+.main-content { width: min(var(--page-width), calc(100% - var(--space-10))); margin: 0 auto; padding: var(--space-14) 0; }
+/* A wall of pictures is not prose and does not need a measure, so this drops
+   the reading width and leaves only a gutter. On a wide screen that is several
+   more columns. The search box keeps its own width and stays centred. */
+body.full-width .main-content { width: calc(100% - var(--space-8)); }
 
 .search {
   position: relative;
@@ -324,7 +319,7 @@ body.header-hidden .app-header { transform: translateY(-100%); }
 /* One indicator slides and resizes to the active tab instead of each button
    drawing its own underline, so switching tabs reads as one thing moving
    rather than one line disappearing and another appearing in its place. */
-.tabs-indicator { position: absolute; bottom: -1px; left: 0; height: 2px; background: var(--fg); transform: translateX(var(--tabs-indicator-x, 0)); width: var(--tabs-indicator-width, 0); transition: transform .22s cubic-bezier(.2, 0, 0, 1), width .22s cubic-bezier(.2, 0, 0, 1); }
+.tabs-indicator { position: absolute; bottom: -1px; left: 0; height: 2px; background: var(--fg); transform: translateX(var(--tabs-indicator-x, 0)); width: var(--tabs-indicator-width, 0); transition: transform .12s cubic-bezier(.2, 0, 0, 1), width .12s cubic-bezier(.2, 0, 0, 1); }
 .tabs-indicator.is-still { transition: none; }
 
 /* Calendar groups are finite and can use balanced CSS columns. The endless
@@ -420,6 +415,15 @@ body.show-filenames .image-filename { display: block; }
 .empty .link-button { min-height: 0; padding: 0; border: 0; background: none; color: var(--fg); font-size: var(--text-sm); text-decoration: underline; }
 .empty .link-button:hover { background: none; }
 .empty-alternative-help { display: block; margin-top: var(--space-1); color: var(--fg-muted); font-size: var(--text-xs); }
+
+/* Opening a folder replaces the whole grid, so while you are inside one the
+   folder's name is the title of the page. The way back out sits beside the
+   name, which is where you are already looking when you decide to leave. */
+.folder-title { display: flex; flex-wrap: wrap; gap: var(--space-3); align-items: baseline; margin: 0 0 var(--space-6); }
+.folder-title h1 { margin: 0; font-size: var(--text-2xl); font-weight: 600; line-height: var(--leading-tight); }
+.folder-title span { flex: none; font-size: var(--text-xs); font-weight: 600; }
+.folder-title .link-button { min-height: 0; margin-left: auto; padding: 0; border: 0; background: none; color: var(--fg); font-size: var(--text-sm); text-decoration: underline; }
+.folder-title .link-button:hover { background: none; }
 
 .folder-toolbar { position: sticky; z-index: 4; top: 0; display: grid; grid-template-columns: minmax(190px, 1fr) auto; gap: var(--space-2); align-items: center; margin: 0 0 var(--space-5); padding: var(--space-2) 0; background: var(--bg); }
 .folder-search { display: flex; align-items: center; min-width: 0; height: var(--control-height); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg); }
@@ -710,15 +714,28 @@ body.show-filenames .image-filename { display: block; }
 .commons-image-card a { color: inherit; }
 .commons-image-card .commons-source { display: block; margin-top: var(--space-1); color: var(--fg-subtle); font-size: var(--text-2xs); }
 .commons-loading { margin: var(--space-10) 0; color: var(--fg-muted); text-align: center; font-size: var(--text-sm); }
-.calendar-group { margin: 0 0 var(--space-10); }
-.calendar-group h2 { margin: 0 0 var(--space-4); font-size: var(--text-xl); font-weight: 600; }
-.calendar-group h2 span { color: var(--fg-subtle); font-size: var(--text-xs); font-weight: 400; }
-/* Sits under the month, tied to the heading rather than to the grid: the
-   heading's bottom margin moves here so the two read as one block. */
-.calendar-group h2:has(+ .calendar-theme) { margin-bottom: var(--space-1); }
-.calendar-theme { margin: 0 0 var(--space-4); color: var(--fg-muted); font-size: var(--text-sm); }
+/* A month is a heading that stays put while its own pictures scroll under it,
+   so a long section never leaves you wondering what you are looking at. The
+   count is told apart from the month by weight and size rather than by fading
+   the ink, which keeps every line of the section at full contrast. */
+.calendar-group { margin: 0 0 var(--space-8); }
+.calendar-heading {
+  position: sticky;
+  z-index: 3;
+  top: 0;
+  display: flex;
+  gap: var(--space-3);
+  align-items: baseline;
+  margin: 0 0 var(--space-3);
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg);
+}
+.calendar-heading h2 { margin: 0; font-size: var(--text-xl); font-weight: 600; line-height: var(--leading-tight); }
+.calendar-count { margin-left: auto; flex: none; font-size: var(--text-xs); font-weight: 600; }
+.calendar-theme { margin: 0 0 var(--space-3); font-size: var(--text-sm); }
 
-.plugin-sidebar { position: fixed; z-index: 5; top: var(--header-height); bottom: 0; left: 0; width: var(--sidebar-width); overflow-y: auto; border-top: 1px solid var(--line); border-right: 1px solid var(--line); background: var(--bg-sunken); }
+.plugin-sidebar { position: fixed; z-index: 5; top: 0; bottom: 0; left: 0; width: var(--sidebar-width); overflow-y: auto; border-right: 1px solid var(--line); background: var(--bg-sunken); }
 .plugin-sidebar-header { display: flex; align-items: center; justify-content: space-between; height: 54px; padding: 0 var(--space-4) 0 var(--space-5); border-bottom: 1px solid var(--line); }
 .plugin-sidebar-header strong { font-size: var(--text-md); }
 .sidebar-search { display: flex; gap: var(--space-2); align-items: center; margin: var(--space-4) var(--space-4) var(--space-5); padding: 0 var(--space-2); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg); color: var(--fg-muted); }
@@ -731,12 +748,12 @@ body.show-filenames .image-filename { display: block; }
 .sidebar-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .sidebar-empty { padding: var(--space-3) var(--space-2); color: var(--fg-subtle); font-size: var(--text-2xs); }
 .sidebar-scrim { display: none !important; }
+/* The header is in normal flow now, so it moves aside with the rest of the page
+   instead of needing a negative margin to span behind the panel. */
 body.sidebar-open { padding-left: var(--sidebar-width); }
-body.sidebar-open .app-header { width: calc(100% + var(--sidebar-width)); margin-left: calc(var(--sidebar-width) * -1); }
 
 @media (max-width: 760px) {
   body.sidebar-open { padding-left: 0; }
-  body.sidebar-open .app-header { width: 100%; margin-left: 0; }
   .plugin-sidebar { width: min(var(--sidebar-width), 84vw); box-shadow: 4px 0 16px rgba(0,0,0,.16); }
 }
 
@@ -991,6 +1008,12 @@ kbd { padding: 2px var(--space-2); border: 1px solid var(--line-strong); border-
 .onboarding :focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 body.onboarding-open { overflow: hidden; }
 
+/* Dragging empty space scrolls, for anyone holding a pen instead of a mouse
+   with a wheel. The closed hand has to hold everywhere the pointer travels, and
+   nothing may highlight while the drag crosses text. */
+body.page-panning, body.page-panning * { cursor: grabbing; }
+body.page-panning { user-select: none; }
+
 /* Phones. The library, the panels, and every dialog have to work at ~390px. */
 
 @media (max-width: 650px) {
@@ -998,7 +1021,7 @@ body.onboarding-open { overflow: hidden; }
   .app-header { padding: 0 var(--space-3); }
   .drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #pinterestSection:not([hidden]), .drawer.page #webSection:not([hidden]) { width: calc(100% - var(--space-3)); margin: var(--space-2) auto; padding: var(--space-5) var(--space-4); }
   .drawer-section { padding: var(--space-4); }
-  .main-content { width: calc(100% - var(--space-6)); padding-top: calc(var(--header-height) + var(--space-8)); }
+  .main-content { width: calc(100% - var(--space-6)); padding-top: var(--space-8); }
   .search { margin-bottom: var(--space-6); }
   .tabs { gap: var(--space-5); }
   .image-grid { columns: 150px; column-gap: var(--space-3); }

@@ -889,12 +889,23 @@ func (s *server) wikimediaSearch(w http.ResponseWriter, r *http.Request) {
 }
 
 type calendarGroup struct {
-	Label  string        `json:"label"`
+	Label string `json:"label"`
+	// The YYYY-MM this section can be asked for on its own. Empty for Today
+	// and Yesterday, which are always sent whole and so never need fetching.
+	Month  string        `json:"month,omitempty"`
 	Count  int           `json:"count"`
 	Theme  string        `json:"theme,omitempty"`
 	Images []imageRecord `json:"images"`
 	paths  []string
 }
+
+// calendarEagerGroups is how many of the newest sections get their pictures
+// decoded and themed on a request with no month filter. Everything older only
+// needs its label and count to be listed truthfully; a library of thousands
+// of pictures should not mean opening and hashing thousands of files just to
+// draw a calendar tab. Older sections are filled in on demand when the reader
+// asks for that specific month.
+const calendarEagerGroups = 3
 
 func (s *server) calendarView(w http.ResponseWriter, r *http.Request) {
 	if !s.app.pluginEnabled("calendar") {
@@ -919,49 +930,63 @@ func (s *server) calendarView(w http.ResponseWriter, r *http.Request) {
 	byLabel := map[string]int{}
 	for _, path := range paths {
 		modified := fileMtime(path)
-		when := time.Unix(modified, 0).In(now.Location())
+		when := time.Unix(0, modified).In(now.Location())
 		if !monthTime.IsZero() && (when.Year() != monthTime.Year() || when.Month() != monthTime.Month()) {
 			continue
 		}
 		day := time.Date(when.Year(), when.Month(), when.Day(), 0, 0, 0, 0, now.Location())
-		label := when.Format("January 2006")
+		label, key := when.Format("January 2006"), when.Format("2006-01")
 		if day.Equal(today) {
-			label = "Today"
+			label, key = "Today", ""
 		} else if day.Equal(yesterday) {
-			label = "Yesterday"
+			label, key = "Yesterday", ""
 		}
 		index, found := byLabel[label]
 		if !found {
 			index = len(groups)
 			byLabel[label] = index
-			groups = append(groups, calendarGroup{Label: label})
+			groups = append(groups, calendarGroup{Label: label, Month: key})
 		}
-		groups[index].Images = append(groups[index].Images, s.imageRecord(path, nil))
 		groups[index].paths = append(groups[index].paths, path)
 		groups[index].Count++
+	}
+	// Keep Today and Yesterday first, then month sections newest-first. The
+	// sort key is the YYYY-MM, not the label: month names sort alphabetically,
+	// which would put October after September.
+	rank := func(group calendarGroup) int {
+		if group.Label == "Today" {
+			return 0
+		}
+		if group.Label == "Yesterday" {
+			return 1
+		}
+		return 2
+	}
+	sort.SliceStable(groups, func(i, j int) bool {
+		if rank(groups[i]) != rank(groups[j]) {
+			return rank(groups[i]) < rank(groups[j])
+		}
+		return groups[i].Month > groups[j].Month
+	})
+	// A specific month was asked for: it is the only thing on the page, so
+	// it gets its pictures regardless of how far back it is. Otherwise only
+	// the newest handful of sections are filled in eagerly.
+	eager := len(groups)
+	if monthTime.IsZero() {
+		eager = calendarEagerGroups
 	}
 	// One library centroid for every group: the theme of a month is said
 	// against the rest of the collection, not in the abstract.
 	library, _ := s.app.themeCentroid(paths)
 	for index := range groups {
+		if index >= eager {
+			break
+		}
+		for _, path := range groups[index].paths {
+			groups[index].Images = append(groups[index].Images, s.imageRecord(path, nil))
+		}
 		groups[index].Theme = s.app.describeTheme(groups[index].paths, library)
 	}
-	// Keep Today and Yesterday first, then month sections newest-first.
-	sort.SliceStable(groups, func(i, j int) bool {
-		if groups[i].Label == "Today" {
-			return true
-		}
-		if groups[j].Label == "Today" {
-			return false
-		}
-		if groups[i].Label == "Yesterday" {
-			return true
-		}
-		if groups[j].Label == "Yesterday" {
-			return false
-		}
-		return groups[i].Label > groups[j].Label
-	})
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "groups": groups, "month": month, "themePrompts": s.app.missingThemePrompts()})
 }
 
