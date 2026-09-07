@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.11.8 - 2026-09-06
+
+- Fixed drag-to-scroll not working properly inside the menu drawer.
+- Improved performance and code quality through internal refactoring.
+
 ## 0.11.7 - 2026-09-06
 
 - The calendar view no longer takes several seconds to open. Every picture was being filed under a single nonsense month, so the whole library was drawn as one section; dates are now read correctly, months are grouped and sorted properly, and only the newest few months load up front while older ones fill in as you scroll to them.
