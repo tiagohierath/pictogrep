@@ -10,7 +10,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -185,98 +184,25 @@ func (job *pinterestImport) snapshot() map[string]any {
 	return payload
 }
 
-func (s *server) importPinterestBoard(w http.ResponseWriter, r *http.Request) {
-	if !s.app.pluginEnabled("pinterest") {
-		sendError(w, http.StatusNotFound, fmt.Errorf("Pinterest import plugin is disabled"))
-		return
-	}
-	var request struct {
-		URL          string `json:"url"`
-		Mode         string `json:"mode"`
-		Folder       string `json:"folder"`
-		SkipExisting bool   `json:"skipExisting"`
-	}
-	if err := decodeJSON(r, &request, 1<<20); err != nil {
-		sendError(w, http.StatusBadRequest, err)
-		return
-	}
-	boardURL, err := validatePinterestBoardURL(request.URL)
-	if err != nil {
-		sendError(w, http.StatusBadRequest, err)
-		return
-	}
-	if request.Mode != "original" && request.Mode != "board" && request.Mode != "existing" {
-		sendError(w, http.StatusBadRequest, fmt.Errorf("choose how Pinterest images should be organized"))
-		return
-	}
-	// A board can go into a folder that is already there, which is the only way
-	// to keep several boards about one subject together. The folder is checked
-	// before the download for the same reason the board name is.
-	folder := ""
-	if request.Mode == "existing" {
-		name, err := collectionName(request.Folder)
-		if err != nil || !slices.Contains(s.collectionNames(), name) {
-			sendError(w, http.StatusBadRequest, fmt.Errorf("choose a folder you already have"))
-			return
-		}
-		folder = name
-	}
-	// A board name that cannot become a folder has to be caught here. Finding
-	// out after the download would throw away everything it just spent half an
-	// hour fetching.
-	if request.Mode == "board" {
-		if _, err := collectionName(pinterestBoardName(boardURL)); err != nil {
-			sendError(w, http.StatusBadRequest, fmt.Errorf("this board's name cannot be used as a folder; import it straight into your library instead"))
-			return
-		}
-	}
-
-	// Deliberately not the request context: the download has to survive the
-	// window that asked for it.
-	ctx, cancel := context.WithCancel(context.Background())
-	if !s.pinterest.start(pinterestBoardName(boardURL), "pinterest", cancel) {
-		cancel()
-		sendError(w, http.StatusConflict, fmt.Errorf("a Pinterest import is already running"))
-		return
-	}
-	go func() {
-		defer cancel()
-		defer guard(func(err error) { s.pinterest.finish(nil, err) })
-		result, err := s.runPinterestImport(ctx, boardURL, request.Mode, folder, request.SkipExisting)
-		// A board that imported at least once is worth following, so it gets
-		// re-checked about weekly until auto-sync is turned off or the board is
-		// forgotten. Only the import settles what "now" means, so the timestamp
-		// is written here rather than when the request arrived.
-		if err == nil {
-			_ = s.app.trackBoard(trackedBoard{
-				URL:          boardURL.String(),
-				Mode:         request.Mode,
-				Folder:       folder,
-				SkipExisting: request.SkipExisting,
-				LastSyncAt:   time.Now().Unix(),
-			})
-		}
-		s.pinterest.finish(result, err)
-	}()
-	sendJSON(w, http.StatusAccepted, s.pinterest.snapshot())
-}
-
-func (s *server) pinterestImportStatus(w http.ResponseWriter, r *http.Request) {
-	if !s.app.pluginEnabled("pinterest") {
-		sendError(w, http.StatusNotFound, fmt.Errorf("Pinterest import plugin is disabled"))
-		return
-	}
+// importStatus and cancelImport serve whichever download is running: a
+// paste-a-link import from (*server).importWebSource, or a followed site's
+// scheduled check. Only one runs at a time, so one job to ask about is enough.
+func (s *server) importStatus(w http.ResponseWriter, r *http.Request) {
 	sendJSON(w, http.StatusOK, s.pinterest.snapshot())
 }
 
-func (s *server) cancelPinterestImport(w http.ResponseWriter, r *http.Request) {
+func (s *server) cancelImport(w http.ResponseWriter, r *http.Request) {
 	if !s.pinterest.stop() {
-		sendError(w, http.StatusConflict, fmt.Errorf("no Pinterest import is running"))
+		sendError(w, http.StatusConflict, fmt.Errorf("nothing is downloading"))
 		return
 	}
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "state": "cancelled"})
 }
 
+// runPinterestImport is now reached only from the automatic board sync in
+// pinterest_sync.go. The manual paste-a-link screen is
+// (*server).importWebSource in web_source.go, which accepts any address and
+// shares this function's download plumbing through runGalleryImport.
 func (s *server) runPinterestImport(ctx context.Context, boardURL *url.URL, mode, folder string, skipExisting bool) (map[string]any, error) {
 	boardName := pinterestBoardName(boardURL)
 	if mode != "existing" {

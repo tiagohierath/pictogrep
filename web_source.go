@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -225,10 +226,15 @@ func (s *server) importWebSource(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var request struct {
-		URL      string `json:"url"`
-		Folder   string `json:"folder"`
-		Backfill bool   `json:"backfill"`
-		Follow   bool   `json:"follow"`
+		URL          string `json:"url"`
+		Folder       string `json:"folder"`
+		Backfill     bool   `json:"backfill"`
+		Follow       bool   `json:"follow"`
+		// Where the pictures land. "new" (the default when empty) makes a folder
+		// named after the page; "existing" adds to one already in the library;
+		// "direct" skips a folder and keeps the downloaded filenames.
+		Mode         string `json:"mode"`
+		SkipExisting bool   `json:"skipExisting"`
 	}
 	if err := decodeJSON(r, &request, 1<<20); err != nil {
 		sendError(w, http.StatusBadRequest, err)
@@ -243,13 +249,40 @@ func (s *server) importWebSource(w http.ResponseWriter, r *http.Request) {
 		sendError(w, http.StatusBadRequest, fmt.Errorf("choose to download the past images, to follow from now on, or both"))
 		return
 	}
-	displayName := webSourceName(sourceURL)
-	// A name that cannot become a folder has to be caught now. Finding out after
-	// the download would throw away everything it just fetched.
-	folder, err := webFolderName(defaultString(request.Folder, displayName))
-	if err != nil {
-		sendError(w, http.StatusBadRequest, fmt.Errorf("that folder name cannot be used; pick another one"))
+	if request.Mode == "" {
+		request.Mode = "new"
+	}
+	if request.Mode != "new" && request.Mode != "existing" && request.Mode != "direct" {
+		sendError(w, http.StatusBadRequest, fmt.Errorf("choose how the pictures should be organized"))
 		return
+	}
+	// Checking daily for new pictures needs a folder to add them to, the same
+	// way any other followed site does.
+	if request.Mode == "direct" && request.Follow {
+		sendError(w, http.StatusBadRequest, fmt.Errorf("following a page needs a folder to save into"))
+		return
+	}
+	displayName := webSourceName(sourceURL)
+	var folder string
+	switch request.Mode {
+	case "existing":
+		name, err := collectionName(request.Folder)
+		if err != nil || !slices.Contains(s.collectionNames(), name) {
+			sendError(w, http.StatusBadRequest, fmt.Errorf("choose a folder you already have"))
+			return
+		}
+		folder = name
+	case "direct":
+		folder = ""
+	default: // "new"
+		// A name that cannot become a folder has to be caught now. Finding out
+		// after the download would throw away everything it just fetched.
+		name, err := webFolderName(defaultString(request.Folder, displayName))
+		if err != nil {
+			sendError(w, http.StatusBadRequest, fmt.Errorf("that folder name cannot be used; pick another one"))
+			return
+		}
+		folder = name
 	}
 
 	// Following without a backfill still downloads the newest few, so the folder
@@ -273,7 +306,7 @@ func (s *server) importWebSource(w http.ResponseWriter, r *http.Request) {
 		result, err := s.runGalleryImport(ctx, galleryImport{
 			Source: sourceURL.String(), Name: displayName, Folder: folder,
 			Archive: s.app.prepareWebArchive(sourceURL.String()),
-			Limit:   limit, LinkDuplicates: true,
+			Limit: limit, LinkDuplicates: !request.SkipExisting,
 		})
 		// Only a site that downloaded at least once is worth checking again. A
 		// one-time archive grab is not followed, which is the whole difference

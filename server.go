@@ -130,11 +130,10 @@ func (s *server) routes() http.Handler {
 	// 404 rather than "the downloader is missing". The panel is gone from the
 	// page there (see rewriteForPhone), and an endpoint with no caller is an
 	// endpoint that can still be called.
-	if offersPinterest {
-		mux.HandleFunc("POST /api/app/plugins/pinterest/import", s.importPinterestBoard)
-		mux.HandleFunc("GET /api/app/plugins/pinterest/import", s.pinterestImportStatus)
-		mux.HandleFunc("DELETE /api/app/plugins/pinterest/import", s.cancelPinterestImport)
-	}
+	// Status and cancel for whichever download is currently running, paste-a-link
+	// import or a followed site's daily check; they share one job.
+	mux.HandleFunc("GET /api/app/plugins/pinterest/import", s.importStatus)
+	mux.HandleFunc("DELETE /api/app/plugins/pinterest/import", s.cancelImport)
 	mux.HandleFunc("POST /api/app/settings/storage", s.saveStorageSettings)
 	mux.HandleFunc("POST /api/app/settings/language", s.saveStorageSettings)
 	mux.HandleFunc("POST /api/app/settings/theme", s.saveThemeSettings)

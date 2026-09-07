@@ -512,8 +512,8 @@ body.show-filenames .image-filename { display: block; }
 .drawer-header strong { font-size: var(--text-lg); }
 .drawer.page { width: 100vw; max-width: none; border-left: 0; background: var(--bg-sunken); }
 .drawer.page .drawer-header { position: sticky; z-index: 2; top: 0; background: var(--bg); }
-.drawer.page .drawer-actions, .drawer.page > .drawer-section:not(#settingsSection):not(#pluginsSection):not(#pinterestSection):not(#webSection):not(#syncSection):not(#pluginHostSection) { display: none; }
-.drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #pinterestSection:not([hidden]), .drawer.page #webSection:not([hidden]), .drawer.page #syncSection:not([hidden]) { width: min(var(--panel-width), calc(100% - var(--space-8))); margin: var(--space-8) auto; padding: var(--space-8); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); }
+.drawer.page .drawer-actions, .drawer.page > .drawer-section:not(#settingsSection):not(#pluginsSection):not(#webSection):not(#syncSection):not(#pluginHostSection) { display: none; }
+.drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #webSection:not([hidden]), .drawer.page #syncSection:not([hidden]) { width: min(var(--panel-width), calc(100% - var(--space-8))); margin: var(--space-8) auto; padding: var(--space-8); border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--bg); }
 .drawer-actions { display: block; border-bottom: 1px solid var(--line); }
 .drawer-actions a, .drawer-actions button { display: flex; justify-content: space-between; width: 100%; padding: var(--space-4) var(--space-5); border-bottom: 1px solid var(--line); color: var(--fg); text-align: left; text-decoration: none; font-size: var(--text-md); }
 .drawer-actions a:hover, .drawer-actions button:hover { background: var(--bg-sunken); }
@@ -628,11 +628,8 @@ body.show-filenames .image-filename { display: block; }
 .premium-price { margin: 0 0 var(--space-4); font-size: var(--text-md); font-weight: 600; }
 .field-help { margin: var(--space-2) 0 0; color: var(--fg-muted); font-size: var(--text-xs); line-height: var(--leading-tight); }
 
-/* Import panels. The Pinterest one keeps Pinterest's red for its own action;
-   the general web importer borrows the panel, not the brand. */
+/* Import panel. */
 
-.pinterest-import { --accent: #bd081c; --accent-soft: var(--danger-bg); }
-#webSection { --accent: var(--fg); --accent-soft: var(--bg-sunken); }
 .pinterest-heading { margin-bottom: var(--space-5); }
 .pinterest-heading h2 { margin: 0 0 var(--space-2); font-size: var(--text-xl); }
 .pinterest-heading p { margin: 0; color: var(--fg-muted); font-size: var(--text-sm); line-height: var(--leading); }
@@ -1019,7 +1016,7 @@ body.page-panning { user-select: none; }
 @media (max-width: 650px) {
   :root { --header-height: 60px; }
   .app-header { padding: 0 var(--space-3); }
-  .drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #pinterestSection:not([hidden]), .drawer.page #webSection:not([hidden]) { width: calc(100% - var(--space-3)); margin: var(--space-2) auto; padding: var(--space-5) var(--space-4); }
+  .drawer.page #settingsSection:not([hidden]), .drawer.page #pluginsSection:not([hidden]), .drawer.page #webSection:not([hidden]) { width: calc(100% - var(--space-3)); margin: var(--space-2) auto; padding: var(--space-5) var(--space-4); }
   .drawer-section { padding: var(--space-4); }
   .main-content { width: calc(100% - var(--space-6)); padding-top: var(--space-8); }
   .search { margin-bottom: var(--space-6); }
