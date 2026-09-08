@@ -20,7 +20,7 @@ between sections, it does not change its number.
 | 33 | Ship the macOS version | ready to do, plan already written |
 | 34 | Identicons for folders and sync devices | ready to do, needs a look decided |
 | 35 | Two blank buttons in the Android build | DONE 2026-09-08 |
-| 36 | Cut the link importer out of the Android build | IN PROGRESS |
+| 36 | Cut the link importer out of the Android build | DONE 2026-09-08 |
 | 37 | Sync a library desktop to phone | GAP: sync is one way today |
 
 ### 20. Drawing drops areas inside images
@@ -234,12 +234,12 @@ PLAN:
 4. `freeOnPhone` loses `"web"`: nothing to unlock when it is compiled out.
    DONE.
 5. Strip the importer's markup from the phone page, the way `withoutPinterest`
-   already strips the board panel. TODO.
+   already strips the board panel. DONE, as `withoutWebImport` next to it.
 6. Give the phone's empty library a button that does something. Right now it is
    "Import from a link", which is the feature being removed, and it is already
    dead on arrival: `startPinterestOnboarding()` tries to switch the plugin on,
    `setPluginEnabled` now refuses, and the function returns having done
-   nothing. TODO.
+   nothing. DONE.
 
    Tiago's framing on 2026-09-08 says which button it should be: "Android
    doesn't need to understand Pinterest at all. Receives/syncs an existing
@@ -248,8 +248,20 @@ PLAN:
    picture. Primary button: Connect to computer (`#showSyncPhone`). The Add
    drawer, with the photo picker and paste-a-link, stays one tap away in the
    menu.
-7. Tests, and the STORE.md Premium copy, which currently sells "import from
-   web" as one of the two free phone features. TODO.
+7. Tests, and the STORE.md Premium copy, which sold "import from web" as one of
+   the two free phone features. DONE. `TestTheAndroidPageHasNoLinkImporter` is
+   the new one; `TestPhoneFeatureGateFollowsTheSameUnlock` stopped asking
+   whether a compiled-out feature is locked. PRIVACY.md also said the app could
+   be pointed at a page, which is now false, so it was corrected too.
+
+VERIFIED: arm64 app build green, core still position independent on the
+/system loader. Desktop suite at its pre-existing 10 failures, android-tagged
+suite at its pre-existing 26, no new ones in either. Compared against HEAD
+rather than assumed.
+
+NOT VERIFIED ON HARDWARE. Nobody has seen the new empty-library button on a
+phone. It is one line of markup and one binding, but it is the first screen a
+new user sees, so it belongs in the on-device pass in Android task 2.
 
 ## Not doing
 
