@@ -21,7 +21,7 @@ between sections, it does not change its number.
 | 34 | Identicons for folders and sync devices | ready to do, needs a look decided |
 | 35 | Two blank buttons in the Android build | DONE 2026-09-08 |
 | 36 | Cut the link importer out of the Android build | DONE 2026-09-08 |
-| 37 | Sync a library desktop to phone | GAP: sync is one way today |
+| 37 | Sync a library desktop to phone | DONE 2026-09-08, untested on a phone |
 
 ### 20. Drawing drops areas inside images
 
@@ -229,6 +229,40 @@ which dedupes by the same content hash the manifest already speaks.
 control on its sync screen, and tests. Not in scope: scheduling, deletion,
 two-way reconciliation, or bringing folders and tags across as structure rather
 than as a destination folder.
+
+DONE 2026-09-08, commit d0e7f4d.
+
+- `sync_catalogue.go` answers: `POST /catalogue`, `GET /blobs/{hash}`.
+- `sync_pull.go` asks, and imports what comes back.
+- `GET /api/app/sync/library`, `POST /api/app/sync/get`, and
+  `/api/app/sync/get/stop` on the phone's own server; progress rides along in
+  the `GET /api/app/sync` the panel already polls.
+- The control is phone-only, on the Connect screen. Pictures land in a folder
+  named after the one they came from, so taking three folders keeps them apart.
+
+VERIFIED. Six tests in `sync_pull_test.go`, against two real devices on a real
+socket, covering: pictures cross, what the phone already has is skipped by
+hash, a named folder takes only that folder, the catalogue leaks no path from
+the computer's disk, a hash the library does not hold is not servable, and a
+second pull is refused while one runs. Desktop suite at its pre-existing 10
+failures, android-tagged at its pre-existing 26.
+
+Checked at 390px in Firefox: the section appears only when a reachable computer
+exists, select and button are both 44px, no sideways scroll, progress line is
+full ink. That last one needed `.sync-get .sync-get-progress`, because
+`.drawer-section p` is 0,1,1 and was dragging it to `--fg-muted`.
+
+NOT VERIFIED ON A PHONE. No hardware here. Belongs in the on-device pass in
+Android task 2, and it is the biggest thing in it now.
+
+STILL NOT DONE, and worth knowing before this is called finished:
+
+- **No progress on the desktop side.** A computer being read from says nothing
+  and shows nothing.
+- **Folders arrive as a destination, not as structure.** Pulling "trips" makes
+  a "trips" folder on the phone; it does not reproduce nesting or tags.
+- **Nothing is scheduled.** Every pull is asked for. That is the decision above,
+  not an omission, but it means a phone does not stay up to date on its own.
 
 ### 36. Cut the link importer out of the Android build
 
