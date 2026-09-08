@@ -160,11 +160,13 @@ func (s *server) routes() http.Handler {
 		mux.HandleFunc("GET /api/app/plugins/pinterest/boards", s.appPinterestBoards)
 		mux.HandleFunc("POST /api/app/settings/pinterest", s.savePinterestSettings)
 	}
-	mux.HandleFunc("POST /api/app/plugins/web/import", s.importWebSource)
-	mux.HandleFunc("POST /api/app/settings/web", s.saveWebSettings)
+	if offersWebImport {
+		mux.HandleFunc("POST /api/app/plugins/web/import", s.importWebSource)
+		mux.HandleFunc("POST /api/app/settings/web", s.saveWebSettings)
+		mux.HandleFunc("GET /api/app/plugins/web/sources", s.appWebSources)
+		mux.HandleFunc("POST /api/app/plugins/web/sources", s.forgetWebSourceRequest)
+	}
 	mux.HandleFunc("POST /api/app/settings/update", s.saveUpdateSettings)
-	mux.HandleFunc("GET /api/app/plugins/web/sources", s.appWebSources)
-	mux.HandleFunc("POST /api/app/plugins/web/sources", s.forgetWebSourceRequest)
 	mux.HandleFunc("POST /api/app/onboarding", s.saveOnboarding)
 	mux.HandleFunc("GET /api/app/plugins/installed", s.pluginsInstalled)
 	mux.HandleFunc("GET /plugin/{id}/{path...}", s.servePlugin)
@@ -432,7 +434,21 @@ func rewriteForPhone(page []byte) []byte {
 		}
 		page = bytes.Replace(page, []byte(swap.from), []byte(swap.to), 1)
 	}
-	return withoutPinterest(page)
+	// Unconditional, not guarded on offersPinterest / offersWebImport. This
+	// function only ever runs for the app build, which has neither importer, and
+	// the guard would have been a no-op that also made the desktop-compiled
+	// tests of this function strip nothing and prove nothing.
+	return withoutWebImport(withoutPinterest(page))
+}
+
+// withoutWebImport takes the link importer out of the page an app build serves.
+// Emptied rather than deleted for the same reason as the board importer: app.js
+// is one file on both platforms and writes to these elements as it renders.
+func withoutWebImport(page []byte) []byte {
+	for _, part := range webImportParts {
+		page = hollowElement(page, part.marker, part.tag)
+	}
+	return page
 }
 
 // Which parts of the page belong to the board importer, and what kind of
@@ -450,6 +466,21 @@ var pinterestParts = []struct{ marker, tag string }{
 	{`id="pinterestPluginToggle"`, "label"}, // both settings rows
 	{`id="pinterestAutoSyncToggle"`, "label"},
 	{`id="pinterestBoardList"`, "div"}, // the boards a desktop is following
+}
+
+// webImportParts is the same list for the general link importer, which the app
+// build does not have either. See platform_mobile.go for why.
+//
+// The menu entry is not here. #showPinterest keeps a misleading id but is the
+// link importer's, and app.js hides it on its own when the plugin reports
+// disabled, which is what a build without the importer now reports. Emptying it
+// by name is how the phone ended up with a blank menu row once already.
+var webImportParts = []struct{ marker, tag string }{
+	{`id="webSection"`, "section"},          // the importer panel
+	{`id="webPluginToggle"`, "label"},       // its two settings rows
+	{`id="webAutoSyncToggle"`, "label"},
+	{`id="webImportRow"`, "div"},            // the way in, from the Plugins screen
+	{`id="webSourceSummary"`, "p"},          // "you are not following any websites"
 }
 
 // withoutPinterest takes the board importer out of the page an app build

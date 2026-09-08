@@ -41,6 +41,23 @@ const (
 	// person runs on their own machine to fetch pictures they can already see is
 	// the thing every browser does with "save image".
 	offersPinterest = false
+	// No link importer either, for the same policy and the same reasoning one
+	// paragraph up. Compiling out only the board reader missed the point: what
+	// the terms of service clause is about is automated collection, and the
+	// general importer does exactly that to every other site. It sweeps a page
+	// for up to maxPinterestImages pictures, and "check daily for new pictures"
+	// puts that sweep on a webSyncEvery schedule. Aiming it at everyone rather
+	// than at one service made it broader, not safer.
+	//
+	// So the app build has no importer at all: no panel, no routes, no daily
+	// job, and nothing in the menu. Pictures reach a phone the way Android
+	// intends, through the share sheet and the photo picker, and through LAN
+	// sync from a desktop that still has the whole thing.
+	//
+	// The desktop keeps it, for the reason above: it is not distributed by a
+	// store, and a program someone runs on their own machine to fetch pictures
+	// they can already see is what every browser does with "save image".
+	offersWebImport = false
 	// Android has its own product analytics and release lifecycle.
 	tracksDailyUsage = false
 )

@@ -205,15 +205,18 @@ func (a *application) pluginLocked(manifest pluginManifest) bool {
 }
 
 // freeOnPhone is the set of built-in features that need no unlock on a phone.
-// Import from web and the calendar are the two that make an empty library
-// useful on the day it is installed. This is about the compile-time feature
-// flags in pluginEnabled, not about installed plugins, which are gated by
-// pluginLocked above.
+// This is about the compile-time feature flags in pluginEnabled, not about
+// installed plugins, which are gated by pluginLocked above.
+//
+// Import from web used to be here, as the other thing that made an empty
+// library useful on day one. The app build no longer has it at all
+// (offersWebImport, platform_mobile.go), so there is nothing to unlock and
+// listing it here would only mean pluginEnabled asked a question about a
+// feature that is compiled out.
 //
 // The desktop is unaffected: it ships with these features and does not take a
 // working one away to sell it back.
 var freeOnPhone = map[string]bool{
-	"web":      true,
 	"calendar": true,
 }
 

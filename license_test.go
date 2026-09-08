@@ -395,8 +395,15 @@ func TestPhoneFeatureGateFollowsTheSameUnlock(t *testing.T) {
 		}
 		return
 	}
-	if !app.lockedOnPhone("canvas") || app.lockedOnPhone("web") || app.lockedOnPhone("calendar") {
+	// "web" used to be checked here as the other free feature. The app build no
+	// longer has the link importer at all (offersWebImport, platform_mobile.go),
+	// so pluginEnabled answers false before this gate is ever consulted and
+	// asking whether it is locked means nothing either way.
+	if !app.lockedOnPhone("canvas") || app.lockedOnPhone("calendar") {
 		t.Fatal("the phone gate is not locking exactly the non-free features")
+	}
+	if app.pluginEnabled("web") {
+		t.Fatal("the app build still offers the link importer")
 	}
 	if _, err := app.importLicense(issueLicense(key, `{"buyer":"b","issued":"2026-09-03","tier":"mobile"}`)); err != nil {
 		t.Fatal(err)

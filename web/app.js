@@ -4658,7 +4658,11 @@ $("#emptyAddImages").onclick = () => {
   openMenu();
 };
 $("#emptyPinterest").onclick = startPinterestOnboarding;
-$("#emptyPinterestPhone").onclick = startPinterestOnboarding;
+// The phone's version of the same button is not an importer. A library reaches
+// a phone from a desktop that already has one, so the first thing to offer an
+// empty library here is the pairing screen. See platform_mobile.go for why the
+// importer is not on this platform at all.
+$("#emptyConnectPhone").onclick = () => { showMenuHome(); $("#showSyncPhone").click(); };
 $("#imageFiles").onchange = event => uploadFiles(event.target.files);
 $("#pasteURLForm").onsubmit = pasteImageURL;
 $("#chooseFolder").onclick = openFolderPickerDialog;

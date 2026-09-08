@@ -1375,18 +1375,68 @@ func TestTheAndroidPageHasNoBoardImporter(t *testing.T) {
 		}
 	}
 
-	// The link importer is NOT the board importer, whatever its ids are called.
-	// #showPinterest is the menu's "Import from a link" and #emptyPinterestPhone
-	// is the primary button on an empty library: both work in the app build, and
-	// hollowing them by name once left the phone showing two blank controls, one
-	// of them on the first screen a new user sees.
-	for _, labelled := range []string{
-		`id="showPinterest" data-i18n="web.title" hidden>Import from a link<`,
-		`id="emptyPinterestPhone" data-i18n="empty.pinterest_suggest">Import from a link<`,
+	// The menu entry keeps its label. #showPinterest has a misleading id but is
+	// the link importer's, and app.js hides it on its own when the plugin
+	// reports disabled. Emptying it by name is how the phone ended up showing a
+	// blank menu row once already, so this asserts the label is still there.
+	if want := `id="showPinterest" data-i18n="web.title" hidden>Import from a link<`; !strings.Contains(phone, want) {
+		t.Errorf("the phone page lost the label on %s", want)
+	}
+
+	// The empty library's primary button is the pairing screen, not an importer.
+	// A library reaches a phone from a desktop that has one.
+	if !strings.Contains(phone, `id="emptyConnectPhone"`) {
+		t.Error("the phone's empty library has no Connect to computer button")
+	}
+	if strings.Contains(phone, `id="emptyPinterestPhone"`) {
+		t.Error("the phone still carries the importer button on an empty library")
+	}
+}
+
+// The general link importer is not in the app build either: see
+// platform_mobile.go. Same shape as the board importer above, and the same
+// reason, which is that a page sweeper on a schedule is what the terms of
+// service clause in Play's Device and Network Abuse policy is about.
+func TestTheAndroidPageHasNoLinkImporter(t *testing.T) {
+	page, err := embeddedFiles.ReadFile("web/index.html")
+	if err != nil {
+		t.Fatalf("reading the page: %v", err)
+	}
+	phone := string(rewriteForPhone(page))
+
+	// Nothing to press: the panel and every way into it are empty.
+	for _, gone := range []string{
+		`data-i18n="web.page_link"`,     // the address field's label
+		`data-i18n="web.backfill"`,      // "everything posted so far"
+		`data-i18n="web.follow"`,        // "check daily for new pictures"
+		`data-i18n="web.plugin_help"`,   // both settings rows
+		`data-i18n="web.auto_sync"`,
+		`data-i18n="web.open_panel"`,    // the way in, from the Plugins screen
 	} {
-		if !strings.Contains(phone, labelled) {
-			t.Errorf("the phone page lost the label on %s", labelled)
+		if strings.Contains(phone, gone) {
+			t.Errorf("the phone page still carries %s", gone)
 		}
+	}
+
+	// The ids survive as empty stubs, because app.js writes to them on every
+	// state update and is the same file on both platforms.
+	// hollowElement keeps every id that was inside as an empty hidden span, so
+	// #webSourceURL survives as a stub with no field, no label and nothing to
+	// type into. That is the point: app.js writes to it on every state update.
+	for _, kept := range []string{
+		`id="webSection"`, `id="webPluginToggle"`, `id="webAutoSyncToggle"`,
+		`id="webImportRow"`, `id="webSourceSummary"`, `id="webSourceURL"`,
+	} {
+		if !strings.Contains(phone, kept) {
+			t.Errorf("%s is gone from the phone page, which is a TypeError in app.js", kept)
+		}
+	}
+
+	// Pasting a link to ONE picture is a different route (/api/app/import-url)
+	// and stays: that is what a browser does with "save image", and it is how a
+	// picture gets into a phone library without a computer.
+	if !strings.Contains(phone, `id="pasteURLForm"`) {
+		t.Error("paste a picture's link went out with the importer")
 	}
 
 	// The rest of the page is untouched: the web importer shares the panel's

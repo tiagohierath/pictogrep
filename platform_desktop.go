@@ -20,6 +20,9 @@ const (
 	// The board importer, which is a desktop feature and stays one. See
 	// platform_mobile.go for why the app build has none of it.
 	offersPinterest = true
+	// The same for the general link importer: gallery-dl and the built-in
+	// extractor both stay here.
+	offersWebImport = true
 	// The desktop release records anonymous active days after meaningful use.
 	tracksDailyUsage = true
 )

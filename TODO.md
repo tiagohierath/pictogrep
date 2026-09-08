@@ -20,6 +20,8 @@ between sections, it does not change its number.
 | 33 | Ship the macOS version | ready to do, plan already written |
 | 34 | Identicons for folders and sync devices | ready to do, needs a look decided |
 | 35 | Two blank buttons in the Android build | DONE 2026-09-08 |
+| 36 | Cut the link importer out of the Android build | IN PROGRESS |
+| 37 | Sync a library desktop to phone | GAP: sync is one way today |
 
 ### 20. Drawing drops areas inside images
 
@@ -164,6 +166,90 @@ app's flat brutalist cards. Alternatives worth putting in front of Tiago:
 initials on a hashed background, or a small geometric mark. Whatever it is, it
 must be drawn in the client from a hash, with no request and no stored image,
 and honour the no-gray-text rule for any letterform in it.
+
+### 37. Sync a library from a desktop to a phone
+
+Implied by Tiago's 2026-09-08 description of the split: "gallery-dl / other
+importers handle the disgusting internet-scale acquisition problem. User can
+dump hundreds or thousands of images into Pictogrep. Pictogrep organizes and
+indexes them locally. Android receives/syncs an existing Pictogrep library."
+
+THE GAP: sync only runs phone to desktop. `sync_controls.go:190` says it
+outright, "a desktop cannot push to a phone at all", and the outbox tests are
+all named for the same direction. So today a phone cannot receive the library a
+desktop acquired, which is exactly the half Tiago describes as the point of the
+Android app.
+
+This matters more once task 36 lands, because sync becomes the ONLY way a large
+library reaches a phone. Until then the phone's answer to "how do I get my
+pictures here" is the share sheet, one picture at a time.
+
+Not started. Needs its own design pass: what the phone stores, whether it takes
+the whole library or a chosen folder, what happens on a phone that runs out of
+room, and whether the existing pairing and identity work carries the reverse
+direction unchanged (it probably does, the transport is symmetric; the outbox
+and the digests are the parts written one way round).
+
+### 36. Cut the link importer out of the Android build
+
+Requested 2026-09-08: "i think i'll keep galery-dl on desktop, and remove from
+the android so it doesnt do anything." Filed on Android as its task 6, where
+the policy research behind the decision is written out.
+
+WHY. `offersPinterest = false` already compiles the board reader out of the app
+build, and `platform_mobile.go` gives the reason: Play's Device and Network
+Abuse policy forbids using a service "in a manner that violates its terms of
+service", and Pinterest's terms forbid automated collection. The general link
+importer that replaced that panel in the UI does the same thing to every other
+site: `runNativeGallery` sweeps a page for up to `maxPinterestImages` (5000)
+pictures or `maxPinterestDownloadBytes` (2 GB), and "check daily for new
+pictures" puts that sweep on a `webSyncEvery` (24 hour) schedule. Aiming it at
+everyone rather than at one service made it broader, not safer. The desktop
+keeps all of it, because it is not distributed by a store.
+
+WHAT GOES, on the phone build only:
+
+- The whole web importer: its panel, its four routes, its daily sync job, and
+  its rows in the Plugins screen.
+- The menu entry and the empty-library button that open it.
+
+WHAT STAYS, and must keep working:
+
+- **Paste a picture's link** (`#pasteURLForm` in the Add drawer). It posts to
+  `/api/app/import-url`, a different route that fetches ONE picture the user
+  pasted. That is what a browser does with "save image", not a scrape, and it
+  is the thing that keeps "get a picture off the web" alive on the phone.
+- The share sheet and the system photo picker.
+- LAN sync from a desktop, which still has the whole importer.
+
+PLAN:
+
+1. `offersWebImport` build constant, true on desktop, false on mobile, next to
+   `offersPinterest`. DONE.
+2. `pluginEnabled("web")` and `setPluginEnabled("web")` refuse it when the
+   build has none, so the config file cannot switch it back on. DONE.
+3. The four `/api/app/plugins/web/*` and `/api/app/settings/web` routes are
+   only registered when the build has the importer. DONE. `/api/app/import-url`
+   is deliberately NOT in that group.
+4. `freeOnPhone` loses `"web"`: nothing to unlock when it is compiled out.
+   DONE.
+5. Strip the importer's markup from the phone page, the way `withoutPinterest`
+   already strips the board panel. TODO.
+6. Give the phone's empty library a button that does something. Right now it is
+   "Import from a link", which is the feature being removed, and it is already
+   dead on arrival: `startPinterestOnboarding()` tries to switch the plugin on,
+   `setPluginEnabled` now refuses, and the function returns having done
+   nothing. TODO.
+
+   Tiago's framing on 2026-09-08 says which button it should be: "Android
+   doesn't need to understand Pinterest at all. Receives/syncs an existing
+   Pictogrep library. Can also handle individual images through Android's Share
+   menu." So the phone's first-run story is pair a computer, not add one
+   picture. Primary button: Connect to computer (`#showSyncPhone`). The Add
+   drawer, with the photo picker and paste-a-link, stays one tap away in the
+   menu.
+7. Tests, and the STORE.md Premium copy, which currently sells "import from
+   web" as one of the two free phone features. TODO.
 
 ## Not doing
 

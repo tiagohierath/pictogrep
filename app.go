@@ -431,6 +431,9 @@ func (a *application) pluginEnabled(name string) bool {
 	if name == "pinterest" && !offersPinterest {
 		return false
 	}
+	if name == "web" && !offersWebImport {
+		return false
+	}
 	// Locked is locked: not merely hidden in the panel, but off for the routes
 	// it serves and the background work it schedules too. See license.go.
 	if a.lockedOnPhone(name) {
@@ -464,6 +467,9 @@ func (a *application) setPluginEnabled(name string, enabled bool) error {
 	// writing the config by hand cannot bring back a panel this build does not
 	// serve.
 	if name == "pinterest" && !offersPinterest {
+		return fmt.Errorf("unknown plugin: %s", name)
+	}
+	if name == "web" && !offersWebImport {
 		return fmt.Errorf("unknown plugin: %s", name)
 	}
 	document := map[string]any{}
