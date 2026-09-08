@@ -13,8 +13,10 @@ const PLUGIN_TOGGLES = {
   "#webPluginToggle": "web",
 };
 
-/** Free on a phone without Premium. Kept in step with freeOnPhone in premium.go. */
-const FREE_ON_PHONE = new Set(["web", "calendar"]);
+/** Free on a phone without Premium. Kept in step with freeOnPhone in license.go.
+    "web" was here until the link importer was compiled out of the app build:
+    there is nothing left to give away. */
+const FREE_ON_PHONE = new Set(["calendar"]);
 
 let appState = null;
 let currentTag = "";
