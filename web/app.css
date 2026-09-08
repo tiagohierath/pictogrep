@@ -705,6 +705,29 @@ body.show-filenames .image-filename { display: block; }
    line is in almost all of the time and it is not news. */
 .sync-status { margin: 0 0 var(--space-4); color: var(--fg-subtle); font-size: var(--text-sm); }
 .sync-status-working { color: var(--fg); }
+
+/* Getting pictures from a computer. A block of its own above the actions row,
+   because it is a different question from "is my sending working": one is a
+   status line you read, this is a thing you do. Separated by a rule rather than
+   by space alone, so it does not read as more of the status above it. */
+.sync-get { margin: 0 0 var(--space-4); padding: var(--space-4) 0 0; border-top: 1px solid var(--line); }
+.sync-get h3 { margin: 0 0 var(--space-3); font-size: var(--text-sm); font-weight: 600; }
+.sync-get-folder { display: flex; flex-direction: column; gap: var(--space-1); margin: 0 0 var(--space-3); font-size: var(--text-sm); }
+/* Full width and a real touch target: this is a phone-only control and a
+   select sized for a mouse is the wrong shape for a thumb. */
+.sync-get-folder select { width: 100%; min-height: 44px; padding: 0 var(--space-2); border: 1px solid var(--line); border-radius: 0; background: var(--bg); color: var(--fg); font-size: var(--text-sm); }
+/* 44px, the smallest thing a thumb hits reliably. The drawer's own buttons are
+   36px, which is a mouse's size and is what this inherited before. */
+.sync-get button { width: 100%; min-height: 44px; }
+.sync-get button + button { margin-top: var(--space-2); }
+/* Full ink, not the muted grey. This line is the one thing someone watches
+   during a download, and it is set apart by size and weight rather than by
+   being faded.
+   Two classes deep on purpose: `.drawer-section p` is 0,1,1 and would otherwise
+   win on specificity and drag this back to --fg-muted, which is exactly what it
+   did the first time. */
+.sync-get .sync-get-progress { margin: var(--space-3) 0 0; color: var(--fg); font-size: var(--text-sm); font-weight: 600; }
+
 .followed-board button { flex: none; }
 
 .commons-image-card { position: relative; margin: 0 0 var(--space-5); break-inside: avoid; }

@@ -55,6 +55,9 @@ type syncServer struct {
 	// outbox is what sends. Nil is a valid state and means this device only
 	// receives; see newSyncServer.
 	outbox *outbox
+	// puller is what takes, on this device's own initiative. Separate from the
+	// outbox on purpose: see sync_pull.go.
+	puller *puller
 
 	listener net.Listener
 	// advertiser makes this machine findable again after its address changes.
@@ -100,6 +103,7 @@ func newSyncServer(appServer *server, deviceName string) (*syncServer, error) {
 		digests: openDigestCache(filepath.Join(dir, "digests.json")),
 	}
 	server.outbox = newOutbox(server, dir)
+	server.puller = newPuller(server)
 	return server, nil
 }
 
@@ -154,6 +158,10 @@ func (s *syncServer) start() error {
 	// that works until it meets a proxy or an HTTP stack that drops it.
 	mux.Handle("POST /manifest", s.authenticated(http.HandlerFunc(s.handleManifest)))
 	mux.Handle("POST /blobs/{hash}", s.authenticated(http.HandlerFunc(s.handleUploadBlob)))
+	// The receiving direction, which is a pull. See sync_catalogue.go for why
+	// it cannot be the mirror image of the two above.
+	mux.Handle("POST /catalogue", s.authenticated(http.HandlerFunc(s.handleCatalogue)))
+	mux.Handle("GET /blobs/{hash}", s.authenticated(http.HandlerFunc(s.handleDownloadBlob)))
 	go func() { _ = http.Serve(listener, mux) }()
 	// Announced only once the listener is up, so nothing is ever told to knock
 	// on a door that is not there yet. A failure here is logged and swallowed:

@@ -3905,6 +3905,10 @@ function showSyncPairingOnPhone() {
   clearTimeout(syncExpiryTimer);
   $("#syncQR").innerHTML = "";
   refreshSyncState();
+  // Asked once, when the panel opens, rather than on every poll: it is a
+  // request to another machine and the answer changes when someone makes a
+  // folder, not every two seconds.
+  loadSyncGetFolders();
 }
 
 // Called by name from the Android side once the camera closes, with the raw
@@ -3958,7 +3962,64 @@ async function refreshSyncState() {
   const waiting = (state.outbox || {}).waiting || 0;
   if (syncWasWaiting && waiting === 0 && !state.outbox?.sending) showMessage(t("sync.all_sent"), false, false, 4, "success");
   syncWasWaiting = waiting > 0 || Boolean(state.outbox?.sending);
+  renderSyncGet(state.pull || {}, peers);
   return state;
+}
+
+// Getting pictures FROM a computer. Only offered once there is a computer this
+// device can actually reach, which is the same test everything else here makes:
+// see peer.listens and sync_catalogue.go.
+function renderSyncGet(pull, peers) {
+  const reachable = peers.some(peer => peer.listens);
+  $("#syncGetSection").hidden = !reachable;
+  if (!reachable) return;
+
+  const progress = $("#syncGetProgress");
+  const running = Boolean(pull.running);
+  $("#syncGetStart").disabled = running;
+  $("#syncGetStop").hidden = !running;
+
+  if (running) {
+    // The total is only known once the catalogue has been read and compared,
+    // so until then this says what is true rather than "0 of 0".
+    progress.hidden = false;
+    progress.textContent = pull.total
+      ? t("sync.get_progress", {done: pull.done || 0, total: pull.total})
+      : t("sync.get_asking");
+    return;
+  }
+  if (pull.finished) {
+    progress.hidden = false;
+    progress.textContent = pull.lastError && !pull.done
+      ? pull.lastError
+      : t("sync.get_done", {added: pull.done || 0, skipped: pull.skipped || 0});
+    return;
+  }
+  progress.hidden = true;
+}
+
+// The folder picker, filled from the computer itself rather than from anything
+// remembered here: a list of folders is small, and a stale one offers a folder
+// that has been deleted.
+async function loadSyncGetFolders() {
+  const select = $("#syncGetFolder");
+  try {
+    const library = await request("/api/app/sync/library");
+    select.replaceChildren();
+    const everything = document.createElement("option");
+    everything.value = "";
+    everything.textContent = t("sync.get_everything", {count: library.total || 0});
+    select.append(everything);
+    for (const folder of library.folders || []) {
+      const option = document.createElement("option");
+      option.value = folder.name;
+      option.textContent = `${folder.name} (${folder.count})`;
+      select.append(option);
+    }
+  } catch {
+    // A computer that is asleep is the ordinary case, not an error worth an
+    // alert. The section stays as it was and the next poll tries again.
+  }
 }
 
 // The one line that says whether sync is doing its job. Not an error display:
@@ -4056,6 +4117,27 @@ async function requestNewSyncCode() {
 }
 
 $("#syncNewCode").onclick = requestNewSyncCode;
+$("#syncGetStart").onclick = async () => {
+  const folder = $("#syncGetFolder").value;
+  try {
+    // Into a folder named after the one it came from, so a phone that takes
+    // three folders can still tell them apart. Everything lands loose, the same
+    // as a share that names no folder.
+    await request("/api/app/sync/get", {
+      method: "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({folder, into: folder}),
+    });
+  } catch (error) {
+    showMessage(error.message || String(error), true);
+    return;
+  }
+  refreshSyncState();
+};
+$("#syncGetStop").onclick = async () => {
+  await request("/api/app/sync/get/stop", {method: "POST"});
+  refreshSyncState();
+};
 $("#syncSendNow").onclick = async () => {
   try {
     await fetch("/api/app/sync/now", { method: "POST" });

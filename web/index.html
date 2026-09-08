@@ -176,6 +176,22 @@
 
       <p class="sync-status" id="syncStatus" hidden></p>
 
+      <!--
+        Getting pictures FROM the computer, which is the direction that brings a
+        library onto a phone. Phone only, because reachability is asymmetric: the
+        phone dialled the computer at pairing and can dial it again, and the
+        computer cannot do the reverse. See sync_catalogue.go.
+      -->
+      <div class="sync-get phone-only" id="syncGetSection" hidden>
+        <h3 data-i18n="sync.get_title">Get pictures from this computer</h3>
+        <label class="sync-get-folder"><span data-i18n="sync.get_folder">Which pictures</span>
+          <select id="syncGetFolder"></select>
+        </label>
+        <button type="button" class="primary" id="syncGetStart" data-i18n="sync.get_start">Get them</button>
+        <p class="sync-get-progress" id="syncGetProgress" hidden></p>
+        <button type="button" id="syncGetStop" data-i18n="sync.get_stop" hidden>Stop</button>
+      </div>
+
       <div class="pinterest-actions">
         <button type="button" class="phone-only" id="syncSendNow" data-i18n="sync.send_now" hidden>Send now</button>
         <button type="button" class="desktop-only" id="syncPauseToggle" data-i18n="sync.pause">Pause sync</button>

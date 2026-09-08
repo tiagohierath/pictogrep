@@ -10,12 +10,14 @@ package main
 // job is already polled.
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
 	"os"
+	"time"
 )
 
 // localAddresses lists this machine's own LAN addresses, so a QR can carry
@@ -71,6 +73,9 @@ func (s *server) syncState(w http.ResponseWriter, r *http.Request) {
 		"peers":      sync.peers.all(),
 		"outbox":     sync.outbox.snapshot(),
 		"autoSend":   s.app.sendsAutomatically(),
+		// The receiving direction's progress, polled by the same screen that
+		// started it. See sync_pull.go.
+		"pull": sync.puller.snapshot(),
 	})
 }
 
@@ -286,4 +291,78 @@ func (s *server) peerRediscovered(w http.ResponseWriter, r *http.Request) {
 	// nothing to report; worth trying again now rather than on the next tick.
 	sync.outbox.nudge()
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "known": true})
+}
+
+// GET /api/app/sync/library: what a paired computer has, so the folder picker
+// has something to draw. Asks the computer live rather than caching, because a
+// list of folders is small and a stale one offers a folder that is gone.
+//
+// Optional `peer` names which computer; with one paired, which is the ordinary
+// case, it can be left off.
+func (s *server) syncLibrary(w http.ResponseWriter, r *http.Request) {
+	sync, ok := s.requireSync(w)
+	if !ok {
+		return
+	}
+	target, found := sync.puller.reachablePeer(r.URL.Query().Get("peer"))
+	if !found {
+		sendError(w, http.StatusNotFound, fmt.Errorf("no paired computer this device can reach"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+	defer cancel()
+	catalogue, err := sync.puller.catalogueOf(ctx, target, "")
+	if err != nil {
+		sendError(w, http.StatusBadGateway, err)
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]any{
+		"peer": target.Name, "peerId": target.ID,
+		"folders": catalogue.Folders, "total": len(catalogue.Entries),
+	})
+}
+
+// POST /api/app/sync/get: start taking pictures from a computer.
+//
+// Returns as soon as the pull is under way. The pass itself can be minutes of
+// downloading, so the interface polls GET /api/app/sync for the progress
+// rather than holding this request open for all of it.
+func (s *server) syncGetFromPeer(w http.ResponseWriter, r *http.Request) {
+	sync, ok := s.requireSync(w)
+	if !ok {
+		return
+	}
+	var request struct {
+		Peer string `json:"peer"`
+		// Folder on the computer. Empty means its whole library.
+		Folder string `json:"folder"`
+		// Into is the folder here that the pictures land in. Empty means the
+		// library itself, loose, the same as a share that names no folder.
+		Into string `json:"into"`
+	}
+	if err := decodeJSON(r, &request, 4<<10); err != nil {
+		sendError(w, http.StatusBadRequest, err)
+		return
+	}
+	target, found := sync.puller.reachablePeer(request.Peer)
+	if !found {
+		sendError(w, http.StatusNotFound, fmt.Errorf("no paired computer this device can reach"))
+		return
+	}
+	if err := sync.puller.start(target, request.Folder, request.Into); err != nil {
+		sendError(w, http.StatusConflict, err)
+		return
+	}
+	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "peer": target.Name})
+}
+
+// POST /api/app/sync/get/stop: give up on a pull in progress. What already
+// arrived stays.
+func (s *server) syncStopGetting(w http.ResponseWriter, r *http.Request) {
+	sync, ok := s.requireSync(w)
+	if !ok {
+		return
+	}
+	sync.puller.stopPull()
+	sendJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
