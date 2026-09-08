@@ -2200,7 +2200,7 @@ function folderCard(folder) {
   open.onkeydown = event => {
     if (event.key !== "Enter" && event.key !== " ") return;
     event.preventDefault();
-    openFolder(folder, card);
+    openFolder(folder);
   };
   const preview = document.createElement("span");
   preview.className = `folder-preview images-${Math.min(4, folder.images.length)}`;
@@ -2228,7 +2228,7 @@ function folderCard(folder) {
   date.textContent = folder.lastAdded ? folderDate(folder.lastAdded) : "";
   details.append(text, date);
   open.append(preview, details);
-  open.onclick = () => openFolder(folder, card);
+  open.onclick = () => openFolder(folder);
 
   card.append(open);
 
@@ -2297,19 +2297,19 @@ async function handleFolderDrop(event, card, folder) {
   const after = event.clientX > card.getBoundingClientRect().left + card.offsetWidth / 2;
   const moving = draggedFolder;
   draggedFolder = null;
-  const byKey = new Map(folderRecords.map(item => [item.key, item]));
-  const visibleKeys = Array.from(document.querySelectorAll("#folderList .folder-card"), element => element.dataset.folderKey);
-  const hidden = folderRecords.filter(item => !visibleKeys.includes(item.key));
-  const ordered = visibleKeys.map(key => byKey.get(key)).filter(Boolean);
+  // Every folder gets a place, not just the ones the search box happens to be
+  // showing. Rebuilding the order from the visible cards alone would send
+  // everything that did not match the search to the end of it.
+  const ordered = folderRecords.slice().sort(folderOrdering());
   const fromIndex = ordered.findIndex(item => item.key === moving.key);
   let targetIndex = ordered.findIndex(item => item.key === folder.key);
   if (fromIndex < 0 || targetIndex < 0) return;
   const [record] = ordered.splice(fromIndex, 1);
   if (fromIndex < targetIndex) targetIndex--;
   ordered.splice(targetIndex + (after ? 1 : 0), 0, record);
-  folderRecords = ordered.concat(hidden);
+  folderRecords = ordered;
   folderView.sort = "custom";
-  folderView.order = folderRecords.map(item => item.key);
+  folderView.order = ordered.map(item => item.key);
   renderFolders();
   await saveFolderView({order: folderView.order, sort: "custom"});
 }
@@ -2334,7 +2334,7 @@ function setFolderScope(folder) {
   renderSearchScope();
 }
 
-function openFolder(folder, card = null) {
+function openFolder(folder) {
   reportMeaningfulActivity();
   closeCardMenus();
   const navigate = () => {
@@ -2343,22 +2343,26 @@ function openFolder(folder, card = null) {
     if (!currentQuery && folder.images?.length) renderImages(folder.images, folder.count);
     // The folder wall can be scrolled a long way down. Landing at the top is
     // where the image list starts anyway, and doing it inside the transition
-    // means the morph animates to the resting position instead of ending on a
-    // jump.
+    // means the panels animate to their resting position instead of ending on
+    // a jump.
     window.scrollTo({top: 0, behavior: "instant"});
   };
   const stillMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-  if (card && !stillMotion && document.startViewTransition) {
-    card.style.viewTransitionName = "folder-open";
-    $("#imagesPanel").style.viewTransitionName = "folder-open";
+  // Only the wall-to-grid swap is worth animating. A folder opened from
+  // anywhere else, a finished import say, has no wall to dissolve.
+  const fromWall = !$("#foldersPanel").hidden;
+  if (fromWall && !stillMotion && document.startViewTransition) {
+    // A name each. Giving both panels the SAME name is what used to pair them
+    // into one travelling rectangle, and that pairing is what looked bad.
+    $("#foldersPanel").style.viewTransitionName = "folder-wall";
+    $("#imagesPanel").style.viewTransitionName = "folder-contents";
     const transition = document.startViewTransition(navigate);
     // Swapping in the full, real image list is what the transition is
-    // supposed to lead into, not something happening underneath it: doing it
-    // while the transition is still animating its captured before/after
-    // snapshots rewrites the DOM mid-flight, which is the glitch (a flash or
-    // a mismatched frame) users saw opening a folder.
+    // supposed to lead into, not something happening underneath it: the new
+    // frame is a live view of the panel, so rewriting it mid-flight is the
+    // glitch (a flash or a mismatched frame) users saw opening a folder.
     transition.finished.finally(() => {
-      card.style.removeProperty("view-transition-name");
+      $("#foldersPanel").style.removeProperty("view-transition-name");
       $("#imagesPanel").style.removeProperty("view-transition-name");
       loadImages();
     });
@@ -2577,13 +2581,20 @@ async function deleteFolder(folder) {
   } catch (error) { showMessage(error.message, true); }
 }
 
-function folderComparator(sortMode) {
-  const order = new Map((folderView.order || []).map((key, index) => [key, index]));
+// Biggest first, which puts the folder holding most of the library where it is
+// being looked for. Dragging a card overrides that: a folder that was placed by
+// hand keeps the position it was given, and one made since the last reorder is
+// ranked by size after the placed ones rather than jumping to the front.
+function folderOrdering() {
+  const placed = new Map((folderView.order || []).map((key, index) => [key, index]));
+  const bySize = (left, right) => right.count - left.count || left.name.localeCompare(right.name, undefined, {sensitivity: "base"});
   return (left, right) => {
-    if (sortMode === "name") return left.name.localeCompare(right.name, undefined, {sensitivity: "base"});
-    if (sortMode === "recent") return (right.lastAdded || 0) - (left.lastAdded || 0) || left.name.localeCompare(right.name);
-    if (sortMode === "size") return right.count - left.count || left.name.localeCompare(right.name);
-    return (order.get(left.key) ?? Number.MAX_SAFE_INTEGER) - (order.get(right.key) ?? Number.MAX_SAFE_INTEGER);
+    const here = placed.get(left.key);
+    const there = placed.get(right.key);
+    if (here === undefined && there === undefined) return bySize(left, right);
+    if (here === undefined) return 1;
+    if (there === undefined) return -1;
+    return here - there;
   };
 }
 
@@ -2607,11 +2618,9 @@ function folderSection(title, folders) {
 function renderFolders() {
   const query = $("#folderSearch").value.trim().toLowerCase();
   const matches = folderRecords.filter(folder => !query || folder.name.toLowerCase().includes(query) || folder.value.toLowerCase().includes(query));
-  // Biggest first, which puts the folder holding most of the library at the
-  // top where it is being looked for. Sections, pinning and a custom order
-  // were three ways to answer the same question and none of them showed a
-  // picture, so the grid is flat and the ranking is the one useful default.
-  matches.sort((left, right) => right.count - left.count || left.name.localeCompare(right.name, undefined, {sensitivity: "base"}));
+  // The grid stays flat: sections and pinning were two more ways to answer the
+  // question the ranking already answers, and neither of them showed a picture.
+  matches.sort(folderOrdering());
   $("#folderList").replaceChildren(...matches.map(folderCard));
   $("#foldersEmpty").hidden = matches.length !== 0;
 }

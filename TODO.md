@@ -312,6 +312,81 @@ Task 24 made `loadImage()` set `image.draggable = false`, which covers every
 picture in the grid, but the full-size image inside `#imageViewer` is not
 created there. Find where the viewer builds its `<img>` and fix the same way.
 
+### 31. Reordering folders on the Folders tab is broken, DONE
+
+Reported 2026-09-08: "fix reordering folder orders on folders tab on pictogrep
+desktop".
+
+None of the suspects were it, and neither was drag-to-scroll: `.folder-card` is
+in its ignore list. The drag starts, the reorder maths is right and the order
+reaches disk. Measured against a rebuilt binary, dropping `lib` after `bravo`
+POSTed exactly `alpha, bravo, lib, charlie, delta, echo` and the server stored
+it. Then the screen showed `lib, alpha, bravo, charlie, delta, echo` anyway.
+
+`renderFolders()` sorted by picture count and never read `folderView.order`, so
+every reorder was thrown away one line after being saved. It called neither the
+`folderComparator()` next to it, which did handle a custom order and was dead
+code, nor anything else that looked at the saved order.
+
+`folderOrdering()` replaces that comparator and is used by both the render and
+the drop. Hand-placed folders keep the position they were given; anything made
+since the last reorder is ranked by size after them, so the approved
+biggest-first wall is still what a library that has never been reordered gets,
+and a new folder does not jump to the front.
+
+Fixed a second bug in the same feature while the order was inert and could not
+show it: `handleFolderDrop()` rebuilt the order from the visible cards and
+appended the rest, so reordering with the folder search box filtering sent every
+folder that did not match to the end. It now moves the dragged folder inside the
+full order.
+
+Verified in Firefox at 1440px and 390px, live and across a reload: a drop
+sticks, a drop under a filter leaves the non-matching folders where they were,
+and a folder created afterwards lands last. `go test ./...` has 11 failures,
+all Pinterest and import tests, byte-identical to the same 11 on HEAD.
+
+The drop side is still chosen by the card's horizontal midpoint. Checked
+whether that reads wrong on a phone: it does not, the wall is two columns at
+390px, so cards sit side by side and left/right is the right axis. Left alone.
+
+### 32. The open-a-folder animation is hideous, DONE
+
+Requested 2026-09-08: "also fix the animation for when you open a folder, its
+hideous".
+
+What was ugly was the shape, not the timing. `openFolder()` gave the folder card
+and `#imagesPanel` the SAME `view-transition-name`, which is how you ask the
+browser to pair them, so one rectangle travelled from a 265x254 card to a
+1120px-wide panel while both snapshots were force-fitted into it (`height: 100%`
+plus `object-fit: cover`). The card was blown up about 5x and cropped, the grid
+was squeezed into a card and blown back out, and the two cross-dissolved through
+the middle of it. An earlier pass had already tried to rescue this by swapping
+`fill` for `cover`, which only changed distortion into a cropped smear.
+
+The morph is gone. Each panel has its own name now, `folder-wall` and
+`folder-contents`, so neither is ever paired, stretched or cropped: one leaves,
+one arrives, each in its own box. The wall dissolves, the grid fades in and
+rises 10px into place on the app's own `cubic-bezier(.2, 0, 0, 1)`. Both fades
+are linear on purpose, because easing the two halves of a dissolve stops them
+adding up to one and dims the middle of the swap. Duration is .2s, down from
+.26s, which puts it near the .12s tab underline instead of at twice its length.
+
+The transition is now gated on the folders wall being on screen rather than on a
+card being passed, so the context menu's Open animates the same as clicking a
+card, and the path that opens a folder after a web import stays instant as it
+was. `openFolder()` lost its unused `card` argument.
+
+Verified in Firefox: `::view-transition-old(folder-wall)` runs `folder-swap-out`
+200ms linear, `::view-transition-new(folder-contents)` runs `folder-swap-in`
+200ms linear plus `folder-arrive` 200ms `cubic-bezier(0.2, 0, 0, 1)`, there is
+no paired group and no `::view-transition-old(folder-contents)`, and the panel
+names are cleaned off after it finishes.
+
+Note for next time: geckodriver screenshots do NOT capture view-transition
+snapshot layers, they photograph the live DOM underneath, so a paused
+transition still screenshots as the finished state. Read `getAnimations()` and
+the pseudo-element names instead of trying to eyeball frames.
+
 ### 20. Drawing drops areas inside images
 
 Reported 2026-09-06: "drawing works not well like inside images, areas
@@ -358,6 +433,14 @@ EARLIER `const finish = () => {` at line 120 and duplicated ~5800 lines of
 
 Working tree is still uncommitted and nothing has been pushed.
 
+
+## Later (not today)
+
+- **macOS port.** Plan written to `docs/macos-port.md` on 2026-09-07. Tiago
+  asked for the plan only, not the implementation. Verified that
+  `GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./...` already succeeds.
+  Decision: skip Apple's 99 USD/year, ship a terminal install so Gatekeeper
+  never fires.
 
 ## Working rules Tiago set this session
 

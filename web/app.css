@@ -459,34 +459,36 @@ body.show-filenames .image-filename { display: block; }
 .folder-create-more[open] summary { margin-bottom: var(--space-3); }
 .folder-create-more > label, .folder-create-more > input, .folder-create-more > select { width: 100%; }
 
-/* Opening a folder morphs the card's rectangle into the image panel. The two
-   snapshots have wildly different aspect ratios, so the default object-fit
-   (fill) squashes them while the box travels, which is what made this look
-   dirty. Cropping from the centre instead keeps both frames undistorted, and
-   giving the group, the old frame and the new frame one duration and one
-   easing keeps the box, the fade-out and the fade-in on the same clock. */
-::view-transition-group(folder-open) { animation-duration: .26s; animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
-::view-transition-image-pair(folder-open) { isolation: none; }
-::view-transition-old(folder-open),
-::view-transition-new(folder-open) {
-  height: 100%;
-  object-fit: cover;
-  object-position: top center;
-  transform-origin: top center;
-  mix-blend-mode: normal;
-  animation-duration: .26s;
-  animation-timing-function: cubic-bezier(.2, 0, 0, 1);
+/* Opening a folder is a step inward, not a shape shift. A folder card and a
+   grid of pictures have nothing in common as pictures, so pairing them under
+   one view-transition-name only ever produced a blown-up, cropped smear of the
+   card sweeping the screen while its box travelled from card to panel. Naming
+   the two panels separately keeps each one in its own box, so nothing is
+   stretched or cropped and the swap is a plain dissolve.
+
+   One event carries the meaning, the pictures arriving, so the wall only
+   dissolves while the grid also rises the last few pixels into place. .2s puts
+   this in the same rhythm as the tab underline (.12s) rather than twice its
+   length, which is what the old morph needed to read at all. */
+::view-transition-group(folder-wall),
+::view-transition-group(folder-contents) { animation-duration: .2s; }
+::view-transition-old(folder-wall) { animation: folder-swap-out .2s linear both; }
+::view-transition-new(folder-contents) {
+  animation: folder-swap-in .2s linear both,
+             folder-arrive .2s cubic-bezier(.2, 0, 0, 1) both;
 }
-::view-transition-old(folder-open) { animation-name: folder-open-old; }
-::view-transition-new(folder-open) { animation-name: folder-open-new; }
-/* The card leaves early so the two never muddle into each other halfway. A
-   small scale on top of the fade gives the swap a direction: the cover
-   recedes as if the view were passing through it, the grid arrives already
-   in motion and settles rather than simply materializing in place. */
-@keyframes folder-open-old { 0% { opacity: 1; transform: scale(1); } 55%, 100% { opacity: 0; transform: scale(1.06); } }
-@keyframes folder-open-new { 0% { opacity: 0; transform: scale(.97); } 15% { opacity: 0; } 100% { opacity: 1; transform: scale(1); } }
-/* The chrome around the morph shouldn't outlast it. */
-::view-transition-old(root), ::view-transition-new(root) { animation-duration: .26s; }
+/* Linear and complementary on purpose: ease the two halves of a dissolve and
+   they stop adding up to one, so the middle of the swap goes dim. */
+@keyframes folder-swap-out { to { opacity: 0; } }
+@keyframes folder-swap-in { from { opacity: 0; } }
+/* Small on purpose: enough to give the arrival a direction and let it settle
+   instead of materialising in place, not enough to read as the page sliding. */
+@keyframes folder-arrive { from { transform: translateY(10px); } }
+/* The chrome around the swap shouldn't outlast it. The root group carries an
+   identity transform and is invisible, but its duration is what the transition
+   waits on before it hands the panel back and fills in the real grid. */
+::view-transition-group(root),
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: .2s; }
 
 @media (max-width: 760px) {
   .folder-toolbar { position: static; grid-template-columns: minmax(0, 1fr) auto; }
