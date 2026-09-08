@@ -1,6 +1,190 @@
-# Session tasks
+# Pictogrep desktop, session tasks
 
-Started 2026-09-06. Work on the calendar view, the app header, and the folder page.
+Started 2026-09-06. Calendar view, app header, folder page, drag-to-scroll.
+
+Rules for this file: every task Tiago gives goes in here BEFORE work starts on
+it. Numbers are permanent, they are never reused or renumbered. A task moves
+between sections, it does not change its number.
+
+## Open
+
+| # | Task | State |
+|---|------|-------|
+| 21 | Cannot click the Pinterest import text box | needs Tiago to retest |
+| 22 | "Site has control of your pointer" | needs Tiago to say where he sees it |
+| 27 | Cannot click text boxes on the import screen | needs Tiago to retest |
+| 20 | Drawing drops areas inside images | needs Tiago to describe it |
+| 28 | Remove Pinterest branding, accept any link | needs a decision, then work |
+| 29 | Make "Full width" the default for new users | ready to do |
+| 30 | Dragging is still native inside an open picture | ready to do |
+| 33 | Ship the macOS version | ready to do, plan already written |
+| 34 | Identicons for folders and sync devices | ready to do, needs a look decided |
+| 35 | Two blank buttons in the Android build | DONE 2026-09-08 |
+
+### 20. Drawing drops areas inside images
+
+Reported 2026-09-06: "drawing works not well like inside images, areas
+missing". First guess was that drag-to-scroll was stealing the strokes. That is
+WRONG: drawing lives in `web/practice.html`, which loads neither `app.js` nor
+`app.css` and has its own pointer handling (`setPointerCapture`,
+`getCoalescedEvents`). So this is pre-existing and unrelated to this session's
+work. Still needs investigating on its own.
+
+BLOCKED: needs Tiago to say which tool and what "areas missing" looks like.
+
+### 21. REGRESSION: cannot click the Pinterest import text box
+
+Reported 2026-09-06: "importing from pinterest stopped working, cannot click on
+text box". Prime suspect was this session's drag-to-scroll, most likely the
+capture-phase click swallow after a pan, or a stuck `body.page-panning` class
+leaving `user-select: none` behind.
+
+NOT REPRODUCED 2026-09-06. In Firefox against a fresh build, the board link box
+takes a real mouse click and typed text, with focus landing on
+`#pinterestBoardURL`; a text box clicked straight after a pan also focuses and
+types, `body.page-panning` is not left behind and `body` holds no pointer
+capture. The likeliest cause was task 22's `setPointerCapture` on
+`document.body`, which retargets pointer events while a drag is live, and that
+is now gone.
+
+BLOCKED: needs Tiago to try it again and say whether it is still broken.
+See also task 27, which is this reported a second time.
+
+### 22. Turn off "Site has control of your pointer"
+
+Reported 2026-09-06. Firefox shows this for the Pointer Lock API, but nothing
+in `web/` calls `requestPointerLock`. The only pointer API in play is
+`setPointerCapture`: mine on `document.body` in the pan (removable, the
+document-level listeners already cover it) and pre-existing ones in
+`practice.html` (NOT removable, strokes need to continue outside the canvas).
+
+Mine is removed. The drag is carried by the document-level listeners alone, and
+leaving the window simply ends it, which is what letting go means anyway.
+Verified `document.body.hasPointerCapture(1)` is false after a pan.
+
+BLOCKED: if Firefox still shows the message it is `practice.html`, so this
+needs Tiago to say where exactly he sees it.
+
+### 27. REGRESSION: cannot click text boxes
+
+Reported 2026-09-06, after the 0.11.7 release and the local 1.5 gain build:
+"clicking on stuff is BUGGED, you can't click on boxes like to put a link from a
+pinterest folder". Task 21 again, and this time it is not going away on its own.
+Not reproduced by a synthetic pointer drag against a real gesture (down, six
+20px moves, up) on the search box, a text box right after dragging a picture,
+or the Pinterest board link box: all three stayed clickable and typeable.
+
+Then Tiago: "maybe disable drag-scroll on some important windows IDK fix it",
+then: "fix, its mostly bugged on the import from pinterest screen". Went with
+the suggestion rather than keep chasing a repro: drag-to-scroll is now off
+entirely inside `#drawer` and `#pluginSidebar`. That panel is packed with small
+controls close together (radio cards, checkboxes, labels wrapping their own
+input), so a drag that starts a few pixels off one of them could still be read
+as meant for it; the panel already scrolls fine on its own, so panning there was
+not worth the risk.
+
+BLOCKED: needs Tiago to confirm the Pinterest screen works now.
+
+### 28. Remove Pinterest branding, accept any link
+
+Requested 2026-09-06. Same task filed in `pictogrep-android/TODO.md` as its
+task 1; whatever this lands on is what Android mirrors.
+
+- Drop the Pinterest name, icon and red accent (`#bd081c`) from the import UI:
+  `#showPinterest`, `#pinterestSection`, the `.pinterest-*` classes in
+  `web/app.css`, and the `pinterest.*` strings in both locale files. Reframe as
+  a general "import from a link" flow.
+- `importPinterestBoard()` in `web/app.js` currently rejects anything whose
+  hostname does not match `pinterest.\.` and needs at least 2 path segments.
+  Accept any URL; `web_source.go` / `native_gallery.go` already have a general
+  web importer to compare against and possibly fold into.
+- Check `pinterest.go`, `pinterest_sync.go`, `native_gallery_pinterest.go`,
+  `native_gallery_pinterest_mobile.go` for anything Pinterest-specific in the
+  backend that would need to generalize too, not just the front end.
+
+BLOCKED on a decision: does this replace the existing "Import from a web page"
+flow (`webSection` / `web.*`) entirely, since they would do the same job? Ask
+Tiago before writing any of it.
+
+### 29. Make "Full width" the default for new users
+
+Requested 2026-09-06 ("total width largura total be the default option for new
+users"). The Full width grid setting from task 12 defaults to off; new users
+should start with it on. Existing users' saved choice must not change under
+them, so the default has to apply only when nothing is stored, not as a
+migration that overwrites.
+
+### 30. Dragging is still native inside an open picture
+
+Reported 2026-09-06: "also that still can drag on images after you open them".
+Task 24 made `loadImage()` set `image.draggable = false`, which covers every
+picture in the grid, but the full-size image inside `#imageViewer` is not
+created there. Find where the viewer builds its `<img>` and fix it the same
+way.
+
+### 33. Ship the macOS version
+
+Requested 2026-09-08 ("also add mac version"), promoting the plan below from
+"later" to work to actually do. The plan is already written to
+`docs/macos-port.md` (2026-09-07); follow it rather than re-deciding it.
+
+Settled already, do not relitigate: skip Apple's 99 USD/year developer
+programme and ship a terminal install, so Gatekeeper never fires on an unsigned
+binary. `GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./...` is verified to
+succeed as-is, so this is packaging and install flow, not a port of the code.
+
+Open questions to settle with Tiago before or during the work:
+
+- arm64 only, or a universal build that also covers Intel Macs?
+- Does the release script build it locally alongside the Linux artifacts? It
+  must, per the no-CI rule, and that means a cross-build on the Linux box.
+- Does auto-update work on macOS, or does the terminal install replace it?
+
+No Mac hardware here, so anything beyond "it builds and the install script is
+right" needs Tiago to run it on a real machine and report back.
+
+### 34. Identicons for folders and sync devices
+
+Requested 2026-09-08. A generated mark, derived from the name or id, so a
+folder without a cover picture and a paired device in the sync list are told
+apart by shape and colour instead of by reading the label.
+
+Two places, one generator:
+
+- **Folders.** A folder with no cover currently falls back to whatever the
+  folder card shows when it is empty. The identicon fills that, and is
+  replaced by a real cover the moment one is set.
+- **Sync devices.** The paired-device list is text only, so two phones read as
+  two identical rows. Applies to Android as well, which draws the same web UI,
+  so file the mirror in `pictogrep-android/TODO.md` once the look is settled.
+
+Undecided, ask before building: what the mark actually looks like. GitHub-style
+symmetric pixel blocks are the obvious cheap answer but sit badly next to the
+app's flat brutalist cards. Alternatives worth putting in front of Tiago:
+initials on a hashed background, or a small geometric mark. Whatever it is, it
+must be drawn in the client from a hash, with no request and no stored image,
+and honour the no-gray-text rule for any letterform in it.
+
+## Not doing
+
+### 16. Autoscroll model, WITHDRAWN
+
+Tiago floated the Windows middle-mouse autoscroll model (anchor point, delta
+gives direction and speed, release stops) then withdrew it the same day:
+"normal scroll is ok, ignore my previous message". The 1:1 drag panning with
+momentum from tasks 14 and 15 stays as it is. Not implemented, do not revive
+without asking.
+
+### 18. Fling from the fastest part of the drag, DROPPED
+
+The "throw using the quickest the drag ever got" model was dropped rather than
+debugged: 18b replaced it with the ordinary kinetic scroll, which has no peak to
+track. The measurements that looked flaky were partly the harness. The test
+browser was being served the assets embedded in an OLD binary, so every result
+before the rebuild described code that was not running. Rebuild the binary, do
+not just edit `web/`.
+
+The debug instrumentation the old entry warned about is gone.
 
 ## Done
 
@@ -61,13 +245,10 @@ beside it, sitting below the tabs and above the grid. Hooked into
 `renderSearchScope()` (name) and `renderImages()` (count). New `folder.leave`
 string added to both locales.
 
-### 7. Tabs carry a minimal count
+### 7. Tabs carry a minimal count, LATER REVERSED BY 13
 
-Each tab appends a `.tab-count` span: Pictures shows the library count, Folders
-shows how many folders. Nothing else, and the count inherits the tab's own
-colour so it dims and lights with the tab. Rounds to "1.2k" past a thousand so
-it cannot outgrow the tab. Rendered by `renderTabCounts()` from `renderState()`
-and `loadFolders()`.
+Each tab appended a `.tab-count` span: Pictures showed the library count,
+Folders how many folders. Undone by task 13.
 
 ### 8. Drag-to-scroll with a pen or mouse
 
@@ -77,7 +258,8 @@ together; touch is excluded so native scrolling is untouched. 4px threshold
 before a press becomes a pan, and the trailing click is swallowed so a drag
 never opens what it ended on. Interactive controls, `[draggable]`, picture and
 folder cards, the canvas and its images are all refused at pointerdown, so
-dragging pictures into folders still works.
+dragging pictures into folders still works. (Both of those last two were later
+changed: see 14 and 23.)
 
 Panning targets the nearest ancestor that actually scrolls (`scrollHeight >
 clientHeight` and an `auto`/`scroll` overflow), so it works inside the drawer,
@@ -112,29 +294,28 @@ action, a Go test pins `app.go` to `flake.nix`, and matching the published
 version stops auto-update from clobbering the local build. Restarted the app on
 port 8765 against the real 3419-picture library and opened it in Firefox.
 
-## Pending
+### 12. "Full" edge-to-edge option under "Tamanho da imagem"
 
-### 12. DONE. "Full" edge-to-edge option under "Tamanho da imagem"
+Requested 2026-09-06. The image size setting had 3 options; a "full" choice
+below them makes the grid go edge to edge, ignoring the page width cap.
+See task 29 for making it the default.
 
-Requested 2026-09-06. The image size setting has 3 options; add a "full" choice
-below them that makes the grid go edge to edge (ignoring the page width cap).
-
-### 13. DONE. Remove the tab counts
+### 13. Remove the tab counts
 
 Requested 2026-09-06, reversing task 7. Tiago does not want numbers on the
-Pictures / Folders tabs at all. Strip `renderTabCounts`, `setTabCount`,
+Pictures / Folders tabs at all. Stripped `renderTabCounts`, `setTabCount`,
 `formatCount`, the `.tab-count` CSS and the changelog line about it.
 
-### 14. DONE. Drag-to-scroll should work on images too
+### 14. Drag-to-scroll works on images too
 
-Requested 2026-09-06. Panning should work almost everywhere, including on top
-of pictures: dragging a picture should scroll the page, not drag the picture.
+Requested 2026-09-06. Panning works almost everywhere, including on top of
+pictures: dragging a picture scrolls the page rather than dragging the picture.
 Still excluded: tabs, buttons and other controls. DECIDED 2026-09-06: pictures
 always scroll and drag-into-folder is dropped entirely. Filing happens through
-the right-click menu and the "Add to folder" actions instead. Remove
-`draggable`/`ondragstart` on picture cards and the drop targets that fed it.
+the right-click menu and the "Add to folder" actions instead. `draggable` /
+`ondragstart` on picture cards and the drop targets that fed them are gone.
 
-### 15. Momentum on the drag, DONE
+### 15. Momentum on the drag
 
 Releasing a fast drag throws the page and the speed decays. Velocity is read
 from the last 90ms of the drag, not the final event, because one event is
@@ -147,33 +328,14 @@ produce a flick, it interpolates every move into 6px steps ~18ms apart):
 hand at ~5000px/s coasted 804px, ~1875px/s coasted 302px, ~250px/s coasted 0px
 (under the fling floor, so a deliberate placement does not drift).
 
-### 16. Autoscroll model, WITHDRAWN
+### 17. Faster panning, SUPERSEDED by 18b
 
-Tiago floated the Windows middle-mouse autoscroll model (anchor point, delta
-gives direction and speed, release stops) then withdrew it the same day:
-"normal scroll is ok, ignore my previous message". The 1:1 drag panning with
-momentum from tasks 14 and 15 stays as it is. Not implemented, do not revive
-without asking.
+"way faster". The page was geared 2.2x the hand, the fling speed cap went from
+9k to 20k px/s, and friction dropped so a throw carried roughly its release
+speed / 2.4. Measured: hand at ~5000px/s coasted 4464px (was 804), ~1875px/s
+1662px, ~250px/s 210px. All of it replaced by 18b's 1:1 touchpad model.
 
-### 17. Faster panning, DONE then SUPERSEDED by 18b
-
-"way faster". The page is now geared 2.2x the hand, the fling speed cap went
-from 9k to 20k px/s, and friction dropped so a throw carries roughly its release
-speed / 2.4. Measured: hand at ~5000px/s coasts 4464px (was 804), ~1875px/s
-coasts 1662px, ~250px/s coasts 210px.
-
-### 18. Fling from the fastest part of the drag, DROPPED
-
-The "throw using the quickest the drag ever got" model was dropped rather than
-debugged: 18b replaced it with the ordinary kinetic scroll, which has no peak to
-track. The measurements that looked flaky were partly the harness. The test
-browser was being served the assets embedded in an OLD binary, so every result
-before the rebuild described code that was not running. Rebuild the binary, do
-not just edit `web/`.
-
-The debug instrumentation the old entry warned about is gone.
-
-### 18b. Scroll like a touchpad, DONE, SUPERSEDES 18, 17 and 19
+### 18b. Scroll like a touchpad, SUPERSEDES 18, 17 and 19
 
 Requested 2026-09-06: "just make it be like the same UX of scrolling with a
 touchpad or mouse scroll wheel, after you leave the motion it still does like a
@@ -191,8 +353,9 @@ whole-pixel carry, and `target.scrollBy({left, top, behavior: "auto"})`, the
 same call and the same container the wheel and the touchpad already move.
 
 Then: "make it work like a touchpad scrolling". The 2.2x gearing from task 17 is
-gone; the page now follows the hand exactly 1:1 and the distance comes from the
+gone; the page follows the hand exactly 1:1 and the distance comes from the
 throw. The fling floor dropped to 300px/s to match the un-geared speeds.
+(Gain later raised to 1.15 by task 25, then 1.5 by task 26.)
 
 Measured against a rebuilt binary, 180-picture library, Firefox 1440x900:
 
@@ -211,9 +374,9 @@ hand that stopped has an empty window and the page stays where it was put.
 "just make it super super intuitive and SMOOTH". Fractional scroll remainders
 are carried between calls instead of being lost to whole-pixel rounding, which
 otherwise reads as a stutter through the whole glide, worst where it is
-slowest. That carry now lives in the single `scroll()`, so the drag gets it too.
+slowest. That carry lives in the single `scroll()`, so the drag gets it too.
 
-### 23. Forgive a shaky click, DONE
+### 23. Forgive a shaky click
 
 Requested 2026-09-06: "put a bit of a forgiveness so you can click on images
 even if you dragged a little bit, cause pens are a bit more unstable than a
@@ -232,26 +395,20 @@ Measured, pen events on a picture card: 6px and 18px wobble open the picture and
 move the page 0px; 30px opens it and moves 5px; 60px and 200px scroll (313px and
 1140px with the throw) and do not open anything.
 
-### 24. Drag-scrolling on top of an image is broken, DONE
+### 24. Drag-scrolling on top of an image was broken
 
 Reported 2026-09-06: "fix dragscrolling when youre dragging on images, its kinda
-broken". Dragging over a picture is supposed to scroll exactly like dragging
-over empty space. Reproduce first and say what actually differs: likely
-suspects are the browser's own image drag starting instead, `.card-menu` or a
-card overlay swallowing the press, or the picture's own click handler firing at
-the end of the drag.
+broken". An `<img>` is draggable by default, so pressing a picture and moving
+started the browser's own image drag and the pan never happened. `loadImage()`
+now sets `image.draggable = false`, which is the one place every picture in the
+grid goes through. Verified: a press that starts on a picture scrolls the page.
+The viewer's own `<img>` is NOT built there: that is task 30.
 
-It was the first one. An `<img>` is draggable by default, so pressing a picture
-and moving started the browser's own image drag and the pan never happened.
-`loadImage()` now sets `image.draggable = false`, which is the one place every
-picture in the app goes through. Verified: a press that starts on a picture
-scrolls the page.
-
-### 25. Scroll 15% faster, DONE
+### 25. Scroll 15% faster
 
 Requested 2026-09-06, on top of the 1:1 touchpad feel from 18b: the page moves
-1.15x the hand, so a drag covers a bit more ground without losing the sense
-that the content is following the pen.
+1.15x the hand, so a drag covers a bit more ground without losing the sense that
+the content is following the pen.
 
 ### 26. Faster and simpler still
 
@@ -259,60 +416,7 @@ Requested 2026-09-06 right after the release: "faster, simpler". Gain 1.15 ->
 1.5, and the speed cap dropped: it was sized for the old 2.2x gearing and a hand
 can no longer reach it, so it was a constant that did nothing.
 
-### 27. REGRESSION: cannot click text boxes
-
-Reported 2026-09-06, after the 0.11.7 release and the local 1.5 gain build:
-"clicking on stuff is BUGGED, you can't click on boxes like to put a link from a
-pinterest folder". Task 21 again, and this time it is not going away on its own.
-Not reproduced by a synthetic pointer drag against a real gesture (down, six
-20px moves, up) on the search box, a text box right after dragging a picture,
-or the Pinterest board link box: all three stayed clickable and typeable.
-
-Then Tiago: "maybe disable drag-scroll on some important windows IDK fix it",
-then: "fix, its mostly bugged on the import from pinterest screen". Went with
-the suggestion rather than keep chasing a repro: drag-to-scroll is now off
-entirely inside `#drawer` and `#pluginSidebar`. That panel is packed with
-small controls close together (radio cards, checkboxes, labels wrapping their
-own input), so a drag that starts a few pixels off one of them could still be
-read as meant for it; the panel already scrolls fine on its own, so panning
-there was not worth the risk. NEEDS TIAGO to confirm the Pinterest screen
-works now.
-
-### 28. Remove Pinterest branding, accept any link
-
-Requested 2026-09-06. Same task filed in `pictogrep-android/TODO.md` for the
-Android side. On desktop:
-
-- Drop the Pinterest name, icon and red accent (`#bd081c`) from the import UI:
-  `#showPinterest`, `#pinterestSection`, the `.pinterest-*` classes in
-  `web/app.css`, and the `pinterest.*` strings in both locale files. Reframe as
-  a general "import from a link" flow.
-- `importPinterestBoard()` in `web/app.js` currently rejects anything whose
-  hostname does not match `pinterest.\.` and needs at least 2 path segments.
-  Accept any URL; `web_source.go` / `native_gallery.go` already have a
-  general web importer to compare against and possibly fold into.
-- Check `pinterest.go`, `pinterest_sync.go`, `native_gallery_pinterest.go`,
-  `native_gallery_pinterest_mobile.go` for anything Pinterest-specific in the
-  backend that would need to generalize too, not just the front end.
-
-DECIDE with Tiago whether this replaces the existing "Import from a web page"
-flow (`webSection`/`web.*`) entirely, since they would do the same job.
-
-### 29. Make "Full width" the default for new users
-
-Requested 2026-09-06 ("total width largura total be the default option for new
-users"). The Full width grid setting from task 12 defaults to off; new users
-should start with it on. Existing users' saved choice must not change under
-them.
-
-### 30. Dragging is still native inside an open picture
-
-Reported 2026-09-06: "also that still can drag on images after you open them".
-Task 24 made `loadImage()` set `image.draggable = false`, which covers every
-picture in the grid, but the full-size image inside `#imageViewer` is not
-created there. Find where the viewer builds its `<img>` and fix the same way.
-
-### 31. Reordering folders on the Folders tab is broken, DONE
+### 31. Reordering folders on the Folders tab was broken
 
 Reported 2026-09-08: "fix reordering folder orders on folders tab on pictogrep
 desktop".
@@ -349,7 +453,34 @@ The drop side is still chosen by the card's horizontal midpoint. Checked
 whether that reads wrong on a phone: it does not, the wall is two columns at
 390px, so cards sit side by side and left/right is the right axis. Left alone.
 
-### 32. The open-a-folder animation is hideous, DONE
+### 35. Two blank buttons in the Android build
+
+Found 2026-09-08 while auditing what was left before the Play release. Not
+reported by anyone: it was found by dumping the page the app build actually
+serves, rather than by reading `index.html`.
+
+`withoutPinterest()` in `server.go` empties the board importer out of the phone
+page by id. Three of those ids outlived what they were named after. When the
+board panel merged into the general link importer, `#showPinterest` became the
+menu's "Import from a link" and `#emptyPinterest` / `#emptyPinterestPhone`
+became the same offer on an empty library. All three still work in the app
+build, and all three were being hollowed by name, so the phone shipped a blank
+row in the menu and a blank primary button on the empty-library screen, which
+is the first screen a new user sees. "Broken functionality" is a Play rejection
+reason on its own.
+
+Fixed by cutting those three from `pinterestParts`, plus `#pinterestSection`,
+which no longer exists at all and had been a silent no-op. What is still
+hollowed is only what is genuinely board-specific: the two settings rows and
+the followed-boards list.
+
+`TestTheAndroidPageHasNoBoardImporter` was asserting on ids that had been gone
+for weeks, so it was failing rather than catching this, and was one of the 11
+pre-existing failures. It now checks the current ids and, in the other
+direction, that both link-importer buttons still carry their label. Suite is
+down to 10 failures, all pre-existing desktop import tests.
+
+### 32. The open-a-folder animation was hideous
 
 Requested 2026-09-08: "also fix the animation for when you open a folder, its
 hideous".
@@ -382,72 +513,33 @@ Verified in Firefox: `::view-transition-old(folder-wall)` runs `folder-swap-out`
 no paired group and no `::view-transition-old(folder-contents)`, and the panel
 names are cleaned off after it finishes.
 
-Note for next time: geckodriver screenshots do NOT capture view-transition
-snapshot layers, they photograph the live DOM underneath, so a paused
-transition still screenshots as the finished state. Read `getAnimations()` and
-the pseudo-element names instead of trying to eyeball frames.
+## Traps worth remembering
 
-### 20. Drawing drops areas inside images
+- **Rebuild the binary, do not just edit `web/`.** The assets are embedded, so a
+  test browser served by a stale binary is testing code that is not running.
+  This silently invalidated every measurement in task 18.
+- **geckodriver screenshots do NOT capture view-transition snapshot layers.**
+  They photograph the live DOM underneath, so a paused transition screenshots as
+  the finished state. Read `getAnimations()` and the pseudo-element names
+  instead of trying to eyeball frames (task 32).
+- **geckodriver cannot produce a flick.** It interpolates every move into 6px
+  steps ~18ms apart, so momentum has to be tested with synthetic pointer events
+  at real timings (task 15).
+- **Bound every string search when splicing code.** An unbounded `str.index` for
+  the end of a range matched an EARLIER `const finish = () => {` at line 120 and
+  duplicated ~5800 lines of `web/app.js`. Recovered by reconstruction. Always
+  `s.index(needle, start)`.
+- `go test ./...` has 11 pre-existing failures on HEAD, all Pinterest and import
+  tests. Compare against HEAD before blaming your own change.
 
-Reported 2026-09-06: "drawing works not well like inside images, areas
-missing". First guess was that drag-to-scroll was stealing the strokes. That is
-WRONG: drawing lives in `web/practice.html`, which loads neither `app.js` nor
-`app.css` and has its own pointer handling (`setPointerCapture`,
-`getCoalescedEvents`). So this is pre-existing and unrelated to this session's
-work. Still needs investigating on its own, and needs Tiago to say which tool
-and what "areas missing" looks like.
+## State
 
-### 21. REGRESSION: cannot click the Pinterest import text box
+Working tree is uncommitted and nothing has been pushed. Released 0.11.7 during
+this session; the local `~/.local/bin/pictogrep` build is ahead of it.
 
-Reported 2026-09-06: "importing from pinterest stopped working, cannot click on
-text box". Prime suspect is this session's drag-to-scroll, most likely the
-capture-phase click swallow after a pan, or a stuck `body.page-panning` class
-leaving `user-select: none` behind. NOT REPRODUCED 2026-09-06. In Firefox
-against a fresh build, the board link box takes a real mouse click and typed
-text, with focus landing on `#pinterestBoardURL`; a text box clicked straight
-after a pan also focuses and types, `body.page-panning` is not left behind and
-`body` holds no pointer capture. The likeliest cause was task 22's
-`setPointerCapture` on `document.body`, which retargets pointer events while a
-drag is live, and that is now gone. NEEDS TIAGO to try it again and say whether
-it is still broken.
+## Standing rules
 
-### 22. Turn off "Site has control of your pointer"
-
-Reported 2026-09-06. Firefox shows this for the Pointer Lock API, but nothing
-in `web/` calls `requestPointerLock`. The only pointer API in play is
-`setPointerCapture`: mine on `document.body` in the pan (removable, the
-document-level listeners already cover it) and pre-existing ones in
-`practice.html` (NOT removable, strokes need to continue outside the canvas).
-DONE: mine is removed. The drag is carried by the document-level listeners
-alone, and leaving the window simply ends it, which is what letting go means
-anyway. Verified `document.body.hasPointerCapture(1)` is false after a pan.
-If Firefox still shows the message, it is `practice.html`, so ask Tiago where
-exactly he sees it.
-
-## Notes
-
-A splice using an unbounded `str.index` for the end of a range matched an
-EARLIER `const finish = () => {` at line 120 and duplicated ~5800 lines of
-`web/app.js`. Recovered by reconstruction. Always bound the search:
-`s.index(needle, start)`.
-
-Working tree is still uncommitted and nothing has been pushed.
-
-
-## Later (not today)
-
-- **macOS port.** Plan written to `docs/macos-port.md` on 2026-09-07. Tiago
-  asked for the plan only, not the implementation. Verified that
-  `GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 go build ./...` already succeeds.
-  Decision: skip Apple's 99 USD/year, ship a terminal install so Gatekeeper
-  never fires.
-
-## Working rules Tiago set this session
-
-- **Every task he gives goes into this file BEFORE work starts on it.** Always.
-
-## Reminders that apply to this work
-
+- Every task Tiago gives goes into this file BEFORE work starts on it. Always.
 - Never gray text. Differentiate with weight, size, or the accent colour.
 - No em dashes anywhere.
 - Build and check every UI change phone-first (~390px), then desktop.

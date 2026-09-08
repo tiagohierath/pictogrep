@@ -1353,12 +1353,12 @@ func TestTheAndroidPageHasNoBoardImporter(t *testing.T) {
 		t.Skip("index.html no longer mentions Pinterest at all, so this test proves nothing")
 	}
 
-	// Nothing to press, either: the panel and both ways into it are empty.
+	// Nothing to press, either: the settings rows the boards were managed from
+	// are empty.
 	for _, gone := range []string{
-		`data-i18n="pinterest.title"`,
-		`data-i18n="pinterest.intro"`,
-		`<input id="pinterestBoardURL"`,
-		`<form id="pinterestImportForm"`,
+		`data-i18n="pinterest.legacy_title"`,
+		`data-i18n="plugins.pinterest_help"`,
+		`data-i18n="pinterest.auto_sync"`,
 	} {
 		if strings.Contains(phone, gone) {
 			t.Errorf("the phone page still carries %s", gone)
@@ -1367,9 +1367,25 @@ func TestTheAndroidPageHasNoBoardImporter(t *testing.T) {
 
 	// The ids survive as empty stubs, because app.js writes to them on every
 	// state update and is the same file on both platforms.
-	for _, kept := range []string{`id="pinterestSection"`, `id="showPinterest"`, `id="pinterestReadiness"`} {
+	for _, kept := range []string{
+		`id="pinterestPluginToggle"`, `id="pinterestAutoSyncToggle"`, `id="pinterestBoardList"`,
+	} {
 		if !strings.Contains(phone, kept) {
 			t.Errorf("%s is gone from the phone page, which is a TypeError in app.js", kept)
+		}
+	}
+
+	// The link importer is NOT the board importer, whatever its ids are called.
+	// #showPinterest is the menu's "Import from a link" and #emptyPinterestPhone
+	// is the primary button on an empty library: both work in the app build, and
+	// hollowing them by name once left the phone showing two blank controls, one
+	// of them on the first screen a new user sees.
+	for _, labelled := range []string{
+		`id="showPinterest" data-i18n="web.title" hidden>Import from a link<`,
+		`id="emptyPinterestPhone" data-i18n="empty.pinterest_suggest">Import from a link<`,
+	} {
+		if !strings.Contains(phone, labelled) {
+			t.Errorf("the phone page lost the label on %s", labelled)
 		}
 	}
 

@@ -437,11 +437,16 @@ func rewriteForPhone(page []byte) []byte {
 
 // Which parts of the page belong to the board importer, and what kind of
 // element each one is.
+//
+// Read the ids carefully before adding to this list. The board panel merged
+// into the general link importer, and three ids kept the old name while
+// changing what they open: #showPinterest is the menu's "Import from a link",
+// and #emptyPinterest / #emptyPinterestPhone are the same offer on an empty
+// library. All three belong to the link importer, which the app build DOES
+// have, so hollowing them by name left the phone with a blank menu row and a
+// blank primary button on the first screen a new user sees. They are named
+// here so the next person does not put them back.
 var pinterestParts = []struct{ marker, tag string }{
-	{`id="pinterestSection"`, "section"},    // the panel itself
-	{`id="showPinterest"`, "button"},        // the way into it, in the menu
-	{`id="emptyPinterest"`, "p"},            // the offer on an empty library
-	{`id="emptyPinterestPhone"`, "button"},  // the same offer, phone shaped
 	{`id="pinterestPluginToggle"`, "label"}, // both settings rows
 	{`id="pinterestAutoSyncToggle"`, "label"},
 	{`id="pinterestBoardList"`, "div"}, // the boards a desktop is following
