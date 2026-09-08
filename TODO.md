@@ -184,11 +184,51 @@ This matters more once task 36 lands, because sync becomes the ONLY way a large
 library reaches a phone. Until then the phone's answer to "how do I get my
 pictures here" is the share sheet, one picture at a time.
 
-Not started. Needs its own design pass: what the phone stores, whether it takes
-the whole library or a chosen folder, what happens on a phone that runs out of
-room, and whether the existing pairing and identity work carries the reverse
-direction unchanged (it probably does, the transport is symmetric; the outbox
-and the digests are the parts written one way round).
+DESIGNED 2026-09-08, decisions made rather than asked, on Tiago's "yeah do it".
+
+**It is a PULL, not a push.** The name of the task is misleading and the code
+should not follow it. Reachability is asymmetric on purpose: the phone dialled
+the desktop when it scanned the QR, so the phone holds an address that answers
+(`peer.Listens`) and the desktop holds a source port that nothing can be sent
+to. A push would need hole punching, a relay, or a listener on the phone, all
+of which are new problems. A pull needs none: the phone asks the desktop what
+it has and takes it, over the connection it already knows how to open.
+
+It is also the better answer for the phone. The device with the small disk, the
+metered radio and the battery is the one that should decide what arrives and
+when.
+
+**The protocol mirrors what exists.** Sending is `POST /manifest` (here are my
+hashes, which are you missing) then `POST /blobs/{hash}`. Receiving is the same
+two ideas turned around, on the same authenticated TLS listener:
+
+- `POST /catalogue` on the desktop: what do you have. Answers hash, name and
+  folder for each picture, optionally filtered to one folder.
+- `GET /blobs/{hash}` on the desktop: the bytes.
+
+Everything reuses what is already there: the pinned certificate, `peerClient`,
+the digest cache that makes hashing a library cheap, `libraryIndex()` for
+"what do I already have", and `saveImportedImageWithOptions` for the import,
+which dedupes by the same content hash the manifest already speaks.
+
+**Decisions, so nothing here is a surprise:**
+
+- **User asks for it.** Not automatic, not on a timer. A phone that silently
+  filled itself with 3419 pictures over someone's mobile data would be a bug
+  however well it worked.
+- **A folder at a time, with "everything" available.** The phone lists the
+  desktop's folders and their counts and takes what is chosen.
+- **Originals, not thumbnails.** The phone indexes what it holds and searches
+  it, so a downscaled copy would be a different library, not a cheaper one.
+- **Nothing is ever deleted.** A pull only adds, on both sides. Matches what
+  the rest of sync already promises.
+- **Skipped, not failed, when it is already there.** Same content hash, same
+  answer as the outbox gives.
+
+**Scope of this pass:** the two endpoints, the puller, the phone's API and a
+control on its sync screen, and tests. Not in scope: scheduling, deletion,
+two-way reconciliation, or bringing folders and tags across as structure rather
+than as a destination folder.
 
 ### 36. Cut the link importer out of the Android build
 
