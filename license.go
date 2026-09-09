@@ -2,12 +2,17 @@ package main
 
 // One unlock, bought two ways, proved by one signed file.
 //
-// A NavyLilyWorks year at navylily.tv (desktop and web) and the one-off mobile
-// purchase both produce the same artifact: a short signed document saying who
-// bought it, when, and under which tier. Pictogrep ships the public half of the
-// signing key, checks the signature locally, writes down the answer, and is
-// done. There is no per-plugin SKU and no per-plugin key: one valid license
-// unlocks every paid plugin, including ones that do not exist yet.
+// This only gates the phone. Desktop never asks for a license at all: every
+// installed plugin is free there, paid manifest or not (see pluginLocked
+// below). The license/entitlement machinery in the rest of this file exists
+// for the Android build only.
+//
+// A NavyLilyWorks year at navylily.tv and the one-off mobile purchase both
+// produce the same artifact: a short signed document saying who bought it,
+// when, and under which tier. Pictogrep ships the public half of the signing
+// key, checks the signature locally, writes down the answer, and is done.
+// There is no per-plugin SKU and no per-plugin key: one valid license unlocks
+// every paid plugin on the phone, including ones that do not exist yet.
 //
 // What this deliberately does not do, and must not grow:
 //
@@ -200,7 +205,15 @@ func (a *application) pluginsUnlocked() bool {
 // manifest, never the id. There is no allowlist of first-party plugins here or
 // anywhere else: a paid plugin written by a stranger is gated by exactly this
 // line, and so is ours. See docs/plugins.md, "The rule".
+//
+// Desktop never gates on Paid at all: the same `!runsOnPhone ||`
+// short-circuit lockedOnPhone uses below. Only a phone build checks the
+// unlock; a desktop install is never asked to pay for an installed plugin,
+// same as it already isn't for the compile-time features in freeOnPhone.
 func (a *application) pluginLocked(manifest pluginManifest) bool {
+	if !runsOnPhone {
+		return false
+	}
 	return manifest.Paid && !a.pluginsUnlocked()
 }
 

@@ -22,6 +22,10 @@ between sections, it does not change its number.
 | 35 | Two blank buttons in the Android build | DONE 2026-09-08 |
 | 36 | Cut the link importer out of the Android build | DONE 2026-09-08 |
 | 37 | Sync a library desktop to phone | DONE 2026-09-08, untested on a phone |
+| 38 | Make all plugins free on desktop; mobile keeps paid plugins | code done, committing now |
+| 39 | Follow-up: "make all plugins be like on every install" | resolved as part of 38 |
+| 40 | When 38/39 land, cut a new GitHub release | tagging v0.11.9 now, CI builds it |
+| 41 | Update the local install with this session's build | in progress |
 
 ### 20. Drawing drops areas inside images
 
@@ -336,6 +340,57 @@ rather than assumed.
 NOT VERIFIED ON HARDWARE. Nobody has seen the new empty-library button on a
 phone. It is one line of markup and one binding, but it is the first screen a
 new user sees, so it belongs in the on-device pass in Android task 2.
+
+### 38. Make all plugins free on desktop, mobile keeps paid plugins
+
+Requested 2026-09-08. Then mid-turn: "make all plugins be like on every
+install", which reads as the same ask restated, not a reversal: the desktop
+free-for-all should hold everywhere the app is already installed, not just
+on some fresh/future copy.
+
+Found first: `pluginLocked` (`license.go:203`) is `manifest.Paid &&
+!a.pluginsUnlocked()` with no platform check at all today, so a paid
+installed plugin is gated identically on desktop and mobile. Separately,
+plugins are not bundled into the app: `pluginsDir` starts empty on every
+install, and the six plugins in the private `pictogrep-plugins-paid` repo
+have no store/download/import flow built yet (`README.md`, "Selling and
+packaging"), so nothing is actually gated in practice yet either way.
+
+Asked Tiago which of two things this means: (a) just split the lock by
+platform, so a plugin that does get installed is free on desktop and still
+needs the mobile license, or (b) also build a bundling step that ships all
+six plugin folders inside every desktop and Android build. He asked back
+which is more reasonable.
+
+DECIDED: (a). Reasons: it is the literal, smallest change that satisfies
+both messages ("free on desktop", and it holds on every install because
+`pluginLocked` is recomputed live on every request rather than a stored
+flag, so nothing needs re-running per machine); it does not invent a
+distribution mechanism nobody asked for; and bundling now would ship three
+half-built skeletons (`darkroom`, `soundtrack`, and `storyboard` mid
+extraction) as visible, broken panels. Plugins still reach `pluginsDir` the
+same way they do today; only what happens once one is there changes.
+
+Confirmed by Tiago: "leave phone (android) unchanged, plugins are paid on
+android." Matches the plan below exactly.
+
+PLAN:
+- `license.go`: `pluginLocked` gains the same `!runsOnPhone ||` short-circuit
+  `lockedOnPhone` already uses, so a `Paid` manifest is never locked on
+  desktop and the existing check stands untouched on mobile.
+- Update the comment on `pluginLocked` and the doc-comment block at the top
+  of the file (currently "one license unlocks every paid plugin" with no
+  platform mentioned) to say plugins are desktop-free and mobile-gated.
+- `docs/plugins.md`'s Licensing section says NavyLilyWorks "unlocks every
+  plugin" on desktop; correct that to say desktop plugins need no unlock at
+  all, only mobile does.
+- Check `plugins_test.go` / `license_test.go` / `plugin_capabilities_test.go`
+  for existing assertions that a paid manifest is locked without a license,
+  and add the desktop-vs-mobile split as its own case.
+- `pictogrep-plugins-paid/README.md`'s "Selling and packaging" section
+  describes a desktop buyer downloading a paid `.pictogrep` ZIP; flag it as
+  stale rather than rewrite the pricing narrative, since that repo's business
+  copy is not this task's call to make.
 
 ## Not doing
 

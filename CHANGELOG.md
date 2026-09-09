@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+## 0.11.9 - 2026-09-08
+
+- Installed plugins no longer ask for an unlock on desktop, paid or not. The license check that used to gate them stays as it was on mobile.
 - Folders now stay where you drag them on the Folders tab. Pictogrep saved the new order but drew the wall biggest first every time, so a dragged card snapped straight back to where it started. Reordering while the folder search box is filtering no longer sends the folders that did not match to the end of the order either.
 - Opening a folder no longer blows its card up across the screen. Pictogrep morphed the card and the picture grid into each other as one travelling rectangle, stretching and cropping both on the way. The wall now fades out while the pictures fade in and rise the last few pixels into place, in the same rhythm as the tab underline.
 

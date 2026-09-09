@@ -159,9 +159,10 @@ jurisdictions since 2024. This is the one open commercial question in the model
 and it does not block anything technical: the license format, the verification,
 and the QR import are identical either way. Only the checkout button differs.
 
-Worth noting the R$30 mobile price sits below the R$50/year desktop entitlement,
-so a subscriber has no reason to buy it and a phone-only user has no reason to
-subscribe. That is coherent, not a leak.
+Worth noting the R$30 mobile price sits below the R$50/year NavyLilyWorks
+entitlement (which unlocks the phone for free by QR import, see Licensing
+below), so a subscriber has no reason to buy it and a phone-only user has no
+reason to subscribe. That is coherent, not a leak.
 
 ## v1: frontend plugins only
 
@@ -284,13 +285,17 @@ directory, not before.
 
 ## Licensing
 
-Two ways in, one unlock. There is no per-plugin SKU.
+**Desktop needs no unlock at all.** Every installed plugin runs free there,
+`Paid` manifest or not (`pluginLocked` in `license.go`). Everything below is
+mobile-only: it is what a phone build still gates.
 
-    Desktop / web    NavyLilyWorks, R$50/year, sold at navylily.tv
-                     -> unlocks every plugin
+One unlock, no per-plugin SKU, two ways to buy it:
 
-    Mobile           R$30 once
+    Mobile           R$30 once, in the app
                      or import an active NavyLilyWorks entitlement by QR
+
+    NavyLilyWorks    R$50/year, sold at navylily.tv
+                     -> its QR import unlocks every plugin on a phone
 
 Both produce the same thing: a signed license file.
 

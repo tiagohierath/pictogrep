@@ -217,6 +217,8 @@ func TestUnusableShippedKeyVerifiesNothing(t *testing.T) {
 	}
 }
 
+// Desktop never gates a paid plugin at all: task 38, "make all plugins free
+// on desktop". Only a phone build enforces the rest of this test.
 func TestPaidPluginIsUnreachableUntilLicensed(t *testing.T) {
 	app := testApplication(t)
 	key := useTestLicenseKey(t)
@@ -228,13 +230,27 @@ func TestPaidPluginIsUnreachableUntilLicensed(t *testing.T) {
 	}
 	handler := server.routes()
 
+	if !runsOnPhone {
+		free := pluginRequest(handler, "/plugin/dev.navylily.findme/ui/")
+		if free.Code != http.StatusOK {
+			t.Fatalf("a desktop build gated a paid plugin with no license: status=%d body=%s", free.Code, free.Body.String())
+		}
+		if storage := pluginRequest(handler, "/api/plugins/dev.navylily.findme/storage"); storage.Code != http.StatusOK {
+			t.Fatalf("a desktop build gated a paid plugin's storage: status=%d", storage.Code)
+		}
+		if listed := installedPluginsByID(t, handler); !listed["dev.navylily.findme"].Paid || listed["dev.navylily.findme"].Locked {
+			t.Fatalf("a desktop build reported a paid plugin as locked: %#v", listed["dev.navylily.findme"])
+		}
+		return
+	}
+
 	locked := pluginRequest(handler, "/plugin/dev.navylily.findme/ui/")
 	if locked.Code != http.StatusPaymentRequired {
-		t.Fatalf("an unlicensed install opened a paid plugin: status=%d body=%s", locked.Code, locked.Body.String())
+		t.Fatalf("an unlicensed phone opened a paid plugin: status=%d body=%s", locked.Code, locked.Body.String())
 	}
 	storage := pluginRequest(handler, "/api/plugins/dev.navylily.findme/storage")
 	if storage.Code != http.StatusPaymentRequired {
-		t.Fatalf("an unlicensed install reached a paid plugin's storage: status=%d", storage.Code)
+		t.Fatalf("an unlicensed phone reached a paid plugin's storage: status=%d", storage.Code)
 	}
 	free := pluginRequest(handler, "/plugin/dev.navylily.roomview/ui/")
 	if free.Code != http.StatusOK {
@@ -272,10 +288,11 @@ func TestPaidPluginIsUnreachableUntilLicensed(t *testing.T) {
 	}
 }
 
-// The gate reads the manifest and nothing else. A paid plugin nobody here
-// wrote is treated exactly like ours, in both directions: refused without a
-// license, served with one. If anyone ever adds an id allowlist, this is what
-// notices.
+// The gate reads the manifest and nothing else, never an id: a paid plugin
+// nobody here wrote is treated exactly like ours. On a phone that means
+// refused without a license and served with one; on desktop it means both are
+// simply free, since task 38 stopped desktop asking for a license at all. If
+// anyone ever adds an id allowlist on either platform, this is what notices.
 func TestPaidGateDoesNotSpecialCaseFirstPartyPlugins(t *testing.T) {
 	app := testApplication(t)
 	key := useTestLicenseKey(t)
@@ -286,15 +303,21 @@ func TestPaidGateDoesNotSpecialCaseFirstPartyPlugins(t *testing.T) {
 		t.Fatal(err)
 	}
 	handler := server.routes()
-	for _, id := range []string{"dev.navylily.findme", "com.example.stranger"} {
-		if response := pluginRequest(handler, "/plugin/"+id+"/ui/"); response.Code != http.StatusPaymentRequired {
-			t.Fatalf("%s was not gated without a license: status=%d", id, response.Code)
+	ids := []string{"dev.navylily.findme", "com.example.stranger"}
+
+	beforeStatus := http.StatusPaymentRequired
+	if !runsOnPhone {
+		beforeStatus = http.StatusOK
+	}
+	for _, id := range ids {
+		if response := pluginRequest(handler, "/plugin/"+id+"/ui/"); response.Code != beforeStatus {
+			t.Fatalf("%s did not match the platform's pre-license gate: status=%d want=%d", id, response.Code, beforeStatus)
 		}
 	}
 	if _, err := app.importLicense(issueLicense(key, `{"buyer":"b","issued":"2026-09-03","tier":"navylilyworks"}`)); err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []string{"dev.navylily.findme", "com.example.stranger"} {
+	for _, id := range ids {
 		if response := pluginRequest(handler, "/plugin/"+id+"/ui/"); response.Code != http.StatusOK {
 			t.Fatalf("%s stayed locked after a license was imported: status=%d", id, response.Code)
 		}
