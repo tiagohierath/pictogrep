@@ -70,12 +70,10 @@
   --on-fg: #131312;
   --fg-hover: #d5d5d2;
   --scrim: rgba(0, 0, 0, .55);
-  /* Panels that float over a picture: the viewer's arrows, the canvas hints,
-     the drop overlay. They were white sheets with dark text, which on a dark
-     theme is a lamp with invisible writing on it. */
+  /* Panels that float over a picture: the viewer's arrows, the drop overlay.
+     They were white sheets with dark text, which on a dark theme is a lamp
+     with invisible writing on it. */
   --glass: rgba(24, 24, 22, .88);
-  --canvas-bg: #1a1a19;
-  --canvas-frame: #43423e;
   --focus-ring: rgba(127, 161, 255, .22);
 
   /* Shape */
@@ -139,8 +137,6 @@
   --fg-hover: #333;
   --scrim: rgba(0, 0, 0, .25);
   --glass: rgba(255, 255, 255, .9);
-  --canvas-bg: #e9e9e7;
-  --canvas-frame: #fff;
   --focus-ring: rgba(49, 87, 220, .12);
 
   color-scheme: light;
@@ -247,8 +243,7 @@ input[type="file"] { padding: var(--space-1) var(--space-2); }
 .tag-choices button,
 .onboarding-folder,
 .onboarding-choice,
-.related-card,
-.canvas-image {
+.related-card {
   min-height: 0;
   border: 0;
   border-radius: 0;
@@ -343,7 +338,7 @@ body[data-thumbnail-size="large"] #imageGrid { --masonry-column-width: 300px; }
    (see pictureCard in app.js), and without cover the image's own content
    gets squashed to that box's shape instead of the box cropping around the
    image's real proportions. Every other card in the app (folder previews,
-   board cards, canvas) already does this; this one was the one gap. */
+   board cards) already does this; this one was the one gap. */
 .image-card > img { display: block; width: 100%; height: auto; object-fit: cover; background: var(--bg-hover); border-radius: var(--radius-md); cursor: pointer; }
 .loading-image { background: var(--bg-skeleton); }
 .loading-image.is-slow-loading { animation: skeleton-pulse 1.1s ease-in-out infinite alternate; }
@@ -398,7 +393,6 @@ body.show-filenames .image-filename { display: block; }
 .result-state { padding: var(--space-14) var(--space-5); color: var(--fg-muted); text-align: center; }
 .result-state h2 { margin: 0 0 var(--space-2); color: var(--fg); font-size: var(--text-xl); font-weight: 600; }
 .result-state p { margin: 0 auto var(--space-5); max-width: 480px; font-size: var(--text-md); line-height: var(--leading); }
-.open-canvas { flex: none; }
 .plugin-toolbar { display: flex; justify-content: flex-end; margin-bottom: var(--space-4); }
 
 .empty { padding: var(--space-14) var(--space-5); color: var(--fg-muted); text-align: center; }
@@ -825,7 +819,7 @@ kbd { padding: 2px var(--space-2); border: 1px solid var(--line-strong); border-
 .command-palette-item small { display: block; margin-top: 2px; color: var(--fg-subtle); font-size: var(--text-2xs); }
 .command-palette-hint { margin: 0; padding: var(--space-2) var(--space-4); border-top: 1px solid var(--line); color: var(--fg-subtle); font-size: var(--text-2xs); }
 
-/* Full-screen surfaces: the picture viewer and the folder canvas. */
+/* Full-screen surfaces: the picture viewer. */
 
 .image-viewer { width: 100vw; max-width: none; height: 100vh; height: 100dvh; max-height: none; margin: 0; padding: 0; overflow-x: hidden; overflow-y: auto; border: 0; border-radius: 0; background: var(--bg); }
 .image-viewer::backdrop { background: rgba(0,0,0,.72); }
@@ -837,7 +831,7 @@ kbd { padding: 2px var(--space-2); border: 1px solid var(--line-strong); border-
 .viewer-picture img { position: absolute; inset: var(--space-5); display: block; width: calc(100% - var(--space-10)); height: calc(100% - var(--space-10)); object-fit: contain; }
 .viewer-picture.is-scrollable-portrait { height: auto; min-height: 100vh; min-height: 100dvh; padding: var(--space-5); overflow: visible; }
 .viewer-picture.is-scrollable-portrait img { position: static; width: min(720px, 100%); height: auto; margin: 0 auto; }
-.image-viewer > #closeViewer, .folder-canvas > #closeCanvas { position: fixed; z-index: 4; top: var(--space-4); right: var(--space-4); width: 38px; height: 38px; min-height: 0; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg); font-size: var(--text-xl); line-height: 1; }
+.image-viewer > #closeViewer { position: fixed; z-index: 4; top: var(--space-4); right: var(--space-4); width: 38px; height: 38px; min-height: 0; padding: 0; border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--bg); font-size: var(--text-xl); line-height: 1; }
 .viewer-nav { position: absolute; z-index: 2; top: 50%; width: 42px; height: 56px; min-height: 0; padding: 0; transform: translateY(-50%); border: 1px solid var(--line-strong); border-radius: var(--radius); background: var(--glass); font-size: var(--text-2xl); line-height: 1; }
 .viewer-nav:disabled { visibility: hidden; }
 .viewer-previous { left: var(--space-4); }
@@ -858,16 +852,6 @@ kbd { padding: 2px var(--space-2); border: 1px solid var(--line-strong); border-
 .related-card img { display: block; width: 100%; height: auto; }
 .related-card:hover, .related-card:focus-visible { outline: 2px solid var(--fg); outline-offset: 2px; }
 
-.folder-canvas { width: 100vw; max-width: none; height: 100vh; max-height: none; padding: 0; overflow: hidden; border: 0; border-radius: 0; background: var(--canvas-bg); }
-.folder-canvas::backdrop { background: var(--canvas-bg); }
-.canvas-hint { position: fixed; z-index: 3; top: var(--space-4); left: var(--space-4); margin: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--line); border-radius: var(--radius); background: var(--glass); color: var(--fg-muted); font-size: var(--text-2xs); pointer-events: none; }
-.canvas-status { position: fixed; z-index: 3; right: var(--space-4); bottom: var(--space-4); padding: var(--space-2); border-radius: var(--radius); background: var(--glass); color: var(--fg-muted); font-size: var(--text-2xs); pointer-events: none; }
-.canvas-viewport { position: absolute; inset: 0; overflow: hidden; cursor: grab; touch-action: none; }
-.canvas-viewport:active { cursor: grabbing; }
-.canvas-world { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-origin: 0 0; }
-.canvas-image { position: absolute; width: 112px; height: 92px; padding: 0; overflow: hidden; border: 2px solid var(--canvas-frame); border-radius: var(--radius); background: var(--bg-skeleton); box-shadow: 0 2px 7px rgba(0,0,0,.18); cursor: move; touch-action: none; }
-.canvas-image img { display: block; width: 100%; height: 100%; object-fit: cover; pointer-events: none; user-select: none; }
-.canvas-image:hover, .canvas-image:focus-visible { z-index: 1; outline: 2px solid var(--fg); outline-offset: 1px; }
 
 /* Things that appear over the library: drops, progress, messages. */
 
@@ -1100,8 +1084,6 @@ body.page-panning { user-select: none; }
   .related-grid { columns: 2; column-gap: var(--space-2); }
   #relatedGrid.stable-masonry-grid { --masonry-column-count: 2; --masonry-gap: var(--space-2); }
   .related-card { margin-bottom: var(--space-2); }
-  .canvas-hint { right: 62px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .canvas-image { width: 94px; height: 78px; }
   .drop-overlay { inset: var(--space-2); }
   .drop-overlay-card { min-width: calc(100vw - var(--space-8)); padding: var(--space-6) var(--space-5); }
   .import-progress { right: var(--space-2); bottom: var(--space-2); width: calc(100vw - var(--space-4)); }

@@ -480,74 +480,6 @@ func TestFoldersAPIIncludesNestedSourceStructure(t *testing.T) {
 	}
 }
 
-func TestFolderCanvasPositionsPersistWithoutMovingImages(t *testing.T) {
-	app, server := testHTTPServer(t)
-	if err := app.setPluginEnabled("canvas", true); err != nil {
-		t.Fatal(err)
-	}
-	source := t.TempDir()
-	paths := []string{filepath.Join(source, "one.png"), filepath.Join(source, "nested", "two.png")}
-	if err := os.MkdirAll(filepath.Dir(paths[1]), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for _, path := range paths {
-		writeTestPNG(t, path)
-	}
-	if err := app.indexFolders([]string{source}); err != nil {
-		t.Fatal(err)
-	}
-	query := "?source=" + url.QueryEscape(source)
-	response, err := http.Get(server.URL + "/api/app/canvas" + query)
-	if err != nil {
-		t.Fatal(err)
-	}
-	value := responseJSON(t, response)
-	images := value["images"].([]any)
-	if response.StatusCode != http.StatusOK || len(images) != 2 || len(value["positions"].(map[string]any)) != 0 {
-		t.Fatalf("unexpected initial canvas: status=%d %#v", response.StatusCode, value)
-	}
-	firstID := images[0].(map[string]any)["id"].(string)
-	payload, _ := json.Marshal(map[string]any{
-		"source":    source,
-		"positions": []map[string]any{{"id": firstID, "x": 123.5, "y": -45.25}},
-	})
-	response, err = http.Post(server.URL+"/api/app/canvas", "application/json", bytes.NewReader(payload))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if saved := responseJSON(t, response); response.StatusCode != http.StatusOK || saved["saved"] != float64(1) {
-		t.Fatalf("canvas did not save: status=%d %#v", response.StatusCode, saved)
-	}
-	response, err = http.Get(server.URL + "/api/app/canvas" + query)
-	if err != nil {
-		t.Fatal(err)
-	}
-	value = responseJSON(t, response)
-	point := value["positions"].(map[string]any)[firstID].(map[string]any)
-	if point["x"] != 123.5 || point["y"] != -45.25 {
-		t.Fatalf("canvas position did not persist: %#v", value)
-	}
-	for _, path := range paths {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("canvas changed an image: %v", err)
-		}
-	}
-}
-
-func TestCanvasRejectsFoldersOutsideIndexedSources(t *testing.T) {
-	app, server := testHTTPServer(t)
-	if err := app.setPluginEnabled("canvas", true); err != nil {
-		t.Fatal(err)
-	}
-	response, err := http.Get(server.URL + "/api/app/canvas?source=" + url.QueryEscape(t.TempDir()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if value := responseJSON(t, response); response.StatusCode != http.StatusBadRequest || value["ok"] != false {
-		t.Fatalf("unknown canvas folder was accepted: status=%d %#v", response.StatusCode, value)
-	}
-}
-
 func TestCanvasThumbnailIsGeneratedLocally(t *testing.T) {
 	app, server := testHTTPServer(t)
 	picture := filepath.Join(app.libraryDir, "thumbnail.png")
@@ -1269,37 +1201,6 @@ func TestDeletingAFolderWithSubfoldersIsRefused(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(app.tagsDir, "parent", "child")); err != nil {
 		t.Fatalf("refused delete still changed the folders: %v", err)
-	}
-}
-
-// The folder canvas is an extra way of looking at a folder, not something every
-// library needs, so it stays off until it is asked for.
-func TestCanvasPluginIsOffUntilEnabled(t *testing.T) {
-	app, server := testHTTPServer(t)
-	if app.pluginEnabled("canvas") {
-		t.Fatal("the folder canvas should be off by default")
-	}
-	response, err := http.Get(server.URL + "/api/app/state")
-	if err != nil {
-		t.Fatal(err)
-	}
-	value := responseJSON(t, response)
-	plugins, _ := value["plugins"].(map[string]any)
-	canvas, _ := plugins["canvas"].(map[string]any)
-	if canvas == nil || canvas["enabled"] != false {
-		t.Fatalf("state should report the canvas as off: %#v", plugins["canvas"])
-	}
-
-	enable, err := http.Post(server.URL+"/api/app/plugins", "application/json",
-		strings.NewReader(`{"name":"canvas","enabled":true}`))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if enable.StatusCode != http.StatusOK {
-		t.Fatalf("enabling the canvas failed: %d", enable.StatusCode)
-	}
-	if !app.pluginEnabled("canvas") {
-		t.Fatal("the canvas did not stay enabled")
 	}
 }
 

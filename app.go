@@ -84,7 +84,6 @@ type application struct {
 	embeddingsDir      string
 	embeddingStorePath string
 	queryCacheDir      string
-	canvasDir          string
 	thumbnailDir       string
 	pluginsDir         string
 	pluginDataDir      string
@@ -92,7 +91,6 @@ type application struct {
 	usage              *usageTracker
 
 	mu                  sync.RWMutex
-	canvasMu            sync.Mutex
 	folderPreferencesMu sync.Mutex
 	// Assign through setPaths, never directly. See the comment there.
 	paths []string
@@ -224,7 +222,6 @@ func newApplicationWithEmbeddingModel(model embeddingModel) (*application, error
 		embeddingsDir:      filepath.Join(home, "data", "embeddings"),
 		embeddingStorePath: filepath.Join(home, "data", model.storeFile),
 		queryCacheDir:      filepath.Join(home, "data", "queries"),
-		canvasDir:          filepath.Join(home, "data", "canvases"),
 		thumbnailDir:       filepath.Join(home, "data", "thumbnails"),
 		pluginsDir:         filepath.Join(home, "plugins"),
 		pluginDataDir:      filepath.Join(home, "data", "plugins"),
@@ -234,7 +231,7 @@ func newApplicationWithEmbeddingModel(model embeddingModel) (*application, error
 		installedPlugins:   map[string]pluginManifest{},
 		job:                jobState{State: "idle", Message: "Ready", UpdatedAt: time.Now().Unix()},
 	}
-	for _, directory := range []string{a.dataDir, a.embeddingsDir, a.queryCacheDir, a.canvasDir, a.thumbnailDir, a.libraryDir, a.tagsDir, a.boardsDir, a.referenceDir, a.pluginsDir, a.pluginDataDir, filepath.Dir(a.configPath)} {
+	for _, directory := range []string{a.dataDir, a.embeddingsDir, a.queryCacheDir, a.thumbnailDir, a.libraryDir, a.tagsDir, a.boardsDir, a.referenceDir, a.pluginsDir, a.pluginDataDir, filepath.Dir(a.configPath)} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return nil, err
 		}
@@ -460,7 +457,7 @@ func (a *application) pluginEnabled(name string) bool {
 }
 
 func (a *application) setPluginEnabled(name string, enabled bool) error {
-	if name != "wikimedia" && name != "calendar" && name != "sidebar" && name != "vim" && name != "commandPalette" && name != "pinterest" && name != "web" && name != "canvas" {
+	if name != "wikimedia" && name != "calendar" && name != "sidebar" && name != "vim" && name != "commandPalette" && name != "pinterest" && name != "web" {
 		return fmt.Errorf("unknown plugin: %s", name)
 	}
 	// A build with no board importer has no setting for one either, so that

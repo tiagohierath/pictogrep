@@ -272,12 +272,18 @@
           <label class="settings-row plugin-row"><span><strong data-i18n="plugins.calendar">Calendar view</strong><small data-i18n="plugins.calendar_help">Browse your pictures grouped by date and month.</small></span><input type="checkbox" id="calendarPluginToggle"></label>
           <label class="settings-row plugin-row"><span><strong data-i18n="plugins.sidebar">Sidebar</strong><small data-i18n="plugins.sidebar_help">Drag pictures into folders from a quick side panel.</small></span><input type="checkbox" id="sidebarPluginToggle"></label>
           <label class="settings-row plugin-row"><span><strong data-i18n="plugins.vim">Vim Mode</strong><small data-i18n="plugins.vim_help">Use Vim-style keyboard navigation in the library and storyboard.</small></span><input type="checkbox" id="vimPluginToggle"></label>
-          <label class="settings-row plugin-row"><span><strong data-i18n="plugins.canvas">Folder canvas</strong><small data-i18n="plugins.canvas_help">Adds an action for spreading a folder's pictures out on a flat workspace and dragging them around. The files never move.</small></span><input type="checkbox" id="canvasPluginToggle"></label>
           <label class="settings-row plugin-row"><span><strong data-i18n="plugins.command_palette">Command palette</strong><small data-i18n="plugins.command_palette_help">Open navigation and picture search with Ctrl+K or Command+K.</small></span><input type="checkbox" id="commandPalettePluginToggle"></label>
         </div>
       </div>
 
-      <div class="plugin-group">
+      <!--
+        desktop-only, and that class is the whole of what keeps this group off
+        the phone. The routes behind every row here are registered under
+        offersWebImport / offersPinterest, which are false in a mobile build,
+        so on a phone this group described features that were not there and
+        its Open button led to a panel whose Start errored.
+      -->
+      <div class="plugin-group desktop-only">
         <h3 class="plugin-group-title" data-i18n="plugins.group_sources">Picture sources</h3>
         <p class="field-help plugin-group-help" data-i18n="plugins.group_sources_help">Ways of getting pictures in. These are part of Pictogrep itself, and only ever copy the pictures you choose.</p>
         <div class="settings-list">
@@ -450,14 +456,6 @@
     </div>
   </dialog>
 
-  <dialog class="folder-canvas" id="canvasDialog">
-    <button id="closeCanvas" aria-label="Close canvas" data-i18n-aria-label="canvas.close">×</button>
-    <p class="canvas-hint" data-i18n="canvas.hint">Drag pictures to arrange · Drag empty space to move · Scroll to zoom</p>
-    <div class="canvas-viewport" id="canvasViewport">
-      <div class="canvas-world" id="canvasWorld"></div>
-    </div>
-    <span class="canvas-status" id="canvasStatus" role="status" aria-live="polite"></span>
-  </dialog>
 
   <div class="card-menu cursor-menu" id="imageContextMenu" hidden>
     <span class="card-menu-name" id="contextImageName"></span>
@@ -493,7 +491,7 @@
     <span class="card-menu-name" id="folderContextName"></span>
     <button type="button" id="folderContextOpen" data-i18n="folder_menu.open">Open folder</button>
     <button type="button" id="folderContextAdd" data-i18n="folder_menu.add">Add pictures here…</button>
-    <button type="button" id="folderContextCanvas" data-i18n="folder_menu.canvas">Open canvas</button>
+    <button type="button" id="folderContextCanvas" data-i18n="folder_menu.canvas">Open board</button>
     <button type="button" id="folderContextNewSubfolder" data-i18n="folder_menu.new_subfolder">New subfolder…</button>
     <button type="button" id="folderContextFavorite">Favorite</button>
     <button type="button" id="folderContextCover">Choose cover…</button>

@@ -109,6 +109,11 @@ func TestInstalledPluginCanLoadInsideSandbox(t *testing.T) {
 	if csp := page.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "frame-ancestors 'self'") || !strings.Contains(csp, "connect-src 'none'") {
 		t.Fatalf("unexpected plugin CSP: %q", csp)
 	}
+	// A plugin can only use a font it has inlined, so data: is allowed and
+	// nothing else is: no host, no 'self', no remote type foundry.
+	if csp := page.Header().Get("Content-Security-Policy"); !strings.Contains(csp, "font-src data:;") {
+		t.Fatalf("plugin CSP does not allow an inlined font: %q", csp)
+	}
 
 	script := pluginRequest(handler, "/plugin/dev.navylily.roomview/ui/room.js")
 	if script.Code != http.StatusOK || script.Header().Get("Cross-Origin-Resource-Policy") != "cross-origin" {

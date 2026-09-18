@@ -150,8 +150,6 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /api/app/folders/export", s.exportFolder)
 	mux.HandleFunc("GET /api/app/search", s.appSearch)
 	mux.HandleFunc("GET /api/app/related/{id}", s.appRelated)
-	mux.HandleFunc("GET /api/app/canvas", s.appCanvas)
-	mux.HandleFunc("POST /api/app/canvas", s.saveAppCanvas)
 	mux.HandleFunc("GET /api/app/boards", s.appBoards)
 	mux.HandleFunc("POST /api/app/index", s.appIndex)
 	mux.HandleFunc("GET /api/app/browse", s.appBrowse)
@@ -682,6 +680,11 @@ func (s *server) asset(w http.ResponseWriter, r *http.Request) {
 		contentType = "text/javascript; charset=utf-8"
 	case ".wasm":
 		contentType = "application/wasm"
+	case ".woff2":
+		// mime.TypeByExtension reads the host's mime database, which is not
+		// guaranteed to know this one. A font served as octet-stream is
+		// refused by the font loader, so say it here.
+		contentType = "font/woff2"
 	}
 	// A plugin frame has a deliberately opaque origin. It can execute the SDK
 	// only when this public, data-free asset opts into cross-origin embedding;
@@ -737,6 +740,16 @@ func (s *server) imageRecord(path string, score *float64) imageRecord {
 		_ = file.Close()
 	}
 	return record
+}
+
+func hashHex(value []byte) string {
+	const digits = "0123456789abcdef"
+	encoded := make([]byte, len(value)*2)
+	for index, item := range value {
+		encoded[index*2] = digits[item>>4]
+		encoded[index*2+1] = digits[item&15]
+	}
+	return string(encoded)
 }
 
 // Image IDs are derived from canonical file paths instead of their position in
@@ -854,7 +867,6 @@ func (s *server) appState(w http.ResponseWriter, _ *http.Request) {
 			"calendar":  map[string]any{"enabled": s.app.pluginEnabled("calendar"), "name": "Calendar view", "description": "Browse local images grouped by when they were added."},
 			"sidebar":   map[string]any{"enabled": s.app.pluginEnabled("sidebar"), "name": "Sidebar", "description": "Drag images into collections from a quick side panel."},
 			"vim":       map[string]any{"enabled": s.app.pluginEnabled("vim"), "name": "Vim Mode", "description": "Use Vim-style keyboard navigation in the library and storyboard."},
-			"canvas":    map[string]any{"enabled": s.app.pluginEnabled("canvas"), "name": "Folder canvas", "description": "Arrange a folder's pictures freely on a flat workspace."},
 			"pinterest": map[string]any{
 				"enabled": s.app.pluginEnabled("pinterest"), "available": true, "downloader": downloader,
 				"name": "Import from Pinterest", "description": "Import every image from a public Pinterest board.",
@@ -1408,133 +1420,6 @@ func (s *server) appRelated(w http.ResponseWriter, r *http.Request) {
 		"ok": true, "ready": ready, "images": images, "offset": offset,
 		"indexed": indexed, "total": len(paths),
 	})
-}
-
-func (s *server) canvasScope(tag, source string) (string, []string, error) {
-	if tag != "" && source != "" {
-		return "", nil, fmt.Errorf("choose one folder")
-	}
-	if tag != "" {
-		paths, err := s.filteredPaths(tag, "")
-		if err != nil {
-			return "", nil, err
-		}
-		return "tag:" + tag, paths, nil
-	}
-	if source == "" {
-		return "", nil, fmt.Errorf("open a folder first")
-	}
-	source = expandPath(source)
-	info, err := os.Stat(source)
-	if err != nil || !info.IsDir() {
-		return "", nil, fmt.Errorf("unknown folder")
-	}
-	_, sources, _ := s.app.snapshot()
-	known := false
-	for _, root := range sources {
-		if source == root || pathInside(source, root) {
-			known = true
-			break
-		}
-	}
-	if !known {
-		return "", nil, fmt.Errorf("unknown folder")
-	}
-	paths, err := s.filteredPaths("", source)
-	if err != nil {
-		return "", nil, err
-	}
-	return "source:" + source, paths, nil
-}
-
-func (s *server) canvasImageRecords(paths []string) []imageRecord {
-	allPaths, _, _ := s.app.snapshot()
-	indexed := make(map[string]bool, len(allPaths))
-	for _, path := range allPaths {
-		indexed[path] = true
-	}
-	tagsByPath := map[string][]string{}
-	for _, name := range s.collectionNames() {
-		for _, path := range s.collectionImages(name) {
-			tagsByPath[path] = append(tagsByPath[path], name)
-		}
-	}
-	images := make([]imageRecord, 0, len(paths))
-	for _, path := range paths {
-		if !indexed[path] {
-			continue
-		}
-		images = append(images, imageRecord{ID: stableImageID(path), Name: filepath.Base(path), Path: path, URL: "/image/" + stableImageID(path), Tags: tagsByPath[path]})
-	}
-	return images
-}
-
-func (s *server) appCanvas(w http.ResponseWriter, r *http.Request) {
-	if !s.app.pluginEnabled("canvas") {
-		sendError(w, http.StatusNotFound, fmt.Errorf("Folder canvas plugin is disabled"))
-		return
-	}
-	scope, paths, err := s.canvasScope(r.URL.Query().Get("tag"), r.URL.Query().Get("source"))
-	if err != nil {
-		sendError(w, 400, err)
-		return
-	}
-	stored, err := s.app.loadCanvasLayout(scope)
-	if err != nil {
-		sendError(w, 500, fmt.Errorf("could not open canvas"))
-		return
-	}
-	images := s.canvasImageRecords(paths)
-	positions := map[string]canvasPoint{}
-	for _, image := range images {
-		if point, found := stored[image.Path]; found {
-			positions[image.ID] = point
-		}
-	}
-	sendJSON(w, 200, map[string]any{"ok": true, "images": images, "positions": positions})
-}
-
-func (s *server) saveAppCanvas(w http.ResponseWriter, r *http.Request) {
-	if !s.app.pluginEnabled("canvas") {
-		sendError(w, http.StatusNotFound, fmt.Errorf("Folder canvas plugin is disabled"))
-		return
-	}
-	var request struct {
-		Tag       string `json:"tag"`
-		Source    string `json:"source"`
-		Positions []struct {
-			ID string  `json:"id"`
-			X  float64 `json:"x"`
-			Y  float64 `json:"y"`
-		} `json:"positions"`
-	}
-	if err := decodeJSON(r, &request, 8<<20); err != nil {
-		sendError(w, 400, err)
-		return
-	}
-	scope, paths, err := s.canvasScope(request.Tag, request.Source)
-	if err != nil {
-		sendError(w, 400, err)
-		return
-	}
-	allowed := map[string]string{}
-	for _, path := range paths {
-		allowed[stableImageID(path)] = path
-	}
-	positions := map[string]canvasPoint{}
-	for _, item := range request.Positions {
-		path, found := allowed[item.ID]
-		if !found || math.IsNaN(item.X) || math.IsNaN(item.Y) || math.IsInf(item.X, 0) || math.IsInf(item.Y, 0) || math.Abs(item.X) > 1e7 || math.Abs(item.Y) > 1e7 {
-			sendError(w, 400, fmt.Errorf("invalid canvas position"))
-			return
-		}
-		positions[path] = canvasPoint{X: item.X, Y: item.Y}
-	}
-	if err := s.app.saveCanvasLayout(scope, positions); err != nil {
-		sendError(w, 500, fmt.Errorf("could not save canvas"))
-		return
-	}
-	sendJSON(w, 200, map[string]any{"ok": true, "saved": len(positions)})
 }
 
 func (s *server) appFolders(w http.ResponseWriter, _ *http.Request) {

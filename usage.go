@@ -17,10 +17,12 @@ import (
 )
 
 const defaultUsageEndpoint = "https://navylily.tv/api/pictogrep/active-day"
+const defaultInstallEndpoint = "https://navylily.tv/api/pictogrep/install"
 
 type usageState struct {
 	InstallationID      string   `json:"installation_id"`
 	InstallationCreated string   `json:"installation_created_date"`
+	InstallReported     bool     `json:"install_reported,omitempty"`
 	LastActiveReport    string   `json:"last_active_report,omitempty"`
 	PendingActiveDates  []string `json:"pending_active_dates,omitempty"`
 }
@@ -36,12 +38,13 @@ type activeDayEvent struct {
 // local calendar day. Meaningful actions call markActive through the local Go
 // server; no remote request ever runs on the browser or request goroutine.
 type usageTracker struct {
-	path     string
-	endpoint string
-	version  string
-	platform string
-	client   *http.Client
-	now      func() time.Time
+	path            string
+	endpoint        string
+	installEndpoint string
+	version         string
+	platform        string
+	client          *http.Client
+	now             func() time.Time
 
 	wake     chan struct{}
 	stop     chan struct{}
@@ -56,6 +59,7 @@ func newUsageTracker(path, appVersion string) (*usageTracker, error) {
 	return newUsageTrackerWithOptions(
 		path,
 		defaultUsageEndpoint,
+		defaultInstallEndpoint,
 		appVersion,
 		runtime.GOOS+"/"+runtime.GOARCH,
 		&http.Client{Timeout: 5 * time.Second},
@@ -63,13 +67,14 @@ func newUsageTracker(path, appVersion string) (*usageTracker, error) {
 	)
 }
 
-func newUsageTrackerWithOptions(path, endpoint, appVersion, platform string, client *http.Client, now func() time.Time) (*usageTracker, error) {
+func newUsageTrackerWithOptions(path, endpoint, installEndpoint, appVersion, platform string, client *http.Client, now func() time.Time) (*usageTracker, error) {
 	state, err := loadOrCreateUsageState(path, now())
 	if err != nil {
 		return nil, err
 	}
 	tracker := &usageTracker{
-		path: path, endpoint: endpoint, version: appVersion, platform: platform,
+		path: path, endpoint: endpoint, installEndpoint: installEndpoint,
+		version: appVersion, platform: platform,
 		client: client, now: now, state: state,
 		wake: make(chan struct{}, 1), stop: make(chan struct{}), done: make(chan struct{}),
 	}
@@ -191,17 +196,52 @@ func (t *usageTracker) run() {
 }
 
 func (t *usageTracker) flush() {
-	if strings.TrimSpace(t.endpoint) == "" || t.client == nil {
+	if t.client == nil {
 		return
 	}
 	t.flushMu.Lock()
 	defer t.flushMu.Unlock()
+	t.flushInstall()
+	t.flushActiveDays()
+}
 
+// flushInstall reports this copy's existence exactly once, carrying the date the
+// state file was created rather than today, so an install that has been sitting
+// here for weeks backfills its real age instead of looking new. It answers a
+// question the active days cannot: how many people who installed Pictogrep ever
+// went on to use it. A failure here must not hold up the active days below, so
+// the two are reported independently.
+func (t *usageTracker) flushInstall() {
+	if strings.TrimSpace(t.installEndpoint) == "" {
+		return
+	}
+	t.stateMu.Lock()
+	reported, created := t.state.InstallReported, t.state.InstallationCreated
+	t.stateMu.Unlock()
+	if reported || created == "" {
+		return
+	}
+	if err := t.post(t.installEndpoint, created); err != nil {
+		return
+	}
+	t.stateMu.Lock()
+	next := t.state
+	next.InstallReported = true
+	if err := saveUsageState(t.path, next); err == nil {
+		t.state = next
+	}
+	t.stateMu.Unlock()
+}
+
+func (t *usageTracker) flushActiveDays() {
+	if strings.TrimSpace(t.endpoint) == "" {
+		return
+	}
 	t.stateMu.Lock()
 	dates := append([]string{}, t.state.PendingActiveDates...)
 	t.stateMu.Unlock()
 	for _, date := range dates {
-		if err := t.post(date); err != nil {
+		if err := t.post(t.endpoint, date); err != nil {
 			return
 		}
 		t.stateMu.Lock()
@@ -217,7 +257,7 @@ func (t *usageTracker) flush() {
 	}
 }
 
-func (t *usageTracker) post(date string) error {
+func (t *usageTracker) post(endpoint, date string) error {
 	event := activeDayEvent{
 		InstallationID: t.installationID(), Date: date,
 		AppVersion: t.version, Platform: t.platform,
@@ -226,7 +266,7 @@ func (t *usageTracker) post(date string) error {
 	if err != nil {
 		return err
 	}
-	req, err := http.NewRequest(http.MethodPost, t.endpoint, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return err
 	}

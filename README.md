@@ -121,11 +121,20 @@ Imported images are copied into `library`; folder membership is stored under
 ### Anonymous daily usage
 
 Desktop releases keep a random installation UUID and its creation date in
-`data/usage.json`. After you view a picture, search, open a folder, or add
-pictures, Pictogrep records at most one anonymous active day. Offline days stay
-queued locally and are retried later. The event contains only the UUID, calendar
-date, Pictogrep version, and operating-system/CPU platform; pictures, filenames,
-searches, folders, account details, and IP addresses are not stored with it.
+`data/usage.json`, and send two kinds of event.
+
+- **The install, once.** The first time it can reach the network, Pictogrep
+  reports that this copy exists, carrying the date it was installed. This one is
+  sent whether or not you ever use the app, because the only thing it is for is
+  telling apart "nobody installed it" from "people installed it and never came
+  back".
+- **An active day.** After you view a picture, search, open a folder, or add
+  pictures, Pictogrep records at most one anonymous active day. Offline days
+  stay queued locally and are retried later.
+
+Both contain only the UUID, a calendar date, the Pictogrep version, and the
+operating-system/CPU platform; pictures, filenames, searches, folders, account
+details, and IP addresses are not stored with either.
 
 ## Configuration
 

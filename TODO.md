@@ -22,10 +22,16 @@ between sections, it does not change its number.
 | 35 | Two blank buttons in the Android build | DONE 2026-09-08 |
 | 36 | Cut the link importer out of the Android build | DONE 2026-09-08 |
 | 37 | Sync a library desktop to phone | DONE 2026-09-08, untested on a phone |
-| 38 | Make all plugins free on desktop; mobile keeps paid plugins | code done, committing now |
-| 39 | Follow-up: "make all plugins be like on every install" | resolved as part of 38 |
-| 40 | When 38/39 land, cut a new GitHub release | tagging v0.11.9 now, CI builds it |
-| 41 | Update the local install with this session's build | in progress |
+| 38 | Make all plugins free on desktop; mobile keeps paid plugins | DONE 2026-09-08, commit 0661041 |
+| 39 | Follow-up: "make all plugins be like on every install" | DONE 2026-09-08, folded into 38 |
+| 40 | Cut a new GitHub release | DONE 2026-09-08, tagged v0.11.9, CI running |
+| 41 | Update the local install with this session's build | DONE 2026-09-08 |
+| 42 | Drastically improve the storyboard and canvas ("Área livre") plugins | investigated, needs a decision |
+| 43 | Check on Pictogrep usage tracking that reports to navylily.tv | CHECKED 2026-09-18, working; follow-ups below |
+| 44 | Install event, so activation rate has a denominator | DONE 2026-09-18, NOT deployed |
+| 45 | Report: activation + weekly retention, on a page he can open | DONE 2026-09-18, NOT deployed |
+| 46 | Sessions per user and core-action counters | NOT DOING, see 44-45 |
+| 47 | Back up the usage database | DONE 2026-09-18 |
 
 ### 20. Drawing drops areas inside images
 
@@ -127,6 +133,289 @@ Task 24 made `loadImage()` set `image.draggable = false`, which covers every
 picture in the grid, but the full-size image inside `#imageViewer` is not
 created there. Find where the viewer builds its `<img>` and fix it the same
 way.
+
+### 42. Drastically improve the storyboard and canvas ("Área livre") plugins
+
+Requested 2026-09-08. Investigated the current state in both this repo and the
+private `pictogrep-plugins-paid` repo before touching anything.
+
+**Canvas ("Área livre").** Two implementations exist right now.
+- Core still runs the old one: `canvas.go` (73 lines) plus roughly two dozen
+  call sites woven into `web/app.js`. Pan, zoom, move one picture at a time,
+  autosave. That is what desktop actually shows today.
+- `pictogrep-plugins-paid/canvas/` is a separate, already-built "2D board"
+  plugin (manifest version 0.1.0, `board.js` at 834 lines): pan/zoom,
+  library tray, marquee multi-select, resize, rotate, flip, duplicate,
+  layering, undo/redo, tidy-to-grid, fit, focus, mouse/trackpad/touch/
+  keyboard. The paid repo's own README calls it "the first plugin here with
+  a complete standalone interaction model." It is not wired into Pictogrep
+  yet: not copied into any `pluginsDir`, not in the installed-plugins list.
+
+**Storyboard.** One implementation, unfinished.
+- Core's version is real and free today: `GET /practice`
+  (`server.go:106`), a 2000-line standalone page (`web/practice.html`),
+  linked from the main menu.
+- `pictogrep-plugins-paid/storyboard/` is a 91KB `ui/index.html` scaffold,
+  manifest version `0.0.0`. `loadPlugins` in `plugins.go` skips any manifest
+  at `0.0.0` on purpose ("do not turn private design placeholders into
+  broken buttons"), so this cannot even load yet. The paid repo's own README:
+  "Storyboard has a substantial extracted UI but still depends on
+  core-only APIs" that were never built.
+
+So "drastically improve" lands on two very different jobs: canvas is
+"replace the woven-in core implementation with the already-finished plugin
+and remove the old one," while storyboard is "finish an incomplete
+extraction, including designing whatever core capability it's still
+missing." Per task 38, paid plugins are free on desktop and gated only on
+mobile, so wiring either one in makes it immediately usable on desktop with
+no unlock flow to build first.
+
+BLOCKED on a decision: which of the two to do, and in what order, since
+canvas is close to a straight swap and storyboard is open-ended design work
+(what core API it needs is not written down anywhere). Asked Tiago.
+
+DECIDED 2026-09-08: canvas first. Two more decisions, asked before writing
+code:
+
+- **One board per folder, not one global board.** The plugin as built has a
+  single fixed `STORAGE_KEY`, i.e. one board for the whole library. Tiago
+  wants today's model kept: opening a folder's canvas gives that folder its
+  own saved board. Implementation choice (not asked, mechanical): the
+  library tray stays global (search/add from anywhere, which is the actual
+  improvement this plugin brings), only the saved node layout and camera are
+  keyed per folder, via `STORAGE_KEY + ":" + scope` where scope is
+  `tag:<name>` or `source:<path>`, the same two shapes `canvasScope()`
+  already uses server-side. Storage stays a flat plugin-scoped `storage.kv`
+  file, no core capability change needed.
+- **Needs Portuguese.** The plugin's UI text is hardcoded English, not wired
+  to Pictogrep's i18n system. Since a plugin's CSP is `connect-src 'none'`
+  (see `plugins.go`'s `servePlugin`), it cannot fetch a locale JSON file the
+  way the host page does; strings have to ship inlined in the plugin's own
+  files. The host passes the current locale in as `?lang=` on the iframe
+  `src` (`PictogrepI18n.locale()`), the same place `?scope=`/`&label=` carry
+  which folder this board belongs to.
+
+Root cause of a bug Tiago hit while this was being investigated: "images on
+the board are like, same aspect ratio, super silly". That was the CURRENT
+Folder canvas (`.canvas-image` in `web/app.css`), which draws every picture
+into a fixed 112x92 box with `object-fit: cover`, i.e. crops every picture to
+the same shape. It is not a bug worth patching separately: this whole
+implementation is what's being deleted. The new plugin already computes each
+card's box from `image.width`/`image.height` (`createNode()` in `board.js`)
+and never crops (`object-fit: contain`), so it's fixed by the swap itself,
+not by an extra change.
+
+Found while verifying the android-tagged suite: `go test -tags pictogrep_android
+./...` was never actually finishing. `TestFolderCanvasPositionsPersistWithoutMovingImages`
+(one of the old canvas tests, now deleted along with the feature) panicked on
+a nil type assertion under that tag and took the whole test binary down with
+it, mid-run, silently. Every test declared after it in build order never ran
+at all, which is how the "26 failures" figure in this file's own Traps
+section was measured all along, on a suite quietly truncated at 153 of 235
+tests. Deleting that test fixed the crash as a side effect, and the suite now
+runs to completion at 235/235, surfacing 8 real pre-existing failures that
+had simply never had the chance to run: `TestWebImportFollowsOnlyWhenAsked`,
+`TestWebImportListsExistingLibraryImageInTheFolder`,
+`TestWebImportNeedsAtLeastOneChoice`,
+`TestWebImportSurvivesThePinterestPluginBeingOff`,
+`TestFollowedWebSourceIsRecheckedAndCanBeForgotten`,
+`TestReCheckWithNothingNewIsNotAFailure`, `TestRunningJobSaysWhichPanelStartedIt`,
+`TestSyncRefusesATamperedFolder`. All eight assume `setPluginEnabled("web",
+true)` succeeds on a phone build; task 36 made that compile-time impossible
+(`offersWebImport = false` in `platform_mobile.go`) and these tests were
+never updated for it. Not fixed here: unrelated to canvas/storyboard, and
+worth its own look rather than a rushed patch. The real, trustworthy android
+baseline going forward is 235 run, 8 failing, all of them this one stale
+cluster; the "26" figure below is superseded.
+
+IN PROGRESS.
+
+### 43. Check on Pictogrep usage tracking that reports to navylily.tv
+
+Asked 2026-09-18: "pictogrep, im tracking usage on navylily.tv" / "check on it".
+
+IT WORKS. Checked end to end, both halves.
+
+- Client: `usage.go` POSTs one anonymous event per active calendar day to
+  `https://navylily.tv/api/pictogrep/active-day`. Desktop only
+  (`tracksDailyUsage`, false in `platform_mobile.go`).
+- Server: `navylily-private/auth/pictogrep_usage.go`, writing to
+  `auth/data/pictogrep-usage.db` (gitignored, not tracked, so no user data has
+  ever gone into the repo). Endpoint is live: a bad event gets a 400, so the
+  handler is wired and answering, not 404 or 502.
+
+What is in the store on 2026-09-18: 60 active-day rows, 9 installations,
+2026-08-24 to today. 6 on 0.11.9, 2 on 0.11.7, 1 on 0.11.3; 6 Windows, 3 Linux.
+Active today 2, last 7 days 9, last 30 days 9, nobody active all 7 of 7.
+
+THE THING WORTH KNOWING: the whole 25-day history survived the VPS outage
+because of the client's offline queue, not because anything was restored. The
+database file was created fresh on the laptop 2026-09-16 11:45 and the backup at
+`~/backups/navylily-vps-20260818` holds no usage database at all. Every row's
+`recorded_at` is 2026-09-16 or later, arriving in four backlog dumps, one per
+install, each spanning weeks of `date` values: 22 rows at 09-16 19:00 covering
+08-24 to 09-16, then 4, 11 and 15 more on 09-17 as the other installs next ran.
+`flush()` never drops a pending date until the POST returns 2xx, so months
+offline cost nothing. This is the design working, and it is worth not breaking.
+
+WHY IT MATTERS, said 2026-09-18: "i got like 400 downloads in some days but if
+people don't use then i will just abandon the project." So the 9 above is being
+read as a kill signal. It is not one, and here is why.
+
+**THE 9 CANNOT BE COMPARED TO THE 400. Three separate reasons, each fatal on
+its own.**
+
+1. **The 400 is one release, and that release has no tracking code in it.**
+   The spike is `v0.8.6`, published 2026-08-17: 322 installer downloads, 284 of
+   them the Windows setup. `usage.go` landed 2026-08-23 in commit `cd3aca8`,
+   six days later. Verified against the tags rather than assumed: `git cat-file
+   -e v0.8.6:usage.go` fails, `v0.9.0` on is fine. Every one of those 322 could
+   be running Pictogrep daily and the server would never hear a word.
+2. **Only 95 of 476 lifetime installer downloads are from a build that can
+   report at all.** The other 381, 80% of everything, are pre-tracking 0.7/0.8.
+3. **The server never recorded a single event before 2026-09-16.** Proven, not
+   guessed: the installs backfilled dates as old as 08-24, and `flush()` never
+   resends a date that already got a 2xx. If the VPS had ever acked those days
+   they would not have been in the queue. The 2026-08-18 backup holds no usage
+   database either. So the receiver was dead for the entire window being judged.
+
+Net: the real denominator for those 9 is "someone on a 0.9+ build who still had
+it installed and used it on or after 2026-09-16", not 400 and not 476. And one
+of the 9 is Tiago's own laptop (`bbf34577`, the only `usage.json` on this
+machine, 23 of its 25 days), so the outside number is 8 at most.
+
+**What the survivors actually look like, which is the one trustworthy part:**
+23 of 25 days, 15 days, 11 days. All 9 active in the last 7 days. That is
+habitual use, not tire-kicking. Small sample, good shape.
+
+STILL OPEN:
+
+- **Launch and use are indistinguishable today.** `usage.json` is written when
+  the app starts, but nothing is sent until a meaningful action fires
+  `reportMeaningfulActivity()` (search, open a picture, open a folder, upload,
+  create a folder). So "downloaded, opened it once, bounced" and "never
+  downloaded" look identical from the server. That gap is exactly the question
+  being asked, so a separate first-launch event would turn download -> launch
+  -> use into a real funnel. Highest-value change here by a distance. NOT
+  STARTED, needs Tiago's go-ahead.
+- **`/api/pictogrep/report` has no page.** It computes summary, retention
+  cohorts (D1/D7/D30, 7-of-7, 30-of-30) and GitHub download counts, is
+  owner-gated by `isOwner`, and returns JSON that nothing renders.
+  `public/pictogrep.html` is the product page, not a dashboard. So the numbers
+  above are only reachable by hand.
+- **The usage database has no backup.** One file, on the laptop, gitignored by
+  design. Client backlogs would NOT refill it: an install only resends dates it
+  never got a 2xx for, so anything already acked is gone if the file is. It is
+  now the only cohort that exists, so losing it costs the whole decision.
+- **The tunnel is the laptop.** See the lid-switch rule. A sleeping laptop does
+  not lose events, clients queue them, but it does freeze the report.
+
+### 44-47. Fix the trackers (asked 2026-09-18)
+
+"yeah fix the trackers to what you find most important", then the goal, which
+decides every choice below: "my goal is to get the info of whether i should
+focus or not in the project. if people genuinely use it every week for months,
+then its probably worth more polishing."
+
+So the question is WEEKLY retention over MONTHS. Not downloads, not DAU. That
+reframes the existing report: `Active7Of7` and `Active30Of30` count CONSECUTIVE
+daily use, which for a reference-image tool will read 0 essentially forever, and
+a permanent 0 staring back at him is worse than no metric. They go. What
+replaces them is a weekly cohort table: of the installs that first showed up in
+week N, how many were active in week N+1, N+2, ... That is the shape that
+answers "still using it months later".
+
+Nothing here can be answered today no matter what I build: the receiver has only
+worked since 2026-09-16 (task 43), so week 1 of real data ends 2026-09-22. This
+work is about having the instrument right and unbroken between now and then, so
+that in December the answer is there to read.
+
+SCOPE, cut down on Tiago's "KEEP IT SIMPLER, SIMPLE keep it super super super
+simple" after the four metrics were asked for. Of the four, three are already
+answerable from the `active_days` rows that exist today and need NO client
+change at all, only better queries:
+
+- D7 / D30, do they come back: query.
+- Weekly retention over months: query.
+- Sessions per user, how often: approximated by active days per install, which
+  is the same table. A true session counter needs new client state, so it is
+  NOT being built. Task 46, deliberately not done.
+- Core actions (search / import / organize / export): the only one that would
+  need real new instrumentation, and the one furthest from the focus-or-drop
+  decision. NOT being built either.
+
+That leaves exactly one thing that new code must provide.
+
+#### 44. Install event
+
+THE GAP: `usage.json` is written when the app starts, but nothing reaches the
+server until a meaningful action fires `reportMeaningfulActivity()` (search,
+open a picture, open a folder, upload, create a folder). So "downloaded, opened
+it, bounced" is invisible and looks exactly like "never downloaded". Activation
+rate has no denominator without this, and activation is the number that says
+whether the problem is reach or the product.
+
+- Client sends one install event carrying `InstallationCreated`, the date
+  already in the state file. Existing installs therefore backfill their TRUE
+  install date on upgrade rather than faking a new one.
+- Its own endpoint and its own table, so old clients posting the old shape keep
+  working untouched.
+- Install failure must NOT block active-day flushing, and vice versa.
+
+#### 45. Report and a page to read it on
+
+Drop `Active7Of7` / `Active30Of30`: consecutive DAILY use, which reads 0 forever
+for a tool like this, and a permanent 0 is worse than no metric. Same objection
+to the existing D1/D7/D30, which test `date = cohort + 7 days` exactly, so
+somebody who used it on day 6 and day 8 counts as gone. Both become
+range-based: came back at all within days 1-7, and within days 8-30.
+
+Add the weekly cohort table, which is the actual question. Page follows the
+`funil.html` pattern (owner-only, 404 to everyone else, `no-store`), but NOT its
+`.muted` class: that is lightened ink and this repo's rule is weight, size or
+accent instead.
+
+#### 47. Back up the database
+
+`VACUUM INTO` a dated copy. One line, no timer, no service.
+
+#### DONE 2026-09-18. NOT DEPLOYED, waiting on Tiago.
+
+Both repos build, both test suites at their pre-existing baselines: navylily/auth
+fully green, pictogrep at its documented 10 Pinterest/import failures, no new
+ones. Nothing is committed, nothing is pushed, the running site is still the old
+binary.
+
+- `pictogrep/usage.go`: `InstallReported` in the state file, `flushInstall()`
+  posting once to `/api/pictogrep/install`, `flushActiveDays()` unchanged in
+  behaviour and now independent of it. Three tests: reported without any
+  activity, reported only once, and an existing state file backfilling its real
+  install date instead of today.
+- `navylily-private/auth/pictogrep_usage.go`: `installs` table (created by
+  `CREATE TABLE IF NOT EXISTS`, verified applying cleanly to the real file),
+  `handlePictogrepInstall` sharing decode/validate/rate-limit with the active-day
+  handler via `readPictogrepEvent`, plus `readPictogrepActivation` and
+  `readPictogrepWeeks` in the report.
+- `public/pictogrep-uso.html` at `/pictogrep/uso`, owner-only, 404 to everyone
+  else, excluded from the sitemap.
+- `README.md` corrected: it claimed events are only sent after you use the app,
+  which stopped being true the moment the install event existed.
+- Backup: `~/backups/pictogrep-usage/pictogrep-usage-20260918.db`, 61 rows.
+
+BUG FOUND AND FIXED while verifying: a week was counted as elapsed ON its last
+day rather than after it, so the most recent week of every curve would have been
+measured while people still had hours left to open the app, shaving it downward
+every single time the page was loaded. Now strictly `today.After(to)`.
+
+Checked at 390px in Firefox against a stubbed report: the table fits without
+sideways scroll once the bar column is dropped under 34em, all four columns
+readable, no gray ink anywhere.
+
+WHAT THE REAL DATA SAYS TODAY, run against a copy of the live database: weeks 0,
+1 and 2 are all 100%, on 4, 4 and 2 installs respectively. Everyone who got far
+enough to be measured kept coming back. N is tiny and only 3 weeks deep, so it
+is an encouraging shape and not yet an answer. Activation reads 0 of 0 until
+clients carrying the install event are actually out there, which needs a release.
 
 ### 33. Ship the macOS version
 
@@ -391,6 +680,37 @@ PLAN:
   describes a desktop buyer downloading a paid `.pictogrep` ZIP; flag it as
   stale rather than rewrite the pricing narrative, since that repo's business
   copy is not this task's call to make.
+
+DONE, commit `0661041`. `pluginLocked` returns `false` outright when
+`!runsOnPhone`, before ever looking at `manifest.Paid`; `lockedOnPhone` was
+already shaped this way for the compile-time features, this just brings the
+installed-plugin gate in line with it. Comments in `license.go` and
+`docs/plugins.md`'s Licensing section updated to say the license machinery is
+mobile-only now. `pictogrep-plugins-paid/README.md` flagged as stale, not
+rewritten.
+
+`TestPaidPluginIsUnreachableUntilLicensed` and
+`TestPaidGateDoesNotSpecialCaseFirstPartyPlugins` now branch on `runsOnPhone`
+the same way `TestPhoneFeatureGateFollowsTheSameUnlock` already did: desktop
+asserts a `Paid` manifest is reachable and unlocked with no license at all,
+the phone branch keeps the original assertions unchanged.
+
+VERIFIED: `go test ./...` at the pre-existing 10 failures (all Pinterest),
+`go test -tags pictogrep_android ./...` at the pre-existing 26, neither list
+touching a license/plugin test. Both paid-gate tests pass under both tags.
+
+Task 40, done the same session: tagged `v0.11.9` on this commit, pushed, CI
+(`release.yml`) building and publishing Linux + Windows, per Tiago's explicit
+call to keep using the existing tag-triggered workflow rather than block on
+building a local-only release script that does not exist yet (see "Traps"
+below). Changelog entry added.
+
+Task 41, done the same session: local `~/.local/bin/pictogrep` rebuilt from
+this working tree (`CGO_ENABLED=0`, `-ldflags "-s -w -X main.version=0.11.9"`,
+matching the flake's own flags with 0.11.9 in place of the flake's stale
+0.11.7), old binary backed up to the session scratchpad, process restarted
+against the real library on :8765. `pictogrep version` reports `0.11.9`,
+`/api/app/state` answers normally.
 
 ## Not doing
 
@@ -756,13 +1076,25 @@ names are cleaned off after it finishes.
   the end of a range matched an EARLIER `const finish = () => {` at line 120 and
   duplicated ~5800 lines of `web/app.js`. Recovered by reconstruction. Always
   `s.index(needle, start)`.
-- `go test ./...` has 11 pre-existing failures on HEAD, all Pinterest and import
-  tests. Compare against HEAD before blaming your own change.
+- `go test ./...` has 10 pre-existing failures on HEAD, all Pinterest and import
+  tests; `go test -tags pictogrep_android ./...` has 26. Compare against HEAD
+  before blaming your own change, and check both tag sets for anything that
+  branches on `runsOnPhone`.
+- **The source `version` constant (`app.go`, `flake.nix`) does not track the
+  latest tag.** `v0.11.8`'s own tree still says `"0.11.7"` in both places; the
+  release workflow gets its version from the git tag via `-X main.version=`,
+  not from source. Bumping that constant is a separate, occasional action of
+  Tiago's, not something a release needs. A local build that wants to report
+  the version it actually corresponds to should pass `-ldflags "-X
+  main.version=..."` directly rather than trust `nix build`'s flake version
+  (task 38's local install did this to get `0.11.9` instead of the stale
+  `0.11.7` the flake would have baked in).
 
 ## State
 
-Working tree is uncommitted and nothing has been pushed. Released 0.11.7 during
-this session; the local `~/.local/bin/pictogrep` build is ahead of it.
+Committed and pushed to `main` (`0661041`), tagged `v0.11.9`, CI building and
+publishing the release. Local `~/.local/bin/pictogrep` rebuilt from this same
+commit and running, reporting `0.11.9`.
 
 ## Standing rules
 
@@ -774,3 +1106,9 @@ this session; the local `~/.local/bin/pictogrep` build is ahead of it.
   side effect. `docs/ui.md` is the blueprint.
 - Pictogrep releases are built and published locally, never via CI.
 - Ask before pushing anything to the public pictogrep repo.
+
+## Plugin CSP: font-src data: (2026-09-15)
+- [x] servePlugin allows `font-src data:` so a plugin can inline its own
+      typeface. A plugin file has no CORS header and @font-face always fetches
+      in cors mode, so an inlined font is the only one a sandboxed plugin can
+      use. threedraw inlines MEK Mono this way. Covered in plugins_test.go.

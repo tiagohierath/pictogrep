@@ -175,7 +175,10 @@ func (s *server) servePlugin(w http.ResponseWriter, r *http.Request) {
 	// ambiguity about loading files from the URL that delivered the document.
 	localOrigin := "http://" + r.Host
 	w.Header().Set("Content-Security-Policy", fmt.Sprintf(
-		"default-src 'none'; script-src 'self' 'unsafe-inline' %s; style-src 'self' 'unsafe-inline' %s; img-src 'self' data: %s; connect-src 'none'; frame-ancestors 'self'",
+		// font-src allows data: only. A plugin's own files carry no CORS
+		// header and @font-face always fetches in cors mode, so a sandboxed
+		// document on an opaque origin can only use a font it has inlined.
+		"default-src 'none'; script-src 'self' 'unsafe-inline' %s; style-src 'self' 'unsafe-inline' %s; img-src 'self' data: %s; font-src data:; connect-src 'none'; frame-ancestors 'self'",
 		localOrigin, localOrigin, localOrigin))
 	// securityHeaders denies framing and cross-origin subresource use by
 	// default. A plugin is the one intentional exception: its document is
@@ -197,6 +200,15 @@ func (s *server) servePluginMedia(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cross-Origin-Resource-Policy", "cross-origin")
+	// CORP gets the bytes into a sandboxed <img>, but not into a canvas or a
+	// WebGL texture: the frame has an opaque origin, so without CORS the image
+	// is never origin-clean. Under the app's COEP: credentialless the response
+	// is opaque, and a WebGL upload of it silently produces black rather than
+	// throwing, which is a miserable thing to debug. The token above is the
+	// access control here, and it only ever reaches a plugin the broker
+	// already cleared, so allowing the read adds nothing a token holder could
+	// not already do.
+	w.Header().Set("Access-Control-Allow-Origin", "*")
 	r.SetPathValue("id", r.PathValue("image"))
 	if r.URL.Query().Get("original") == "1" {
 		s.image(w, r)

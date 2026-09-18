@@ -7,7 +7,6 @@ const PLUGIN_TOGGLES = {
   "#calendarPluginToggle": "calendar",
   "#sidebarPluginToggle": "sidebar",
   "#vimPluginToggle": "vim",
-  "#canvasPluginToggle": "canvas",
   "#commandPalettePluginToggle": "commandPalette",
   "#pinterestPluginToggle": "pinterest",
   "#webPluginToggle": "web",
@@ -74,12 +73,6 @@ const RELATED_PAGE_SIZE = 18;
 // The images endpoint refuses to return more than this in one page, so a
 // restored view cannot ask for more than it either.
 const MAX_IMAGE_PAGE = 500;
-let canvasPositions = new Map();
-let canvasImages = [];
-let canvasPan = {x: 0, y: 0};
-let canvasZoom = 1;
-let canvasSaveTimer = null;
-let canvasPointer = null;
 let pendingDeleteItem = null;
 let externalDragDepth = 0;
 let importProgressTimer = null;
@@ -1332,7 +1325,7 @@ function showViewerImage(item, showOriginal = false) {
     }
     image.alt = item.name;
     setPortraitMode(image.naturalWidth, image.naturalHeight);
-    // Canvas and legacy records may not include dimensions. Detect those after
+    // Legacy records may not include dimensions. Detect those after
     // the cached preview paints and upgrade an extreme portrait to its original.
     if (!showOriginal && !item.width && !upgradingUnknownPortrait && item.url && image.naturalHeight / image.naturalWidth > 3.25) {
       upgradingUnknownPortrait = true;
@@ -2404,11 +2397,10 @@ function openFolderContextMenu(event, folder) {
   $("#folderContextOpen").onclick = () => openFolder(folder);
   $("#folderContextAdd").onclick = () => chooseImagesForFolder(folder);
   const canvas = $("#folderContextCanvas");
-  canvas.hidden = !appState?.plugins?.canvas?.enabled;
+  canvas.hidden = false;
   canvas.onclick = () => {
     closeCardMenus();
-    setFolderScope(folder);
-    openFolderCanvas();
+    openFolderBoard(folder);
   };
   const newSubfolder = $("#folderContextNewSubfolder");
   newSubfolder.hidden = folder.kind !== "tag";
@@ -2641,144 +2633,18 @@ async function loadFolders() {
   }
 }
 
-function canvasScope() {
-  return currentTag
-    ? {tag: currentTag, source: ""}
-    : {tag: "", source: currentSource};
-}
+// "Open canvas" on a folder's context menu opens the installed 2D board
+// plugin scoped to that one folder, rather than the whole library: the board
+// itself is saved per folder (scope becomes part of its storage.kv key, see
+// board.js), while the plugin's own library tray still searches everything,
+// which is the point of having one.
+const CANVAS_PLUGIN_ID = "dev.navylily.canvas";
 
-function canvasQuery() {
-  const scope = canvasScope();
-  return `tag=${encodeURIComponent(scope.tag)}&source=${encodeURIComponent(scope.source)}`;
-}
-
-function defaultCanvasPoint(index, total) {
-  const columns = Math.max(1, Math.ceil(Math.sqrt(total * 1.35)));
-  const rows = Math.max(1, Math.ceil(total / columns));
-  return {
-    x: (index % columns - (columns - 1) / 2) * 132,
-    y: (Math.floor(index / columns) - (rows - 1) / 2) * 112,
-  };
-}
-
-function applyCanvasTransform() {
-  $("#canvasWorld").style.transform = `translate(${canvasPan.x}px, ${canvasPan.y}px) scale(${canvasZoom})`;
-}
-
-function canvasCard(item, point) {
-  const card = document.createElement("button");
-  card.className = "canvas-image";
-  card.type = "button";
-  card.dataset.id = String(item.id);
-  card.title = item.name;
-  card.style.left = `${point.x}px`;
-  card.style.top = `${point.y}px`;
-  const image = document.createElement("img");
-  image.loading = "lazy";
-  image.decoding = "async";
-  image.draggable = false;
-  loadImage(image, thumbnailURL(item));
-  card.append(image);
-  card.onpointerdown = event => {
-    if (event.button !== 0) return;
-    event.stopPropagation();
-    card.setPointerCapture(event.pointerId);
-    canvasPointer = {kind: "image", id: item.id, startX: event.clientX, startY: event.clientY, x: point.x, y: point.y, moved: false, card};
-  };
-  card.onpointermove = moveCanvasPointer;
-  card.onpointerup = endCanvasPointer;
-  card.onpointercancel = endCanvasPointer;
-  bindImageContextMenu(card, item);
-  return card;
-}
-
-function renderCanvas() {
-  const world = $("#canvasWorld");
-  world.replaceChildren(...canvasImages.map((item, index) => {
-    let point = canvasPositions.get(item.id);
-    if (!point) {
-      point = defaultCanvasPoint(index, canvasImages.length);
-      canvasPositions.set(item.id, point);
-    }
-    return canvasCard(item, point);
-  }));
-}
-
-function moveCanvasPointer(event) {
-  if (!canvasPointer) return;
-  const dx = event.clientX - canvasPointer.startX;
-  const dy = event.clientY - canvasPointer.startY;
-  if (Math.abs(dx) + Math.abs(dy) > 3) canvasPointer.moved = true;
-  if (canvasPointer.kind === "image") {
-    const point = {x: canvasPointer.x + dx / canvasZoom, y: canvasPointer.y + dy / canvasZoom};
-    canvasPositions.set(canvasPointer.id, point);
-    canvasPointer.card.style.left = `${point.x}px`;
-    canvasPointer.card.style.top = `${point.y}px`;
-  } else {
-    canvasPan = {x: canvasPointer.x + dx, y: canvasPointer.y + dy};
-    applyCanvasTransform();
-  }
-}
-
-function endCanvasPointer(event) {
-  if (!canvasPointer) return;
-  const finished = canvasPointer;
-  if (finished.kind === "image" && finished.moved) scheduleCanvasSave();
-  if (event.currentTarget.hasPointerCapture?.(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
-  canvasPointer = null;
-  if (finished.kind === "image" && !finished.moved) {
-    const item = canvasImages.find(candidate => candidate.id === finished.id);
-    if (item) openImageViewer(item);
-  }
-}
-
-function canvasSavePayload() {
-  const scope = canvasScope();
-  const positions = canvasImages.map(item => ({id: item.id, ...canvasPositions.get(item.id)}));
-  return {...scope, positions};
-}
-
-function scheduleCanvasSave() {
-  clearTimeout(canvasSaveTimer);
-  $("#canvasStatus").textContent = t("canvas.saving");
-  const payload = canvasSavePayload();
-  canvasSaveTimer = setTimeout(() => saveCanvas(payload), 350);
-}
-
-async function saveCanvas(payload = canvasSavePayload()) {
-  try {
-    await request("/api/app/canvas", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify(payload),
-    });
-    $("#canvasStatus").textContent = t("canvas.saved");
-  } catch (error) {
-    $("#canvasStatus").textContent = error.message;
-  }
-}
-
-async function openFolderCanvas() {
-  if (!currentTag && !currentSource) return;
-  const dialog = $("#canvasDialog");
-  canvasImages = [];
-  canvasPositions = new Map();
-  $("#canvasWorld").replaceChildren();
-  $("#canvasStatus").textContent = t("canvas.loading");
-  dialog.showModal();
-  try {
-    const data = await request(`/api/app/canvas?${canvasQuery()}`);
-    canvasImages = data.images;
-    for (const [id, point] of Object.entries(data.positions || {})) canvasPositions.set(id, point);
-    canvasZoom = 1;
-    const viewport = $("#canvasViewport");
-    canvasPan = {x: viewport.clientWidth / 2, y: viewport.clientHeight / 2};
-    renderCanvas();
-    applyCanvasTransform();
-    $("#canvasStatus").textContent = t(canvasImages.length === 1 ? "canvas.count_one" : "canvas.count", {count: canvasImages.length});
-  } catch (error) {
-    $("#canvasStatus").textContent = error.message;
-  }
+async function openFolderBoard(folder) {
+  const plugin = await findInstalledPlugin(CANVAS_PLUGIN_ID);
+  if (!plugin || plugin.locked) { showMessage(t("canvas.plugin_unavailable"), true); return; }
+  const scope = folder.kind === "tag" ? `tag:${folder.value}` : `source:${folder.value}`;
+  openInstalledPlugin(plugin, {scope, label: folder.name});
 }
 
 function renderSearchIndexSettings() {
@@ -2873,7 +2739,6 @@ function renderState() {
   if (sidebarEnabled && !$("#pluginSidebar").hidden) renderSidebar();
   if (!sidebarEnabled) closeSidebar();
   $("#vimPluginToggle").checked = Boolean(appState.plugins?.vim?.enabled);
-  $("#canvasPluginToggle").checked = Boolean(appState.plugins?.canvas?.enabled);
   $("#commandPalettePluginToggle").checked = Boolean(appState.plugins?.commandPalette?.enabled);
   $("#showSync").hidden = appState.mobile || appState.sync?.available === false;
   $("#showSyncPhone").hidden = !appState.mobile || appState.sync?.available === false;
@@ -3801,23 +3666,6 @@ async function toggleVimPlugin() {
   }
 }
 
-async function toggleCanvasPlugin() {
-  const enabled = $("#canvasPluginToggle").checked;
-  try {
-    await request("/api/app/plugins", {
-      method: "POST",
-      headers: {"Content-Type": "application/json"},
-      body: JSON.stringify({name: "canvas", enabled}),
-    });
-    appState.plugins.canvas = {enabled};
-    renderState();
-    showMessage(t(enabled ? "plugins.canvas_enabled" : "plugins.canvas_disabled"));
-  } catch (error) {
-    $("#canvasPluginToggle").checked = !enabled;
-    showMessage(error.message, true);
-  }
-}
-
 async function toggleCommandPalettePlugin() {
   const enabled = $("#commandPalettePluginToggle").checked;
   try {
@@ -4177,6 +4025,10 @@ $("#syncPauseToggle").onclick = async () => {
 // An empty library is the moment a link import is most useful, so the welcome
 // screen offers it and turns the plugin on for whoever asks.
 async function startPinterestOnboarding() {
+  // Turning it on is only worth trying where the build has one to turn on. On
+  // a phone the server refuses the plugin by name, so without this the welcome
+  // screen's offer answers with an error toast rather than doing nothing.
+  if (appState?.mobile) return;
   if (!appState?.plugins?.web?.enabled) {
     $("#webPluginToggle").checked = true;
     await toggleWebPlugin();
@@ -4687,7 +4539,6 @@ $("#calendarPluginToggle").onchange = toggleCalendarPlugin;
 $("#sidebarPluginToggle").onchange = toggleSidebarPlugin;
 $("#vimPluginToggle").onchange = toggleVimPlugin;
 $("#commandPalettePluginToggle").onchange = toggleCommandPalettePlugin;
-$("#canvasPluginToggle").onchange = toggleCanvasPlugin;
 $("#pinterestPluginToggle").onchange = togglePinterestPlugin;
 $("#pinterestAutoSyncToggle").onchange = async () => {
   const autoSync = $("#pinterestAutoSyncToggle").checked;
@@ -4910,27 +4761,6 @@ $("#imageViewer").addEventListener("close", () => {
   relatedLoadId++;
   relatedPaging = null;
 });
-$("#closeCanvas").onclick = () => $("#canvasDialog").close();
-$("#canvasViewport").onpointerdown = event => {
-  if (event.button !== 0) return;
-  if (event.target !== $("#canvasViewport")) return;
-  event.currentTarget.setPointerCapture(event.pointerId);
-  canvasPointer = {kind: "pan", startX: event.clientX, startY: event.clientY, x: canvasPan.x, y: canvasPan.y};
-};
-$("#canvasViewport").onpointermove = moveCanvasPointer;
-$("#canvasViewport").onpointerup = endCanvasPointer;
-$("#canvasViewport").onpointercancel = endCanvasPointer;
-$("#canvasViewport").addEventListener("wheel", event => {
-  event.preventDefault();
-  const viewport = $("#canvasViewport");
-  const bounds = viewport.getBoundingClientRect();
-  const mouse = {x: event.clientX - bounds.left, y: event.clientY - bounds.top};
-  const world = {x: (mouse.x - canvasPan.x) / canvasZoom, y: (mouse.y - canvasPan.y) / canvasZoom};
-  const next = Math.max(0.25, Math.min(3, canvasZoom * (event.deltaY < 0 ? 1.1 : 0.9)));
-  canvasPan = {x: mouse.x - world.x * next, y: mouse.y - world.y * next};
-  canvasZoom = next;
-  applyCanvasTransform();
-}, {passive: false});
 document.addEventListener("keydown", event => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k" && appState?.plugins?.commandPalette?.enabled) {
     event.preventDefault();
@@ -5266,6 +5096,12 @@ let webImportWatching = false;
 let lastWebFolder = "";
 
 function showWebImport() {
+  // A build without the importer has no panel to show. The rows that call this
+  // are hidden on a phone, but hiding is not the same as refusing: a command
+  // palette entry, a stale onboarding path or an inspector can still reach
+  // here, and what it would open is a form whose Start posts to a route that
+  // is not registered.
+  if (!appState?.plugins?.web?.enabled) return;
   $("#boardsSection").hidden = true;
   $("#aboutSection").hidden = true;
   $("#settingsSection").hidden = true;
@@ -5346,7 +5182,7 @@ function installedPluginRow(plugin) {
 // this page's cookie or API; window.mountPlugin (web/plugin-host.js) is the
 // one channel out, and it only answers calls the plugin's own manifest
 // permissions cover.
-async function openInstalledPlugin(plugin) {
+async function openInstalledPlugin(plugin, context = {}) {
   $("#addSection").hidden = true;
   $("#webSection").hidden = true;
   $("#boardsSection").hidden = true;
@@ -5363,21 +5199,46 @@ async function openInstalledPlugin(plugin) {
   // inside the same task.
   window.mountPlugin?.(frame, plugin);
   openMenu(plugin.name || plugin.id, true);
-  const entry = `/plugin/${encodeURIComponent(plugin.id)}/${plugin.entry || ""}`;
-  // The frame is sandboxed into an opaque origin, so this page cannot read
-  // whether its document loaded. Ask for the entry file here first: a plugin
-  // whose files are missing or unreadable otherwise shows an empty white panel
-  // with nothing saying why.
-  try {
-    const response = await fetch(entry, {method: "GET", headers: {Range: "bytes=0-0"}});
+  // context carries per-open state a plugin has no other way to learn: the
+  // host's current locale always, plus (when opened for one folder rather
+  // than from the generic Installed list) that folder's scope key and
+  // display name. A plugin that does not care simply never reads the params.
+  const params = new URLSearchParams({lang: window.PictogrepI18n?.locale?.() || "en"});
+  if (context.scope) params.set("scope", context.scope);
+  if (context.label) params.set("label", context.label);
+  const entry = `/plugin/${encodeURIComponent(plugin.id)}/${plugin.entry || ""}?${params}`;
+  // Load first, verify in parallel. The frame is sandboxed into an opaque
+  // origin, so this page cannot read whether its document loaded, which is
+  // why the entry file gets checked at all: a plugin whose files are missing
+  // or unreadable otherwise shows an empty white panel with nothing saying
+  // why. That check used to run before frame.src was set, which put a whole
+  // extra network round trip on the critical path of every plugin open for a
+  // failure mode that's rare (a broken local install, not a normal user
+  // path). Firing both at once costs nothing when the plugin is fine, and
+  // still catches the broken case a moment later.
+  frame.src = entry;
+  fetch(entry, {method: "GET", headers: {Range: "bytes=0-0"}}).then(response => {
     if (!response.ok && response.status !== 206) throw new Error(`${response.status}`);
-  } catch (reason) {
+  }).catch(() => {
     frame.removeAttribute("src");
     error.hidden = false;
     error.textContent = t("plugins.entry_missing", {name: plugin.name || plugin.id, entry: plugin.entry || ""});
-    return;
+  });
+}
+
+// Installed plugins are not held in any page-level list outside the Plugins
+// settings panel, so a caller that wants to open one by id (a folder's "Open
+// canvas" action, not the generic Installed list) asks the same endpoint that
+// panel does.
+async function findInstalledPlugin(id) {
+  try {
+    const response = await fetch("/api/app/plugins/installed");
+    if (!response.ok) return null;
+    const plugins = (await response.json()).plugins || [];
+    return plugins.find(plugin => plugin.id === id) || null;
+  } catch (error) {
+    return null;
   }
-  frame.src = entry;
 }
 
 async function renderFollowedWebSources() {
@@ -5652,7 +5513,7 @@ function watchDragToScroll() {
   // Pictures are not on the list: dragging one scrolls, it does not move it.
   const ignore = [
     'a, button, input, textarea, select, label, [draggable="true"], [contenteditable]',
-    ".folder-card, .canvas-image, .folder-canvas, .card-menu",
+    ".folder-card, .card-menu",
   ].join(", ");
   // A hand that is not perfectly still while clicking is still clicking, so a
   // few pixels have to pass before a press turns into a pan. A pen has no
