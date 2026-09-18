@@ -28,8 +28,9 @@ between sections, it does not change its number.
 | 41 | Update the local install with this session's build | DONE 2026-09-08 |
 | 42 | Drastically improve the storyboard and canvas ("Área livre") plugins | investigated, needs a decision |
 | 43 | Check on Pictogrep usage tracking that reports to navylily.tv | CHECKED 2026-09-18, working; follow-ups below |
-| 44 | Install event, so activation rate has a denominator | DONE 2026-09-18, NOT deployed |
+| 44 | Install event, so activation rate has a denominator | DONE 2026-09-18, released in v0.11.10 |
 | 45 | Report: activation + weekly retention, on a page he can open | DONE 2026-09-18, NOT deployed |
+| 48 | Cut the v0.11.10 release | DONE 2026-09-18 |
 | 46 | Sessions per user and core-action counters | NOT DOING, see 44-45 |
 | 47 | Back up the usage database | DONE 2026-09-18 |
 
@@ -379,7 +380,30 @@ accent instead.
 
 `VACUUM INTO` a dated copy. One line, no timer, no service.
 
-#### DONE 2026-09-18. NOT DEPLOYED, waiting on Tiago.
+### 48. Released as v0.11.10, 2026-09-18
+
+Commit `3069aaa` on `main`, tagged `v0.11.10`, CI green in 2m30s, release
+published (not a draft) with the usual seven assets.
+
+TWO DECISIONS TIAGO MADE HERE, both against a standing rule, both asked first
+and both reaffirmed, so neither is an accident to be undone quietly:
+
+- **Built by GitHub Actions**, not locally. The no-CI rule still stands in
+  principle; there is still no local release script, and writing one was offered
+  and declined for now. Same call as v0.11.9 on 2026-09-08.
+- **The in-progress task 42 canvas work shipped with it.** Asked whether to hold
+  it back (tags point at commits, so committing only the four tracking files
+  would have excluded it cleanly) and the answer was to ship everything.
+
+CONSEQUENCE OF THAT SECOND ONE, which everyone updating to 0.11.10 will hit:
+`canvas.go` and its routes are gone, and the board plugin that replaces it is
+NOT bundled in the build. `pluginsDir` starts empty on every install (task 38),
+so the folder canvas exists for Tiago, whose `~/.local/share/pictogrep/plugins/`
+already holds `canvas`, and for nobody else. Everyone else loses the feature
+until either the plugin ships inside the build or a way to install one exists.
+Finishing task 42 is now urgent rather than open-ended.
+
+#### DONE 2026-09-18. SERVER SIDE NOT DEPLOYED, waiting on Tiago.
 
 Both repos build, both test suites at their pre-existing baselines: navylily/auth
 fully green, pictogrep at its documented 10 Pinterest/import failures, no new

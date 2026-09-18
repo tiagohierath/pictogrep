@@ -297,6 +297,14 @@ func serve(app *application, args []string) error {
 		<-stopped
 		shutdown()
 	}()
+	// A manual "update now" swaps the binary on disk but cannot touch this
+	// already-running process. The only way "close and reopen" (what the update
+	// UI tells you to do) can ever actually work is if this process quits on its
+	// own, since a browser tab closing never stops the server behind it.
+	go func() {
+		<-handler.shutdownRequested
+		shutdown()
+	}()
 	if closesWhenIdle {
 		go func() {
 			ticker := time.NewTicker(idleCheckEvery)

@@ -2,12 +2,14 @@ package main
 
 import (
 	"crypto/sha256"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -83,6 +85,51 @@ func TestInstallUpdateRequiresExplicitConfirmation(t *testing.T) {
 	(&server{}).installAppUpdate(response, request)
 	if response.Code != http.StatusForbidden || !strings.Contains(response.Body.String(), `"ok":false`) {
 		t.Fatalf("unconfirmed update was accepted: status=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
+// A manual install has to end with the server quitting itself: it is a
+// background process behind a browser tab, so closing the tab (the only
+// "close the app" a user can actually do) never stops it, and the next launch
+// of the just-installed binary would otherwise find the old process still
+// sitting on the library lock and the port, and refuse to start.
+func TestInstallingAnUpdateShutsTheServerDownAfterward(t *testing.T) {
+	handler := &server{
+		checkUpdate:       func() (updateState, error) { return updateState{Available: true, LatestVersion: "9.9.9"}, nil },
+		applyUpdate:       func(updateState) error { return nil },
+		shutdownRequested: make(chan struct{}),
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/app/update", nil)
+	request.Header.Set("X-Pictogrep-Action", "install-update")
+	response := httptest.NewRecorder()
+	handler.installAppUpdate(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"updated":true`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	select {
+	case <-handler.shutdownRequested:
+	case <-time.After(2 * time.Second):
+		t.Fatal("a successful manual update never asked the server to shut down")
+	}
+}
+
+func TestFailedUpdateNeverShutsTheServerDown(t *testing.T) {
+	handler := &server{
+		checkUpdate:       func() (updateState, error) { return updateState{Available: true, LatestVersion: "9.9.9"}, nil },
+		applyUpdate:       func(updateState) error { return errors.New("disk full") },
+		shutdownRequested: make(chan struct{}),
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/app/update", nil)
+	request.Header.Set("X-Pictogrep-Action", "install-update")
+	response := httptest.NewRecorder()
+	handler.installAppUpdate(response, request)
+	if response.Code == http.StatusOK {
+		t.Fatalf("a failed install was reported as OK: %s", response.Body.String())
+	}
+	select {
+	case <-handler.shutdownRequested:
+		t.Fatal("a failed install asked the server to shut down anyway")
+	case <-time.After(600 * time.Millisecond):
 	}
 }
 

@@ -48,6 +48,14 @@ type server struct {
 	remoteFetcher    remoteImageFetcher
 	galleryDL        galleryDLRunner
 	pinterest        pinterestImport
+	// Closed once, when a manual update install succeeds. Pictogrep is a
+	// background server plus a browser tab: closing the tab never stops the
+	// process, so "restart the app" can only ever really happen if the server
+	// quits itself. main.go selects on this next to its own signal handling and
+	// shuts down, which releases the port and the library lock so the very next
+	// launch of the now-updated binary succeeds instead of refusing to start
+	// because the old process is still sitting on both.
+	shutdownRequested chan struct{}
 	// The automatic check reaches GitHub and can rewrite the running binary, so
 	// both halves are swappable and the tests never touch either.
 	checkUpdate func() (updateState, error)
@@ -107,6 +115,7 @@ func newServer(app *application) (*server, error) {
 	return &server{
 		app: app, practice: practice, pluginMediaToken: pluginMediaToken, remoteFetcher: downloadRemoteImage,
 		galleryDL: downloadGallery, checkUpdate: checkForUpdate, applyUpdate: installUpdate,
+		shutdownRequested: make(chan struct{}),
 	}, nil
 }
 
@@ -271,11 +280,29 @@ func (s *server) installAppUpdate(w http.ResponseWriter, r *http.Request) {
 		sendJSON(w, http.StatusOK, map[string]any{"ok": true, "updated": false, "currentVersion": version})
 		return
 	}
-	if err := installUpdate(state); err != nil {
+	if err := s.applyUpdate(state); err != nil {
 		sendError(w, http.StatusBadRequest, err)
 		return
 	}
 	sendJSON(w, http.StatusOK, map[string]any{"ok": true, "updated": true, "version": state.LatestVersion, "restartRequired": true})
+	// The new binary is on disk now, but this process is still the old one and
+	// still holds the library lock and the port. Nothing short of this process
+	// exiting lets the next launch pick the update up, so it quits itself a
+	// moment after the response above has had time to reach the browser.
+	s.requestShutdown()
+}
+
+// requestShutdown signals main.go to shut the server down, exactly once. Safe
+// to call from any goroutine, and safe to call more than once.
+func (s *server) requestShutdown() {
+	if s.shutdownRequested == nil {
+		return
+	}
+	go func() {
+		time.Sleep(500 * time.Millisecond)
+		defer func() { recover() }() // a second call would close an already-closed channel
+		close(s.shutdownRequested)
+	}()
 }
 
 func securityHeaders(next http.Handler) http.Handler {
