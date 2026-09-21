@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -42,6 +43,25 @@ func webImportServer(t *testing.T) (*application, http.Handler, *galleryDLReques
 		return os.WriteFile(filepath.Join(download.Directory, "new-work.png"), testRemotePNG(t), 0o644)
 	}
 	return app, handler.routes(), asked
+}
+
+// webImportServerWriting is webImportServer with the downloader's output under
+// the test's control, for tests that care what lands in the download directory.
+func webImportServerWriting(t *testing.T, write func(directory string, picture []byte) error) (*application, http.Handler, *server) {
+	t.Helper()
+	app := testApplication(t)
+	if err := app.setPluginEnabled("web", true); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	picture := testRemotePNG(t)
+	handler.galleryDL = func(_ context.Context, download galleryDLRequest) error {
+		return write(download.Directory, picture)
+	}
+	return app, handler.routes(), handler
 }
 
 func TestWebSourceURLValidation(t *testing.T) {
@@ -123,6 +143,36 @@ func TestWebImportFollowsOnlyWhenAsked(t *testing.T) {
 	// few over and over.
 	if asked.Archive == "" {
 		t.Fatal("a web import ran without an archive to remember what it fetched")
+	}
+}
+
+// Following used to be recorded only after a download that finished without
+// error, so a site that was blocked, slow, or empty on the day you followed it
+// left the box ticked and nothing followed: absent from the list, and never
+// checked again. Asking to follow is what makes you a follower.
+func TestFollowIsRecordedEvenWhenTheFirstDownloadFails(t *testing.T) {
+	app := testApplication(t)
+	if err := app.setPluginEnabled("web", true); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.galleryDL = func(context.Context, galleryDLRequest) error {
+		return fmt.Errorf("the site refused the download")
+	}
+	routes := handler.routes()
+	response := postWebImport(t, routes, map[string]any{
+		"url": "https://www.deviantart.com/artist/gallery", "follow": true, "folder": "artist feed",
+	})
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("follow import was not accepted: status=%d body=%s", response.Code, response.Body)
+	}
+	waitForPinterestImport(t, routes)
+	sources := app.webSources()
+	if len(sources) != 1 || sources[0].Folder != "artist-feed" {
+		t.Fatalf("a failed first download threw the follow away: %#v", sources)
 	}
 }
 
@@ -292,13 +342,9 @@ func TestWebImportListsExistingLibraryImageInTheFolder(t *testing.T) {
 	if result["linked"] != float64(1) {
 		t.Fatalf("an image already in the library was not listed in the folder: %#v", result)
 	}
-	manifest, err := os.ReadFile(filepath.Join(app.tagsDir, "artist", "images.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var paths []string
-	if err := json.Unmarshal(manifest, &paths); err != nil || len(paths) != 1 || paths[0] != existing {
-		t.Fatalf("folder does not mirror the page: err=%v paths=%#v", err, paths)
+	paths := collectionEntryPaths(t, filepath.Join(app.tagsDir, "artist"))
+	if len(paths) != 1 || paths[0] != existing {
+		t.Fatalf("folder does not mirror the page: paths=%#v", paths)
 	}
 }
 
@@ -386,4 +432,245 @@ func TestRunningJobSaysWhichPanelStartedIt(t *testing.T) {
 		t.Fatalf("a web import called itself %v", started["kind"])
 	}
 	waitForPinterestImport(t, routes)
+}
+
+// The tests below were Pinterest board-import tests until commit 5b9d57e
+// (2026-09-06) removed that endpoint and panel and folded Pinterest into this
+// importer. The behaviour they cover is still real; only the address changed.
+// They were left failing against the removed route for 13 commits, through
+// v0.11.10 and v0.11.11.
+
+// A download that is refused has to be refused BEFORE gallery-dl runs, not
+// after half an hour of downloading.
+func TestWebImportValidatesBeforeRunningTheDownloader(t *testing.T) {
+	app := testApplication(t)
+	if err := app.setPluginEnabled("web", true); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ran := false
+	handler.galleryDL = func(context.Context, galleryDLRequest) error {
+		ran = true
+		return nil
+	}
+	routes := handler.routes()
+
+	// A folder name that cannot become a folder.
+	response := postWebImport(t, routes, map[string]any{
+		"url": "https://www.pinterest.com/artist/gallery/", "backfill": true, "folder": "!!!",
+	})
+	if response.Code != http.StatusBadRequest || ran {
+		t.Fatalf("an unusable folder name was only caught after downloading: status=%d ran=%v body=%s", response.Code, ran, response.Body)
+	}
+
+	// A folder that is not there cannot be filled.
+	response = postWebImport(t, routes, map[string]any{
+		"url": "https://www.pinterest.com/artist/gallery/", "backfill": true,
+		"mode": "existing", "folder": "nowhere",
+	})
+	if response.Code != http.StatusBadRequest || ran {
+		t.Fatalf("a download into a folder that does not exist was accepted: status=%d ran=%v body=%s", response.Code, ran, response.Body)
+	}
+
+	// An address that is not an address.
+	response = postWebImport(t, routes, map[string]any{"url": "not-a-url", "backfill": true})
+	if response.Code != http.StatusBadRequest || ran {
+		t.Fatalf("an invalid address reached gallery-dl: status=%d ran=%v body=%s", response.Code, ran, response.Body)
+	}
+
+	// Following a page with no folder to save into.
+	response = postWebImport(t, routes, map[string]any{
+		"url": "https://www.pinterest.com/artist/gallery/", "follow": true, "mode": "direct",
+	})
+	if response.Code != http.StatusBadRequest || ran {
+		t.Fatalf("following with nowhere to save was accepted: status=%d ran=%v body=%s", response.Code, ran, response.Body)
+	}
+}
+
+// Bytes already in the library are counted as skipped, not imported twice.
+func TestWebImportSkipsBytesTheLibraryAlreadyHas(t *testing.T) {
+	app, routes, _ := webImportServerWriting(t, func(directory string, picture []byte) error {
+		if err := os.WriteFile(filepath.Join(directory, "one.png"), picture, 0o644); err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(directory, "two.png"), picture, 0o644)
+	})
+	response := postWebImport(t, routes, map[string]any{
+		"url": "https://www.pinterest.com/artist/film-references/", "backfill": true,
+		"folder": "film references", "skipExisting": true,
+	})
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("import was not accepted: status=%d body=%s", response.Code, response.Body)
+	}
+	result := pinterestResult(t, waitForPinterestImport(t, routes))
+	if result["folder"] != "film-references" || result["total"] != float64(2) ||
+		result["imported"] != float64(1) || result["skipped"] != float64(1) || result["failed"] != float64(0) {
+		t.Fatalf("unexpected import result: %#v", result)
+	}
+	paths, _, _ := app.snapshot()
+	if len(paths) != 1 {
+		t.Fatalf("a duplicate changed the library: %#v", paths)
+	}
+	tagged := collectionEntryPaths(t, filepath.Join(app.tagsDir, "film-references"))
+	if len(tagged) != 1 || tagged[0] != paths[0] {
+		t.Fatalf("the folder is wrong: %#v", tagged)
+	}
+}
+
+// A picture the library already holds is linked into the folder once, not
+// imported again as a second copy.
+func TestWebImportLinksAnExistingDuplicateOnce(t *testing.T) {
+	app := testApplication(t)
+	if err := app.setPluginEnabled("web", true); err != nil {
+		t.Fatal(err)
+	}
+	existing := filepath.Join(app.libraryDir, "existing.png")
+	writeTestPNG(t, existing)
+	app.addPath(existing)
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler.galleryDL = func(_ context.Context, download galleryDLRequest) error {
+		data, readErr := os.ReadFile(existing)
+		if readErr != nil {
+			return readErr
+		}
+		return os.WriteFile(filepath.Join(download.Directory, "duplicate.png"), data, 0o644)
+	}
+	routes := handler.routes()
+	response := postWebImport(t, routes, map[string]any{
+		"url": "https://www.pinterest.com/artist/duplicates/", "backfill": true, "folder": "duplicates",
+	})
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("import was not accepted: status=%d body=%s", response.Code, response.Body)
+	}
+	result := pinterestResult(t, waitForPinterestImport(t, routes))
+	if result["linked"] != float64(1) || result["imported"] != float64(0) {
+		t.Fatalf("unexpected duplicate result: %#v", result)
+	}
+	tagged := collectionEntryPaths(t, filepath.Join(app.tagsDir, "duplicates"))
+	if len(tagged) != 1 || tagged[0] != existing {
+		t.Fatalf("the duplicate was not linked once: %#v", tagged)
+	}
+}
+
+// Closing the window that started a download must not stop the download.
+func TestWebImportKeepsDownloadingAfterTheWindowCloses(t *testing.T) {
+	app := testApplication(t)
+	if err := app.setPluginEnabled("web", true); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	picture := testRemotePNG(t)
+	release := make(chan struct{})
+	handler.galleryDL = func(_ context.Context, download galleryDLRequest) error {
+		<-release
+		return os.WriteFile(filepath.Join(download.Directory, "late.png"), picture, 0o644)
+	}
+	routes := handler.routes()
+
+	// A request context cancelled the instant the import starts stands in for a
+	// window that was closed straight away.
+	ctx, closeWindow := context.WithCancel(context.Background())
+	body, err := json.Marshal(map[string]any{
+		"url": "https://www.pinterest.com/artist/slow-board/", "backfill": true, "folder": "slow board",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/app/plugins/web/import", bytes.NewReader(body)).WithContext(ctx)
+	request.Host = "127.0.0.1"
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	routes.ServeHTTP(response, request)
+	closeWindow()
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("import was not accepted: status=%d body=%s", response.Code, response.Body)
+	}
+	if !handler.pinterest.running() {
+		t.Fatal("closing the window stopped the import")
+	}
+	close(release)
+	result := pinterestResult(t, waitForPinterestImport(t, routes))
+	if result["imported"] != float64(1) {
+		t.Fatalf("an import that outlived its window did not finish: %#v", result)
+	}
+}
+
+// Stopping keeps what already arrived. Half an hour of downloading is never
+// thrown away on the way out.
+func TestStoppingAWebImportKeepsWhatAlreadyDownloaded(t *testing.T) {
+	app := testApplication(t)
+	if err := app.setPluginEnabled("web", true); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	picture := testRemotePNG(t)
+	downloading := make(chan struct{})
+	handler.galleryDL = func(ctx context.Context, download galleryDLRequest) error {
+		if err := os.WriteFile(filepath.Join(download.Directory, "arrived.png"), picture, 0o644); err != nil {
+			return err
+		}
+		close(downloading)
+		<-ctx.Done()
+		return ctx.Err()
+	}
+	routes := handler.routes()
+	response := postWebImport(t, routes, map[string]any{
+		"url": "https://www.pinterest.com/artist/stopped/", "backfill": true, "folder": "stopped",
+	})
+	if response.Code != http.StatusAccepted {
+		t.Fatalf("import was not accepted: status=%d body=%s", response.Code, response.Body)
+	}
+	<-downloading
+
+	cancel := httptest.NewRequest(http.MethodDelete, "/api/app/plugins/pinterest/import", nil)
+	cancel.Host = "127.0.0.1"
+	cancelled := httptest.NewRecorder()
+	routes.ServeHTTP(cancelled, cancel)
+	if cancelled.Code != http.StatusOK {
+		t.Fatalf("cancel was refused: status=%d body=%s", cancelled.Code, cancelled.Body)
+	}
+
+	status := waitForPinterestImport(t, routes)
+	if status["state"] != "cancelled" {
+		t.Fatalf("a stopped import did not report itself stopped: %#v", status)
+	}
+	result := pinterestResult(t, status)
+	if result["imported"] != float64(1) {
+		t.Fatalf("stopping threw away a picture that had already downloaded: %#v", result)
+	}
+}
+
+// The panel that replaced the Pinterest one has to actually be on the page,
+// with the follow box the whole feature turns on.
+func TestWebImportUIIsOnThePage(t *testing.T) {
+	index, err := embeddedFiles.ReadFile("web/index.html")
+	if err != nil {
+		t.Fatal(err)
+	}
+	script, err := embeddedFiles.ReadFile("web/app.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, required := range []string{`id="webFollow"`, `id="webSourceURL"`, `id="webSourceList"`} {
+		if !bytes.Contains(index, []byte(required)) {
+			t.Errorf("the web import UI is missing %q", required)
+		}
+	}
+	for _, required := range []string{"/api/app/plugins/web/import", "/api/app/plugins/web/sources"} {
+		if !bytes.Contains(script, []byte(required)) {
+			t.Errorf("the web import UI no longer calls %q", required)
+		}
+	}
 }
