@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.11.12 - 2026-09-21
+
+- Pasting a picture's link works again for links copied off a picture page. Any address carrying a `#` was refused outright as invalid, and the link you get from "copy link" on a Wikipedia or Wikimedia picture always has one. The part after the `#` is never sent to the website anyway, so it is now ignored instead of refusing the link.
+- When a link cannot be downloaded, Pictogrep now says why. A site that blocks pictures opened from outside its own pages is named as doing that, a link that points at a web page instead of a picture file says so and tells you to copy the picture's own link, and anything else names the site and what it sent back.
+- Following a website is now saved the moment you ask for it. It used to be saved only after the first download finished without a single error, so following a site that was slow, blocked, or had nothing new that day left the box ticked and nothing actually followed: it never appeared in your followed list and was never checked again.
+- Folders are now real directories you can open in a file manager. A folder used to hold nothing but an `images.json` listing file, so it looked empty everywhere except inside Pictogrep. It now holds one entry per picture.
+- Renaming or moving a picture outside Pictogrep no longer throws away its AI index. The index was filed under the old path, so a rename done in a file manager meant that picture had to be re-indexed from scratch.
+
 ## 0.11.9 - 2026-09-08
 
 - Installed plugins no longer ask for an unlock on desktop, paid or not. The license check that used to gate them stays as it was on mobile.

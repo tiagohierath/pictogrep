@@ -31,8 +31,11 @@ between sections, it does not change its number.
 | 44 | Install event, so activation rate has a denominator | DONE 2026-09-18, released in v0.11.10 |
 | 45 | Report: activation + weekly retention, on a page he can open | DONE 2026-09-18, NOT deployed |
 | 48 | Cut the v0.11.10 release | DONE 2026-09-18 |
+| 49 | REGRESSION: local Pictogrep would not open after updating to 0.11.10 | FIXED 2026-09-18, released in v0.11.11 |
+| 50 | Folders are managed in a weird way, hard to edit without Pictogrep | investigating |
 | 46 | Sessions per user and core-action counters | NOT DOING, see 44-45 |
 | 47 | Back up the usage database | DONE 2026-09-18 |
+| 51 | Replace the calendar view with a timeline navigator | prototyping |
 
 ### 20. Drawing drops areas inside images
 
@@ -736,6 +739,149 @@ matching the flake's own flags with 0.11.9 in place of the flake's stale
 against the real library on :8765. `pictogrep version` reports `0.11.9`,
 `/api/app/state` answers normally.
 
+### 50. Folders should survive uninstalling Pictogrep
+
+Reported 2026-09-18: "pictogrep manages folders in a very weird way to edit
+without having pictogrep". The bar Tiago set, and the one to design against:
+
+> a person can uninstall Pictogrep and still understand their collection of
+> images when they open a normal file manager
+
+He also wants folders editable and mergeable the normal way, by hand, in a file
+manager, "not a proprietary hard to use json stuff", and named the optimized
+images as part of the difficulty. "I want what gives the most independence to
+the user."
+
+2026-09-18: "SAFETY and independence above ALL." Governing rule for every
+phase of this task: no step may risk the user's images (irreversible loss or
+silent corruption), and every step must move the design toward more user
+independence from Pictogrep, never less. Where a choice trades either of
+those against convenience or engineering neatness, safety and independence
+win.
+
+What is on disk today, and why it fails that bar:
+
+- A folder is `~/.local/share/pictogrep/collections/<name>/images.json`, and
+  NOTHING else. The JSON is an array of absolute paths to images living
+  somewhere else. In a file manager every folder looks empty. Verified: all
+  four of Tiago's folders (aaa, cat, morfeu, refs) contain only `images.json`.
+- `writeTagManifest` (`server.go:2172`) is the only writer. `collectionImages`
+  (`server.go:2070`) still READS symlinks in the directory and merges them with
+  the manifest, and `unlinkTag` still deletes "legacy symlinks", so the app can
+  already read a folder made of real entries. It just stopped writing them.
+- Imported images sit in `library/` under 32-char hash names
+  (`1af44945a31828c9b278864ccdfd165f.jpg`). 1301 files, 463 MB. Unreadable by
+  hand even if the folders did point at them.
+- Every derived artifact is keyed by PATH, not content: `data/thumbnails`,
+  `data/embeddings` + `embeddings.npy`, and the folder-view preferences, whose
+  keys are `sha256(kind + value)` (`folderPreferenceKey`,
+  `folder_preferences.go:35`). So any rename or move done outside the app
+  orphans the lot. This is the "optimized images" problem, and it is the real
+  reason the manifest exists: the manifest is what lets the app pretend paths
+  never change.
+
+Scale of a migration: 345 image entries across the 4 folders, of which only 7
+sit in more than one folder.
+
+DECIDED so far: readable filenames instead of hashes; images that live outside
+the Pictogrep data dir get MOVED into the folder, not copied or linked.
+
+OPEN: Tiago said "no you don't get it" to the one-image-in-several-folders
+question, so do not re-ask it as a menu. Get his framing before building.
+
+#### The target, set by Tiago's own vault
+
+He showed `~/personal-obsidian`: Archive, Attachments, Daily, Notes, Templates,
+plus loose `.md` files. Nothing in that window says Obsidian exists. Everything
+the app needs for itself is hidden in `.obsidian/`. That is the bar.
+
+So the visible library becomes only content, and all bookkeeping hides:
+
+    library/
+    ├── .pictogrep/      hidden: optimized copies, thumbnails, embeddings,
+    │                    covers, custom order, favorites. Deletable, rebuildable.
+    ├── Unsorted/        visible, the Attachments equivalent: imports not yet
+    │                    filed into a folder
+    ├── cats/
+    │   ├── tabby-on-sofa.jpg
+    │   └── street-cat-night.jpg
+    └── refs/
+
+This supersedes the earlier `folder2-optimized` sibling sketch: visible
+`-optimized` twins would fill half the window with Pictogrep's bookkeeping, and
+they desync the moment a folder is renamed by hand.
+
+#### Plan
+
+Phase 1 is the load-bearing one. Everything else is easy once it is done, and
+unsafe before it.
+
+1. **Content-addressed derived data.** DONE 2026-09-18 for embeddings, the
+   expensive-to-recompute asset (thumbnails deliberately left path-keyed: a
+   JPEG resize is cheap to regenerate, and content-hashing on the hot
+   thumbnail request path was judged not worth the perf/blast-radius cost for
+   what it would save). `embeddingRecord` now carries a `Digest [32]byte`
+   (SHA-256, via the existing `digestCache`/`fileDigest` machinery in
+   `sync_digests.go`/`app.go:513`, now also held on `application.digests`,
+   opened at `data/digests.json`, independent of sync's own cache). The
+   on-disk format bumped `PGE1` -> `PGE2` (`app.go`, `embeddingMagicV1/V2`,
+   `embeddingHeaderSize`); PGE1 still decodes for backward compatibility, only
+   PGE2 is written. `backfillAndReconcileEmbeddingDigests` runs once at
+   startup: backfills `Digest` on legacy records, then matches any path with
+   no embedding against an orphaned record (old path gone) by digest, so a
+   picture renamed or moved by hand while Pictogrep was closed keeps its
+   embedding instead of silently re-indexing. Verified against a full copy of
+   the real library (3744 images, ~2.3GB) before and after: 0 embeddings lost,
+   store migrated cleanly to PGE2. New test:
+   `TestEmbeddingSurvivesRenameDoneOutsidePictogrep` (`app_test.go`). A backup
+   of the real data dir was taken first, at
+   `~/pictogrep-data-backup-20260918-125544`, per the safety-above-all rule
+   Tiago set for this task.
+2. **Folders become real directories.** DONE 2026-09-18. `writeTagManifest`
+   (`server.go`) no longer writes `images.json`; it reconciles the folder
+   directory to hold a real symlink per picture (still targeting the
+   hash-named file in `library/`, since Phase 4/5 haven't moved/renamed the
+   real bytes yet), adding/removing symlinks to match, then deletes
+   `images.json` once every entry it named is backed by one. Migration
+   happens on the first WRITE to a folder (add/remove/merge/fill), not on
+   read, so opening a folder never has a surprise side effect; a folder
+   nobody has touched since before this change still opens fine via the old
+   manifest-reading path in `collectionImages`, untouched. Filename
+   collisions inside one folder get a `-2`, `-3`, ... suffix
+   (`uniqueDirectoryEntryName`). New tests:
+   `TestFolderIsARealDirectoryAFileManagerCanRead`,
+   `TestLegacyManifestOnlyFolderStillOpensAndMigratesOnWrite`. Dry-run
+   against a copy of the real 4 folders (aaa/cat/morfeu/refs, 352 pictures
+   total): all migrated, 0 lost, 0 gained, `images.json` retired in every
+   case.
+3. **Filesystem is the truth.** Rescan on launch and on window focus, and
+   reconcile by content digest. Renaming, merging, splitting or deleting
+   folders in a file manager then just works, because the app re-reads reality
+   instead of trusting a stored list. Folder preferences (cover, order,
+   favorite) move into `.pictogrep/` keyed by content, so a folder renamed by
+   hand keeps them instead of orphaning them at
+   `folderPreferenceKey` (`folder_preferences.go:35`).
+4. **Readable filenames.** 1301 files in `library/` are 32-char hashes, 463 MB.
+   Rename from source title or URL, short suffix only on collision.
+5. **File the library.** Move each image into the folder it belongs to; ones in
+   no folder go to visible `Unsorted/`. Outside files get MOVED in, per Tiago's
+   decision.
+6. **Hide the bookkeeping** into `.pictogrep/`, including the optimized images.
+7. **Follow the path assumptions out**: sync (`sync_catalogue.go`,
+   `sync_transfer.go`), storyboards, plugin storage.
+8. Docs, changelog, migration note. Release only after Tiago says so.
+
+Safety: phases 4 and 5 move 463 MB and are not reversible by undo. They ship
+behind a dry-run that prints every rename and move for him to read first, and a
+full backup before the real run.
+
+ASSUMED, cheap to change, flagged to Tiago: an image in two folders becomes a
+real copy in each, which is what plain folders mean. Only 7 of his 345 entries
+are affected.
+
+Risks to check before phase 5: Android shared storage and the Windows build;
+sync peers still running the old layout; installed plugins that store paths.
+
 ## Not doing
 
 ### 16. Autoscroll model, WITHDRAWN
@@ -1136,3 +1282,41 @@ commit and running, reporting `0.11.9`.
       typeface. A plugin file has no CORS header and @font-face always fetches
       in cors mode, so an inlined font is the only one a sandboxed plugin can
       use. threedraw inlines MEK Mono this way. Covered in plugins_test.go.
+
+## Download from link is kinda broken (2026-09-21)
+- [x] Verified against live URLs. One real bug: `validateRemoteImageURL`
+      rejected any URL carrying a `#` fragment, and "copy link" on a Wikimedia
+      or Wikipedia picture page always gives one
+      (`...file.png#/media/File:X.png`). A fragment is never sent to the
+      server. It is now stripped instead of refused.
+- [x] Better error messages. A 403/401 now names the host and says it blocks
+      offsite links; an HTML response says it was a page, not a picture file,
+      and to copy the picture's own link; any other wrong type names the host,
+      the content type served and the byte count; other bad statuses name host,
+      status and path.
+- [x] Following a website is now recorded when it is ASKED for, not after a
+      download that finished without error. `importWebSource` tracked the
+      source inside the goroutine under `err == nil && request.Follow`, so a
+      site that was blocked, slow, empty, or cancelled on the day you followed
+      it left the box ticked and nothing followed: no row in the list, and no
+      daily check ever. That one bug produced three of the four symptoms
+      reported. `web-sources.json` on this machine was `[]` while a board was
+      syncing daily, which matches.
+- [ ] Release everything in the tree (Tiago's call 2026-09-21), but fix the 10
+      red Pinterest tests FIRST. Settled: commit 5b9d57e (2026-09-06) removed
+      the board import endpoint and panel on purpose and folded Pinterest into
+      the web importer; the tests were left behind and have been red for 13
+      commits, through v0.11.10 and v0.11.11. So: port the behaviour they
+      covered onto the web importer, drop what only tested the removed
+      endpoint and markup.
+- [ ] OPEN, needs Tiago: Pinterest board following is half-dismantled on
+      desktop. There is no `POST /api/app/plugins/pinterest/import` route any
+      more and `#pinterestSection` is gone from the page, but
+      `appPinterestBoards`, `savePinterestSettings` and `#pinterestBoardList`
+      all remain, and `pinterest-boards.json` still holds a board that syncs
+      daily. So a followed board is visible and still downloading, with no way
+      left to add another. This is why 10 Pinterest tests are red at HEAD.
+      Decide: finish removing board following, or restore it.
+- [ ] OPEN: the three followed-things lists (websites, boards, source folders)
+      are three separate renderers with no shared state row. Revisit once the
+      Pinterest question above is settled.
