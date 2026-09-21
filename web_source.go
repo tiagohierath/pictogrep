@@ -292,6 +292,12 @@ func (s *server) importWebSource(w http.ResponseWriter, r *http.Request) {
 		limit = webFollowLimit
 	}
 
+	// Following is recorded the moment it is asked for, not after a successful
+	// download. It used to wait for the download to finish without error, so a
+	// site that was slow, blocked, empty, or cancelled left the checkbox
+	// looking ticked and nothing followed: no entry in the list, and no daily
+	// check ever. A failed first download is a reason to try again tomorrow,
+	// which is what following means.
 	// Deliberately not the request context: the download has to survive the
 	// window that asked for it.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -299,6 +305,13 @@ func (s *server) importWebSource(w http.ResponseWriter, r *http.Request) {
 		cancel()
 		sendError(w, http.StatusConflict, fmt.Errorf("a download is already running"))
 		return
+	}
+	if request.Follow {
+		now := time.Now().Unix()
+		_ = s.app.trackWebSource(webSource{
+			URL: sourceURL.String(), Name: displayName, Folder: folder,
+			LastSyncAt: now, AddedAt: now,
+		})
 	}
 	go func() {
 		defer cancel()
@@ -308,15 +321,6 @@ func (s *server) importWebSource(w http.ResponseWriter, r *http.Request) {
 			Archive: s.app.prepareWebArchive(sourceURL.String()),
 			Limit: limit, LinkDuplicates: !request.SkipExisting,
 		})
-		// Only a site that downloaded at least once is worth checking again. A
-		// one-time archive grab is not followed, which is the whole difference
-		// between the two boxes.
-		if err == nil && request.Follow {
-			_ = s.app.trackWebSource(webSource{
-				URL: sourceURL.String(), Name: displayName, Folder: folder,
-				LastSyncAt: time.Now().Unix(), AddedAt: time.Now().Unix(),
-			})
-		}
 		s.pinterest.finish(result, err)
 	}()
 	sendJSON(w, http.StatusAccepted, s.pinterest.snapshot())
