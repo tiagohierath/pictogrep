@@ -395,6 +395,78 @@ func TestManualFoldersWorkWithoutAI(t *testing.T) {
 	}
 }
 
+// TestFolderIsARealDirectoryAFileManagerCanRead is Phase 2 of task #50: a
+// folder must show its pictures as real entries on disk, not just an
+// images.json a file manager can't see into.
+func TestFolderIsARealDirectoryAFileManagerCanRead(t *testing.T) {
+	app, server := testHTTPServer(t)
+	picture := filepath.Join(app.libraryDir, "reference.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+	payload, _ := json.Marshal(map[string]any{"action": "add", "tag": "Mood Board", "imageId": stableImageID(picture)})
+	response, err := http.Post(server.URL+"/api/app/tags", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != 200 {
+		t.Fatalf("tag failed: status=%d", response.StatusCode)
+	}
+	directory := filepath.Join(app.tagsDir, "mood-board")
+	if _, err := os.Stat(filepath.Join(directory, "images.json")); !os.IsNotExist(err) {
+		t.Fatalf("images.json should not exist once the folder has a real entry: %v", err)
+	}
+	entries := collectionEntryPaths(t, directory)
+	if len(entries) != 1 || entries[0] != picture {
+		t.Fatalf("folder directory does not show the picture as a real entry: %#v", entries)
+	}
+}
+
+// TestLegacyManifestOnlyFolderStillOpensAndMigratesOnWrite covers a folder
+// left over from before Phase 2: only images.json, no symlinks. Reading it
+// must still work, and the first write to it must replace the manifest with
+// real entries instead of leaving both formats around.
+func TestLegacyManifestOnlyFolderStillOpensAndMigratesOnWrite(t *testing.T) {
+	app, server := testHTTPServer(t)
+	picture := filepath.Join(app.libraryDir, "legacy.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+	directory := filepath.Join(app.tagsDir, "legacy-tag")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	data, _ := json.Marshal([]string{picture})
+	if err := os.WriteFile(filepath.Join(directory, "images.json"), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	response, err := http.Get(server.URL + "/api/app/images?tag=" + url.QueryEscape("legacy-tag"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	value := responseJSON(t, response)
+	if value["total"].(float64) != 1 {
+		t.Fatalf("manifest-only legacy folder did not open: %#v", value)
+	}
+
+	second := filepath.Join(app.libraryDir, "legacy-second.png")
+	writeTestPNG(t, second)
+	app.addPath(second)
+	payload, _ := json.Marshal(map[string]any{"action": "add", "tag": "legacy-tag", "imageId": stableImageID(second)})
+	response, err = http.Post(server.URL+"/api/app/tags", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != 200 {
+		t.Fatalf("adding to the legacy folder failed: status=%d", response.StatusCode)
+	}
+	if _, err := os.Stat(filepath.Join(directory, "images.json")); !os.IsNotExist(err) {
+		t.Fatalf("images.json should have been retired on the first write: %v", err)
+	}
+	entries := collectionEntryPaths(t, directory)
+	if len(entries) != 2 {
+		t.Fatalf("migrated folder should keep both pictures as real entries: %#v", entries)
+	}
+}
+
 func TestPromptFolderUsesCachedSemanticEmbeddings(t *testing.T) {
 	app, server := testHTTPServer(t)
 	paths := []string{
@@ -608,9 +680,10 @@ func TestDeleteImageRequiresConfirmationAndExactPath(t *testing.T) {
 	if len(paths) != 0 {
 		t.Fatalf("confirmed deletion left library state: %#v", paths)
 	}
-	manifest, err := os.ReadFile(filepath.Join(app.tagsDir, "to-delete", "images.json"))
-	if err != nil || bytes.Contains(manifest, []byte(picture)) {
-		t.Fatalf("confirmed deletion left collection reference: %s err=%v", manifest, err)
+	for _, remaining := range collectionEntryPaths(t, filepath.Join(app.tagsDir, "to-delete")) {
+		if remaining == picture {
+			t.Fatalf("confirmed deletion left collection reference to %s", picture)
+		}
 	}
 }
 

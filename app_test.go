@@ -14,6 +14,29 @@ import (
 	"time"
 )
 
+// collectionEntryPaths resolves every symlink a folder directory holds
+// (Phase 2 writes real symlinks instead of images.json) to the real paths
+// they point at, for tests that used to read images.json directly.
+func collectionEntryPaths(t *testing.T, directory string) []string {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths := []string{}
+	for _, entry := range entries {
+		if entry.Name() == "images.json" {
+			continue
+		}
+		resolved, err := filepath.EvalSymlinks(filepath.Join(directory, entry.Name()))
+		if err != nil {
+			continue
+		}
+		paths = append(paths, resolved)
+	}
+	return paths
+}
+
 func writeTestPNG(t *testing.T, path string) {
 	t.Helper()
 	file, err := os.Create(path)
@@ -449,6 +472,49 @@ func TestLegacyEmbeddingMigratesWithoutReindexing(t *testing.T) {
 	}
 	if _, err := os.Stat(legacyPath); !os.IsNotExist(err) {
 		t.Fatalf("legacy cache was not retired after migration: %v", err)
+	}
+}
+
+// TestEmbeddingSurvivesRenameDoneOutsidePictogrep is the Phase 1 promise: a
+// picture renamed or moved by hand in a file manager, while Pictogrep was not
+// running to see it happen, keeps its embedding instead of losing it and
+// silently falling back to a re-index.
+func TestEmbeddingSurvivesRenameDoneOutsidePictogrep(t *testing.T) {
+	app := testApplication(t)
+	original := filepath.Join(app.libraryDir, "before.png")
+	writeTestPNG(t, original)
+	app.addPath(original)
+	vector := make([]float32, defaultEmbeddingModel.Dimensions)
+	vector[3] = 1
+	if err := app.updateEmbeddings(map[string]embeddingRecord{original: {Mtime: embeddingMtime(original), Vector: vector}}); err != nil {
+		t.Fatal(err)
+	}
+
+	renamed := filepath.Join(app.libraryDir, "after.png")
+	if err := os.Rename(original, renamed); err != nil {
+		t.Fatal(err)
+	}
+	app.mu.Lock()
+	app.setPaths([]string{renamed})
+	if err := app.saveLibraryLocked(); err != nil {
+		app.mu.Unlock()
+		t.Fatal(err)
+	}
+	app.mu.Unlock()
+
+	reloaded, err := newApplication()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if missing := reloaded.missingEmbeddings(nil); len(missing) != 0 {
+		t.Fatalf("renamed picture should have kept its embedding, got missing: %#v", missing)
+	}
+	got, found := reloaded.imageEmbedding(renamed)
+	if !found {
+		t.Fatal("embedding did not follow the rename")
+	}
+	if got[3] != 1 {
+		t.Fatalf("embedding vector changed across the rename: %#v", got)
 	}
 }
 

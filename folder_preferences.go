@@ -2,6 +2,7 @@ package main
 
 import (
 	"archive/zip"
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -13,6 +14,35 @@ import (
 	"sort"
 	"strings"
 )
+
+// folderIdentityFile holds a tag folder's persistent ID, a small hidden file
+// that travels with the directory through a rename or move done by hand in a
+// file manager. Folder preferences (favorite, cover, custom order) are keyed
+// by this instead of the folder's name, so an external rename does not
+// orphan them the way a name-derived key would.
+const folderIdentityFile = ".pictogrep-folder-id"
+
+// folderIdentity reads a tag folder's persistent ID, assigning one on first
+// use. The ID lives inside the folder itself, not in application state, so
+// it survives Pictogrep never having seen the rename happen.
+func folderIdentity(directory string) (string, error) {
+	idPath := filepath.Join(directory, folderIdentityFile)
+	if data, err := os.ReadFile(idPath); err == nil {
+		id := strings.TrimSpace(string(data))
+		if len(id) == 32 {
+			return id, nil
+		}
+	}
+	raw := make([]byte, 16)
+	if _, err := rand.Read(raw); err != nil {
+		return "", err
+	}
+	id := hex.EncodeToString(raw)
+	if err := writeFileAtomically(idPath, []byte(id+"\n"), 0o600); err != nil {
+		return "", err
+	}
+	return id, nil
+}
 
 type folderViewPreferences struct {
 	CardSize  string            `json:"cardSize"`
@@ -32,9 +62,30 @@ func defaultFolderViewPreferences() folderViewPreferences {
 	}
 }
 
+// folderPreferenceKey is the "source" kind's key: sources are real
+// directories outside Pictogrep's own data home, so there is nowhere of ours
+// to stash a persistent ID inside them, and a path-derived key is what this
+// kind has always used.
 func folderPreferenceKey(kind, value string) string {
 	digest := sha256.Sum256([]byte(value))
 	return kind + "-" + hex.EncodeToString(digest[:8])
+}
+
+// preferenceKey resolves the key folder preferences are stored under. A
+// "tag" folder lives inside a.tagsDir, which is Pictogrep's own directory, so
+// it gets a persistent ID (see folderIdentity) instead of a name-derived key:
+// that is what lets a rename done by hand in a file manager keep its
+// favorite, cover and order instead of orphaning them. Every other kind
+// falls back to folderPreferenceKey.
+func (a *application) preferenceKey(kind, value string) (string, error) {
+	if kind != "tag" {
+		return folderPreferenceKey(kind, value), nil
+	}
+	name, err := collectionName(value)
+	if err != nil {
+		return "", err
+	}
+	return folderIdentity(filepath.Join(a.tagsDir, name))
 }
 
 func (a *application) folderViewPreferencesPath() string {

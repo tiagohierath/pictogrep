@@ -2171,19 +2171,78 @@ func (s *server) unlinkTag(name, source string) bool {
 	return removed
 }
 
+// writeTagManifest reconciles a folder's directory entries to match paths
+// exactly, using a real symlink per picture instead of the JSON manifest that
+// used to be the only thing on disk. A folder opened in a plain file manager
+// now shows something, even before Phase 4/5 make it show a readable
+// filename and a real file instead of a hash-named symlink.
+//
+// Any images.json this folder still has from before is left stale on disk by
+// the write itself, and only removed once every path it named is backed by a
+// symlink: collectionImages keeps reading it in the meantime, so a folder
+// that has not been written to since the old format is retired still opens.
 func writeTagManifest(directory string, paths []string) error {
 	paths = existingUniquePaths(paths)
-	data, err := json.MarshalIndent(paths, "", "  ")
+	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return err
 	}
-	data = append(data, '\n')
-	target := filepath.Join(directory, "images.json")
-	tmp := target + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
+	existingTargets := map[string]string{} // resolved path -> entry name
+	for _, entry := range entries {
+		if entry.Name() == "images.json" {
+			continue
+		}
+		full := filepath.Join(directory, entry.Name())
+		resolved, err := filepath.EvalSymlinks(full)
+		if err != nil {
+			continue
+		}
+		existingTargets[expandPath(resolved)] = entry.Name()
 	}
-	return os.Rename(tmp, target)
+	want := make(map[string]bool, len(paths))
+	for _, path := range paths {
+		want[expandPath(path)] = true
+	}
+	for resolved, name := range existingTargets {
+		if !want[resolved] {
+			_ = os.Remove(filepath.Join(directory, name))
+		}
+	}
+	var firstErr error
+	for _, path := range paths {
+		path = expandPath(path)
+		if _, ok := existingTargets[path]; ok {
+			continue
+		}
+		name := uniqueDirectoryEntryName(directory, filepath.Base(path))
+		if err := os.Symlink(path, filepath.Join(directory, name)); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	if firstErr != nil {
+		return firstErr
+	}
+	_ = os.Remove(filepath.Join(directory, "images.json"))
+	return nil
+}
+
+// uniqueDirectoryEntryName returns base, or base with a numbered suffix
+// before its extension if base is already taken by something else in
+// directory. Two different pictures landing in one folder with the same
+// filename is the only case this exists for; it is rare because today's
+// library names are content hashes.
+func uniqueDirectoryEntryName(directory, base string) string {
+	if _, err := os.Lstat(filepath.Join(directory, base)); os.IsNotExist(err) {
+		return base
+	}
+	ext := filepath.Ext(base)
+	stem := strings.TrimSuffix(base, ext)
+	for n := 2; ; n++ {
+		candidate := fmt.Sprintf("%s-%d%s", stem, n, ext)
+		if _, err := os.Lstat(filepath.Join(directory, candidate)); os.IsNotExist(err) {
+			return candidate
+		}
+	}
 }
 
 func (s *server) image(w http.ResponseWriter, r *http.Request) {

@@ -25,7 +25,10 @@ var version = "0.11.7"
 
 const (
 	maxCachedQueries = 512
-	embeddingMagic   = "PGE1"
+	// PGE1 records carry no content digest. PGE2 adds one so a renamed or
+	// moved picture keeps its embedding: see reconcileEmbeddingsByDigestLocked.
+	embeddingMagicV1 = "PGE1"
+	embeddingMagicV2 = "PGE2"
 )
 
 var imageExtensions = map[string]bool{
@@ -89,6 +92,10 @@ type application struct {
 	pluginDataDir      string
 	embeddingModel     embeddingModel
 	usage              *usageTracker
+	// digests answers "what is this file's content", cached by stat so a
+	// renamed or moved picture can still be recognized without re-reading
+	// every byte of it on every startup. See reconcileEmbeddingsByDigestLocked.
+	digests *digestCache
 
 	mu                  sync.RWMutex
 	folderPreferencesMu sync.Mutex
@@ -143,6 +150,9 @@ func (a *application) mtimeSnapshot() map[string]int64 {
 type embeddingRecord struct {
 	Mtime  int64     `json:"mtime"`
 	Vector []float32 `json:"vector"`
+	// Digest is the SHA-256 of the file's bytes at Mtime. Zero for records
+	// loaded from a legacy PGE1 store; backfilled lazily, see loadEmbeddings.
+	Digest [32]byte `json:"-"`
 }
 
 type storedEmbedding struct {
@@ -231,6 +241,7 @@ func newApplicationWithEmbeddingModel(model embeddingModel) (*application, error
 		installedPlugins:   map[string]pluginManifest{},
 		job:                jobState{State: "idle", Message: "Ready", UpdatedAt: time.Now().Unix()},
 	}
+	a.digests = openDigestCache(filepath.Join(a.dataDir, "digests.json"))
 	for _, directory := range []string{a.dataDir, a.embeddingsDir, a.queryCacheDir, a.thumbnailDir, a.libraryDir, a.tagsDir, a.boardsDir, a.referenceDir, a.pluginsDir, a.pluginDataDir, filepath.Dir(a.configPath)} {
 		if err := os.MkdirAll(directory, 0o755); err != nil {
 			return nil, err
@@ -249,6 +260,7 @@ func newApplicationWithEmbeddingModel(model embeddingModel) (*application, error
 		_ = a.saveLibraryLocked()
 	}
 	_ = a.loadEmbeddings()
+	a.backfillAndReconcileEmbeddingDigests()
 	_ = a.loadQueryEmbeddings()
 	if tracksDailyUsage {
 		tracker, err := newUsageTracker(filepath.Join(a.dataDir, "usage.json"), version)
@@ -636,6 +648,72 @@ func (a *application) loadEmbeddings() error {
 	return nil
 }
 
+// backfillAndReconcileEmbeddingDigests does two things, once, at startup:
+//
+//  1. Backfills Digest on records loaded from a legacy PGE1 store, or from the
+//     even older JSON files, so they can take part in (2) from then on.
+//  2. Matches a path with no embedding record against an orphaned record (one
+//     whose file no longer exists at its stored path) by content digest. A
+//     picture renamed or moved by hand in a file manager, while Pictogrep was
+//     not running to see it happen, keeps its embedding instead of losing it
+//     and paying to re-index.
+//
+// Both need the library paths loaded first, so this runs after loadLibrary
+// and loadEmbeddings, not from within either.
+func (a *application) backfillAndReconcileEmbeddingDigests() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if len(a.embeddings) == 0 {
+		return
+	}
+	live := make(map[string]bool, len(a.paths))
+	for _, path := range a.paths {
+		live[path] = true
+	}
+	var zero [32]byte
+	changed := false
+	for path, record := range a.embeddings {
+		if record.Digest == zero {
+			if digest, err := a.digests.of(path); err == nil {
+				record.Digest = digest
+				a.embeddings[path] = record
+				changed = true
+			}
+		}
+	}
+	orphans := map[[32]byte]string{}
+	for path, record := range a.embeddings {
+		if !live[path] && record.Digest != zero {
+			orphans[record.Digest] = path
+		}
+	}
+	for _, path := range a.paths {
+		if len(orphans) == 0 {
+			break
+		}
+		if _, found := a.embeddings[path]; found {
+			continue
+		}
+		digest, err := a.digests.of(path)
+		if err != nil {
+			continue
+		}
+		oldPath, found := orphans[digest]
+		if !found {
+			continue
+		}
+		record := a.embeddings[oldPath]
+		record.Mtime = embeddingMtime(path)
+		a.embeddings[path] = record
+		delete(a.embeddings, oldPath)
+		delete(orphans, digest)
+		changed = true
+	}
+	if changed {
+		_ = a.writeEmbeddingStoreLocked()
+	}
+}
+
 func (a *application) updateEmbeddings(records map[string]embeddingRecord) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
@@ -648,7 +726,11 @@ func (a *application) updateEmbeddings(records map[string]embeddingRecord) error
 		if existing, found := a.embeddings[path]; found && existing.Mtime == record.Mtime && len(existing.Vector) == a.embeddingModel.Dimensions {
 			continue
 		}
-		pending[path] = embeddingRecord{Mtime: record.Mtime, Vector: append([]float32(nil), record.Vector...)}
+		digest, err := a.digests.of(path)
+		if err != nil {
+			return err
+		}
+		pending[path] = embeddingRecord{Mtime: record.Mtime, Vector: append([]float32(nil), record.Vector...), Digest: digest}
 	}
 	if len(pending) == 0 {
 		return nil
@@ -674,17 +756,22 @@ func upgradedEmbeddingMtime(path string, value int64) int64 {
 	return value
 }
 
+// embeddingHeaderSize is the PGE2 header: magic(4) + pathLen(4) + mtime(8) +
+// digest(32).
+const embeddingHeaderSize = 48
+
 func encodeEmbedding(model embeddingModel, path string, record embeddingRecord) ([]byte, error) {
 	if path == "" || len(path) > 1<<20 || len(record.Vector) != model.Dimensions {
 		return nil, fmt.Errorf("invalid image embedding")
 	}
 	pathBytes := []byte(path)
-	data := make([]byte, 16+len(pathBytes)+model.Dimensions*4+4)
-	copy(data[:4], embeddingMagic)
+	data := make([]byte, embeddingHeaderSize+len(pathBytes)+model.Dimensions*4+4)
+	copy(data[:4], embeddingMagicV2)
 	binary.LittleEndian.PutUint32(data[4:8], uint32(len(pathBytes)))
 	binary.LittleEndian.PutUint64(data[8:16], uint64(record.Mtime))
-	copy(data[16:], pathBytes)
-	offset := 16 + len(pathBytes)
+	copy(data[16:48], record.Digest[:])
+	copy(data[48:], pathBytes)
+	offset := embeddingHeaderSize + len(pathBytes)
 	for _, value := range record.Vector {
 		binary.LittleEndian.PutUint32(data[offset:offset+4], math.Float32bits(value))
 		offset += 4
@@ -694,14 +781,24 @@ func encodeEmbedding(model embeddingModel, path string, record embeddingRecord) 
 }
 
 // decodeEmbeddingRecord reads the record at the front of data: the magic, the
-// path length, the mtime, the path, the vector, and a CRC32 over all of it.
+// path length, the mtime, (PGE2 only) the digest, the path, the vector, and a
+// CRC32 over all of it. PGE1 records (no digest, written before Pictogrep
+// 0.11.12) decode with a zero Digest, backfilled by loadEmbeddings.
 func (a *application) decodeEmbeddingRecord(data []byte) (string, embeddingRecord, int, bool) {
-	if len(data) < 16 || string(data[:4]) != embeddingMagic {
+	if len(data) < 16 {
+		return "", embeddingRecord{}, 0, false
+	}
+	magic := string(data[:4])
+	if magic != embeddingMagicV1 && magic != embeddingMagicV2 {
 		return "", embeddingRecord{}, 0, false
 	}
 	pathLength := int(binary.LittleEndian.Uint32(data[4:8]))
 	mtime := int64(binary.LittleEndian.Uint64(data[8:16]))
-	length := 16 + pathLength + a.embeddingModel.Dimensions*4 + 4
+	headerSize := 16
+	if magic == embeddingMagicV2 {
+		headerSize = embeddingHeaderSize
+	}
+	length := headerSize + pathLength + a.embeddingModel.Dimensions*4 + 4
 	if pathLength < 1 || pathLength > 1<<20 || length > len(data) {
 		return "", embeddingRecord{}, 0, false
 	}
@@ -709,13 +806,18 @@ func (a *application) decodeEmbeddingRecord(data []byte) (string, embeddingRecor
 	if crc32.ChecksumIEEE(data[:checksumOffset]) != binary.LittleEndian.Uint32(data[checksumOffset:length]) {
 		return "", embeddingRecord{}, 0, false
 	}
+	var digest [32]byte
+	if magic == embeddingMagicV2 {
+		copy(digest[:], data[16:48])
+	}
 	vector := make([]float32, a.embeddingModel.Dimensions)
-	offset := 16 + pathLength
+	offset := headerSize + pathLength
 	for index := range vector {
 		vector[index] = math.Float32frombits(binary.LittleEndian.Uint32(data[offset : offset+4]))
 		offset += 4
 	}
-	return expandPath(string(data[16 : 16+pathLength])), embeddingRecord{Mtime: mtime, Vector: vector}, length, true
+	path := expandPath(string(data[headerSize : headerSize+pathLength]))
+	return path, embeddingRecord{Mtime: mtime, Vector: vector, Digest: digest}, length, true
 }
 
 // nextEmbeddingRecord finds where the next record could start. The magic can
@@ -725,11 +827,21 @@ func nextEmbeddingRecord(data []byte, from int) int {
 	if from < 0 || from >= len(data) {
 		return -1
 	}
-	index := bytes.Index(data[from:], []byte(embeddingMagic))
-	if index < 0 {
-		return -1
+	v1 := bytes.Index(data[from:], []byte(embeddingMagicV1))
+	v2 := bytes.Index(data[from:], []byte(embeddingMagicV2))
+	switch {
+	case v1 < 0:
+		if v2 < 0 {
+			return -1
+		}
+		return from + v2
+	case v2 < 0:
+		return from + v1
+	case v1 < v2:
+		return from + v1
+	default:
+		return from + v2
 	}
-	return from + index
 }
 
 func (a *application) loadEmbeddingStore() error {
@@ -841,7 +953,7 @@ func (a *application) compactEmbeddingStoreLocked() {
 	}
 	liveSize := int64(0)
 	for path := range a.embeddings {
-		liveSize += int64(16 + len(path) + a.embeddingModel.Dimensions*4 + 4)
+		liveSize += int64(embeddingHeaderSize + len(path) + a.embeddingModel.Dimensions*4 + 4)
 	}
 	if info.Size() > liveSize*2+(1<<20) {
 		_ = a.writeEmbeddingStoreLocked()
