@@ -2085,7 +2085,18 @@ func (s *server) collectionImages(name string) []string {
 			continue
 		}
 		path := filepath.Join(s.app.tagsDir, name, entry.Name())
-		resolved, err := filepath.EvalSymlinks(path)
+		// Read the link rather than resolving it. A link holds the exact path
+		// that was written into it, which is the library's own spelling, while
+		// EvalSymlinks returns a canonical one: on Windows that turns
+		// C:\Users\RUNNER~1\... into C:\Users\runneradmin\..., and every
+		// comparison against a library path is a string comparison, so a
+		// folder's pictures stopped being recognised as belonging to it.
+		resolved, err := os.Readlink(path)
+		if err != nil {
+			// Not a link: a real file in the folder, which is where phases 4
+			// and 5 are heading.
+			resolved, err = filepath.EvalSymlinks(path)
+		}
 		if err == nil && imageExtensions[strings.ToLower(filepath.Ext(resolved))] {
 			paths = append(paths, resolved)
 		}
@@ -2158,11 +2169,18 @@ func (s *server) unlinkTag(name, source string) bool {
 	if removed {
 		_ = writeTagManifest(directory, kept)
 	}
-	// Remove a matching legacy symlink too, if one exists.
+	// Remove the folder's entry for this picture too. Readlink, not
+	// EvalSymlinks: deleting a picture removes the file first, and
+	// EvalSymlinks fails on the link left pointing at it, so the broken link
+	// stayed in the folder forever. Readlink still answers, because the link
+	// holds the path that was written into it.
 	entries, _ := os.ReadDir(directory)
 	for _, entry := range entries {
 		path := filepath.Join(directory, entry.Name())
-		resolved, err := filepath.EvalSymlinks(path)
+		resolved, err := os.Readlink(path)
+		if err != nil {
+			resolved, err = filepath.EvalSymlinks(path)
+		}
 		if err == nil && expandPath(resolved) == expandPath(source) {
 			_ = os.Remove(path)
 			removed = true
@@ -2193,7 +2211,14 @@ func writeTagManifest(directory string, paths []string) error {
 			continue
 		}
 		full := filepath.Join(directory, entry.Name())
-		resolved, err := filepath.EvalSymlinks(full)
+		// Readlink for the same reason collectionImages uses it: the link holds
+		// the library's own spelling, and a canonicalized one would not match
+		// the paths being reconciled against, so every write would delete the
+		// entries and make them again.
+		resolved, err := os.Readlink(full)
+		if err != nil {
+			resolved, err = filepath.EvalSymlinks(full)
+		}
 		if err != nil {
 			continue
 		}

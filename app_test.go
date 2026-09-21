@@ -49,7 +49,11 @@ func collectionEntryPaths(t *testing.T, directory string) []string {
 		if entry.Name() == "images.json" {
 			continue
 		}
-		resolved, err := filepath.EvalSymlinks(filepath.Join(directory, entry.Name()))
+		full := filepath.Join(directory, entry.Name())
+		resolved, err := os.Readlink(full)
+		if err != nil {
+			resolved, err = filepath.EvalSymlinks(full)
+		}
 		if err != nil {
 			continue
 		}

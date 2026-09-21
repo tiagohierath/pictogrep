@@ -1348,3 +1348,29 @@ resolution rounds away.
       workflow. The standing preference is that the workflow should call a
       local `scripts/release.sh` rather than inline the build steps, and
       there is still no such script.
+
+## 0.11.14: the real Windows folder bug (2026-09-21)
+
+The 0.11.13 diagnosis was wrong and its changelog entry overstates the cause.
+`os.Symlink` works fine on the GitHub Windows runner; the failures were path
+SPELLING. `collectionImages` returned `filepath.EvalSymlinks` output, which on
+Windows canonicalizes `C:\Users\RUNNER~1\...` into `C:\Users\runneradmin\...`,
+while the library stores the other spelling. Every membership check is a
+string comparison (`taggedPaths`, `tagsForImage`), so a picture in a folder
+was not recognised as being in it: it read as unsorted and the folder looked
+emptier than it was. Nothing was ever deleted.
+
+Fix: read the link with `os.Readlink` instead of resolving it. The link holds
+the exact path written into it, which is the library's own spelling, and it is
+cheaper than resolving. Applied in `collectionImages`, `writeTagManifest` and
+`unlinkTag`.
+
+That last one was a second real bug, shipped in 0.11.12: `deleteImage` removes
+the file BEFORE calling `unlinkTag`, and `unlinkTag` used `EvalSymlinks`,
+which fails on the link now dangling, so the broken link was never removed and
+stayed in the folder. Covered by
+`TestDeletingAPictureLeavesNoBrokenLinkInItsFolders`.
+
+The 0.11.13 Windows symlink-permission fallback stays. Symlinks really do need
+Developer Mode or admin for an ordinary Windows user even though CI runs
+elevated, so the fallback is worth having; it just was not what CI was showing.

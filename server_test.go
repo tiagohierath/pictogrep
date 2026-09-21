@@ -1531,3 +1531,52 @@ func TestTheDecodeBudgetLetsBigPicturesThroughWithoutDeadlocking(t *testing.T) {
 		t.Fatal("releasing the budget did not wake the picture waiting for it")
 	}
 }
+
+// Deleting a picture used to leave a broken link behind in every folder it
+// was in: deleteImage removes the file first, and unlinkTag resolved folder
+// entries with EvalSymlinks, which fails on a link whose target is already
+// gone. Now that a folder is a directory someone opens in a file manager, a
+// pile of broken links is what they would see.
+func TestDeletingAPictureLeavesNoBrokenLinkInItsFolders(t *testing.T) {
+	if !symlinksWork(t) {
+		t.Skip("this machine cannot create symlinks, so a folder stays an images.json manifest")
+	}
+	app, server := testHTTPServer(t)
+	picture := filepath.Join(app.libraryDir, "doomed.png")
+	writeTestPNG(t, picture)
+	app.addPath(picture)
+	payload, _ := json.Marshal(map[string]any{"action": "add", "tag": "Keep", "imageId": stableImageID(picture)})
+	response, err := http.Post(server.URL+"/api/app/tags", "application/json", bytes.NewReader(payload))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if response.StatusCode != 200 {
+		t.Fatalf("tag failed: status=%d", response.StatusCode)
+	}
+	directory := filepath.Join(app.tagsDir, "keep")
+	if entries := collectionEntryPaths(t, directory); len(entries) != 1 {
+		t.Fatalf("the picture did not land in the folder: %#v", entries)
+	}
+
+	// Exactly what deleteImage does: the file goes first, then the folders are
+	// told about it.
+	if err := os.Remove(picture); err != nil {
+		t.Fatal(err)
+	}
+	handler, err := newServer(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !handler.unlinkTag("keep", picture) {
+		t.Fatal("unlinkTag did not report removing the deleted picture")
+	}
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if entry.Name() != "images.json" {
+			t.Fatalf("a broken link was left behind in the folder: %s", entry.Name())
+		}
+	}
+}

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.11.14 - 2026-09-21
+
+- Fixed pictures going missing from their folders on Windows in 0.11.12 and 0.11.13. A folder's entries were read back through a path Windows spells differently from the one the library keeps, so a picture sitting in a folder was not recognised as being in it: it showed up as unsorted, and the folder looked emptier than it was. Nothing was deleted, and updating puts the pictures back where they were.
+- Deleting a picture no longer leaves a broken entry behind in every folder it was in. Now that folders are real directories, those showed up as dead links in a file manager.
+
 ## 0.11.13 - 2026-09-21
 
 - Fixed folders losing their pictures on Windows in 0.11.12. Folders became real directories holding one link per picture, but Windows refuses to create those links unless Developer Mode or an administrator is behind it, so adding a picture to a folder could fail and leave the folder without it. Windows keeps the previous folder format until the format that needs no links is ready. Anyone on Windows running 0.11.12 should update.
