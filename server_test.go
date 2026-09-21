@@ -399,6 +399,9 @@ func TestManualFoldersWorkWithoutAI(t *testing.T) {
 // folder must show its pictures as real entries on disk, not just an
 // images.json a file manager can't see into.
 func TestFolderIsARealDirectoryAFileManagerCanRead(t *testing.T) {
+	if !symlinksWork(t) {
+		t.Skip("this machine cannot create symlinks, so a folder stays an images.json manifest")
+	}
 	app, server := testHTTPServer(t)
 	picture := filepath.Join(app.libraryDir, "reference.png")
 	writeTestPNG(t, picture)
@@ -426,6 +429,9 @@ func TestFolderIsARealDirectoryAFileManagerCanRead(t *testing.T) {
 // must still work, and the first write to it must replace the manifest with
 // real entries instead of leaving both formats around.
 func TestLegacyManifestOnlyFolderStillOpensAndMigratesOnWrite(t *testing.T) {
+	if !symlinksWork(t) {
+		t.Skip("this machine cannot create symlinks, so a folder stays an images.json manifest")
+	}
 	app, server := testHTTPServer(t)
 	picture := filepath.Join(app.libraryDir, "legacy.png")
 	writeTestPNG(t, picture)
@@ -1380,12 +1386,12 @@ func TestTheAndroidPageHasNoLinkImporter(t *testing.T) {
 
 	// Nothing to press: the panel and every way into it are empty.
 	for _, gone := range []string{
-		`data-i18n="web.page_link"`,     // the address field's label
-		`data-i18n="web.backfill"`,      // "everything posted so far"
-		`data-i18n="web.follow"`,        // "check daily for new pictures"
-		`data-i18n="web.plugin_help"`,   // both settings rows
+		`data-i18n="web.page_link"`,   // the address field's label
+		`data-i18n="web.backfill"`,    // "everything posted so far"
+		`data-i18n="web.follow"`,      // "check daily for new pictures"
+		`data-i18n="web.plugin_help"`, // both settings rows
 		`data-i18n="web.auto_sync"`,
-		`data-i18n="web.open_panel"`,    // the way in, from the Plugins screen
+		`data-i18n="web.open_panel"`, // the way in, from the Plugins screen
 	} {
 		if strings.Contains(phone, gone) {
 			t.Errorf("the phone page still carries %s", gone)

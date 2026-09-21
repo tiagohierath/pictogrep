@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // share puts a picture into a device's library the way a share sheet does, and
@@ -227,7 +228,7 @@ func TestTheDigestCacheDoesNotRereadAnUnchangedFile(t *testing.T) {
 
 	// A real edit moves the modification time, and the cache follows it.
 	writeTestPNGDimensions(t, picture, 40, 40)
-	if err := os.Chtimes(picture, info.ModTime(), info.ModTime().Add(1)); err != nil {
+	if err := os.Chtimes(picture, info.ModTime(), info.ModTime().Add(2*time.Second)); err != nil {
 		t.Fatal(err)
 	}
 	changed, err := cache.of(picture)

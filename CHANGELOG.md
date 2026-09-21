@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.11.13 - 2026-09-21
+
+- Fixed folders losing their pictures on Windows in 0.11.12. Folders became real directories holding one link per picture, but Windows refuses to create those links unless Developer Mode or an administrator is behind it, so adding a picture to a folder could fail and leave the folder without it. Windows keeps the previous folder format until the format that needs no links is ready. Anyone on Windows running 0.11.12 should update.
+
 ## 0.11.12 - 2026-09-21
 
 - Pasting a picture's link works again for links copied off a picture page. Any address carrying a `#` was refused outright as invalid, and the link you get from "copy link" on a Wikipedia or Wikimedia picture always has one. The part after the `#` is never sent to the website anyway, so it is now ignored instead of refusing the link.

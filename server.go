@@ -504,11 +504,11 @@ var pinterestParts = []struct{ marker, tag string }{
 // disabled, which is what a build without the importer now reports. Emptying it
 // by name is how the phone ended up with a blank menu row once already.
 var webImportParts = []struct{ marker, tag string }{
-	{`id="webSection"`, "section"},          // the importer panel
-	{`id="webPluginToggle"`, "label"},       // its two settings rows
+	{`id="webSection"`, "section"},    // the importer panel
+	{`id="webPluginToggle"`, "label"}, // its two settings rows
 	{`id="webAutoSyncToggle"`, "label"},
-	{`id="webImportRow"`, "div"},            // the way in, from the Plugins screen
-	{`id="webSourceSummary"`, "p"},          // "you are not following any websites"
+	{`id="webImportRow"`, "div"},   // the way in, from the Plugins screen
+	{`id="webSourceSummary"`, "p"}, // "you are not following any websites"
 }
 
 // withoutPinterest takes the board importer out of the page an app build
@@ -2220,10 +2220,35 @@ func writeTagManifest(directory string, paths []string) error {
 		}
 	}
 	if firstErr != nil {
-		return firstErr
+		// Windows refuses os.Symlink to anyone without Developer Mode or
+		// administrator rights, so a folder there cannot be a directory of
+		// links at all. Falling back to the manifest keeps the folder's
+		// membership intact instead of losing it: the pictures are still in
+		// the folder, they are just not browsable outside Pictogrep yet.
+		// Phase 4/5, which put a real file in the folder rather than a link,
+		// are what will make this readable on Windows too.
+		return writeTagManifestFile(directory, paths)
 	}
 	_ = os.Remove(filepath.Join(directory, "images.json"))
 	return nil
+}
+
+// writeTagManifestFile is the pre-Phase-2 format: a folder is a single
+// images.json listing absolute paths. collectionImages still reads it, so it
+// remains a working representation of a folder wherever a directory of
+// symlinks cannot be written.
+func writeTagManifestFile(directory string, paths []string) error {
+	data, err := json.MarshalIndent(paths, "", "  ")
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+	target := filepath.Join(directory, "images.json")
+	tmp := target + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, target)
 }
 
 // uniqueDirectoryEntryName returns base, or base with a numbered suffix

@@ -1320,3 +1320,31 @@ commit and running, reporting `0.11.9`.
 - [ ] OPEN: the three followed-things lists (websites, boards, source folders)
       are three separate renderers with no shared state row. Revisit once the
       Pinterest question above is settled.
+
+## 0.11.12 Windows folder regression, fixed in 0.11.13 (2026-09-21)
+
+The Phase 2 folder change shipped in v0.11.12 broke folders on Windows.
+`os.Symlink` needs Developer Mode or administrator rights there, so
+`writeTagManifest` could not create a single entry, returned the error, and
+the folder never recorded its pictures. Caught by the Windows half of the
+Check workflow, which has been red for weeks for unrelated reasons and so
+was not read: the 10 failures before this push were exactly the stale
+Pinterest tests, and 6 new folder-membership failures appeared under them.
+
+`writeTagManifest` now falls back to writing `images.json` when a symlink
+cannot be created, so membership is kept and only the file-manager
+readability is lost on Windows. Phases 4/5, a real file in the folder rather
+than a link, are what make it readable there too.
+
+Two test fixes rode along: `collectionEntryPaths` reads either folder
+format, and the digest-cache test bumped mtime by 1ns, which NTFS's 100ns
+resolution rounds away.
+
+- [ ] The Check workflow is red on Windows and has been ignored for weeks.
+      Get it green and keep it green, or it cannot catch the next one of
+      these. Still failing and not looked at: TestRevealImage..., the mDNS
+      advertiser test, TestAPullTakesOnlyTheFolderItWasAskedFor.
+- [ ] Memory correction made: releases DO run through the tag-triggered CI
+      workflow. The standing preference is that the workflow should call a
+      local `scripts/release.sh` rather than inline the build steps, and
+      there is still no such script.

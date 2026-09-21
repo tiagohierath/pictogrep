@@ -14,11 +14,32 @@ import (
 	"time"
 )
 
-// collectionEntryPaths resolves every symlink a folder directory holds
-// (Phase 2 writes real symlinks instead of images.json) to the real paths
-// they point at, for tests that used to read images.json directly.
+// symlinksWork reports whether this machine lets an ordinary process create a
+// symlink. Windows refuses without Developer Mode or administrator rights, so
+// a folder there stays an images.json manifest and the tests that assert the
+// directory-of-links shape have nothing to assert.
+func symlinksWork(t *testing.T) bool {
+	t.Helper()
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target")
+	if err := os.WriteFile(target, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return os.Symlink(target, filepath.Join(dir, "link")) == nil
+}
+
+// collectionEntryPaths returns the real paths a folder directory holds,
+// whichever way the folder is stored: the symlinks Phase 2 writes, or the
+// images.json manifest still used where symlinks cannot be created.
 func collectionEntryPaths(t *testing.T, directory string) []string {
 	t.Helper()
+	if data, err := os.ReadFile(filepath.Join(directory, "images.json")); err == nil {
+		var manifest []string
+		if err := json.Unmarshal(data, &manifest); err != nil {
+			t.Fatal(err)
+		}
+		return manifest
+	}
 	entries, err := os.ReadDir(directory)
 	if err != nil {
 		t.Fatal(err)
