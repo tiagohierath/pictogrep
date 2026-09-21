@@ -243,9 +243,14 @@ func validateRemoteImageURL(raw string) (*url.URL, error) {
 		return nil, fmt.Errorf("drop an HTTP or HTTPS image URL")
 	}
 	parsed, err := url.Parse(raw)
-	if err != nil || parsed.User != nil || parsed.Hostname() == "" || parsed.Fragment != "" {
+	if err != nil || parsed.User != nil || parsed.Hostname() == "" {
 		return nil, fmt.Errorf("invalid image URL")
 	}
+	// A fragment never reaches the server, and the link people copy off a
+	// picture page usually carries one ("...file.png#/media/File:X.png").
+	// Rejecting the whole URL over it turned a working link into an error.
+	parsed.Fragment = ""
+	parsed.RawFragment = ""
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return nil, fmt.Errorf("only HTTP and HTTPS image URLs are supported")
 	}
@@ -341,7 +346,10 @@ func downloadRemoteImage(ctx context.Context, raw string) (remoteImage, error) {
 	}
 	defer response.Body.Close()
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
-		return remoteImage{}, importError(http.StatusBadGateway, "image server returned %s", response.Status)
+		if response.StatusCode == http.StatusForbidden || response.StatusCode == http.StatusUnauthorized {
+			return remoteImage{}, importError(http.StatusBadGateway, "%s refused the download (%s): this host blocks links opened outside its own page", parsed.Hostname(), response.Status)
+		}
+		return remoteImage{}, importError(http.StatusBadGateway, "%s returned %s for %s", parsed.Hostname(), response.Status, parsed.Path)
 	}
 	if response.ContentLength > maxUploadBytes {
 		return remoteImage{}, importError(http.StatusRequestEntityTooLarge, "image is larger than 100 MB")
@@ -366,7 +374,14 @@ func downloadRemoteImage(ctx context.Context, raw string) (remoteImage, error) {
 func remoteImageName(response *http.Response, parsed *url.URL, data []byte) (string, error) {
 	extension := detectedImageExtension(data)
 	if extension == "" {
-		return "", fmt.Errorf("URL did not return a supported JPG, PNG, GIF, or WebP image")
+		served := response.Header.Get("Content-Type")
+		if served == "" {
+			served = "no content type"
+		}
+		if strings.HasPrefix(served, "text/html") {
+			return "", fmt.Errorf("%s served a web page, not a picture file: open the picture itself and copy that link", parsed.Hostname())
+		}
+		return "", fmt.Errorf("%s served %s (%d bytes), not a JPG, PNG, GIF, or WebP", parsed.Hostname(), served, len(data))
 	}
 	name := ""
 	if _, parameters, err := mime.ParseMediaType(response.Header.Get("Content-Disposition")); err == nil {

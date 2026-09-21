@@ -22,6 +22,20 @@ func testRemotePNG(t *testing.T) []byte {
 	return data
 }
 
+// The link you get from "copy link" on a picture page usually carries a
+// fragment ("...file.png#/media/File:X.png"). A fragment never reaches the
+// server, so rejecting the whole URL over one turned a working link into
+// "invalid image URL".
+func TestRemoteImageURLKeepsLinksThatCarryAFragment(t *testing.T) {
+	parsed, err := validateRemoteImageURL("https://example.com/picture.png#/media/File:Picture.png")
+	if err != nil {
+		t.Fatalf("a link with a fragment was rejected: %v", err)
+	}
+	if parsed.Fragment != "" || parsed.String() != "https://example.com/picture.png" {
+		t.Fatalf("the fragment was not dropped before the request: %s", parsed.String())
+	}
+}
+
 func testRemoteImportServer(t *testing.T, app *application, image remoteImage) *httptest.Server {
 	t.Helper()
 	handler, err := newServer(app)
@@ -83,14 +97,7 @@ func TestRemoteImportPreservesBytesTagsAndRejectsDuplicate(t *testing.T) {
 	if err != nil || !bytes.Equal(stored, data) {
 		t.Fatalf("remote original bytes changed: err=%v", err)
 	}
-	manifest, err := os.ReadFile(filepath.Join(app.tagsDir, "film-references", "images.json"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	var images []string
-	if err := json.Unmarshal(manifest, &images); err != nil {
-		t.Fatal(err)
-	}
+	images := collectionEntryPaths(t, filepath.Join(app.tagsDir, "film-references"))
 	if len(images) != 1 || images[0] != path {
 		t.Fatalf("remote image was not linked to active collection: %#v", images)
 	}
