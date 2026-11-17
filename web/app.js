@@ -600,6 +600,7 @@ function runSemanticIndex() {
   if (semanticIndexPromise || semanticIndexPaused) return semanticIndexPromise;
   semanticIndexPromise = (async () => {
     let force = semanticIndexForced;
+    let conflictRetries = 0;
     semanticIndexForced = false;
     quietImageIndexing = true;
     while (true) {
@@ -635,11 +636,22 @@ function runSemanticIndex() {
             continue;
           }
           if (error.status === 409) {
+            // A concurrent import can briefly make the image's mtime stale.
+            // Retry a few times, but do not keep re-reading the same missing
+            // item forever when the conflict is persistent. That loop used to
+            // keep the worker and its decoded image state alive indefinitely.
+            conflictRetries++;
+            if (conflictRetries > 3) {
+              semanticIndexQueued = false;
+              semanticIndexForced = false;
+              throw error;
+            }
             semanticIndexQueued = true;
             continue;
           }
           throw error;
         }
+        conflictRetries = 0;
         updateSemanticIndexStatus("indexing", ready, state.total);
         if (ready % 24 === 0) {
           await refreshSemanticResults();

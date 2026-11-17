@@ -55,6 +55,12 @@ async function loadPicture(item) {
     try {
       return await RawImage.fromURL(new URL(source, self.location.origin).href);
     } catch (error) {
+      // The server rejects oversized images before decoding them. Falling back
+      // to the original here defeats that safeguard and can allocate a very
+      // large RGBA buffer in the browser worker.
+      if (String(error?.message || error).includes("image dimensions are too large")) {
+        throw error;
+      }
       failure = error;
     }
   }
